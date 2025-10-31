@@ -810,7 +810,8 @@ class Events(Item):
 
             return False
         self._forms[form_uid]["chat"] = message.chat.id
-        self._forms[form_uid]["message_id"] = q.updates[0].id
+        self._forms[form_uid]["message_id"] = q.id
+
         if isinstance(message, Message):
             await message.delete()
 
