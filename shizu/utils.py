@@ -101,7 +101,7 @@ def get_random_smartphone() -> str:
     """Returns a random smartphone model"""
 
     devices = requests.get(
-        "https://gist.githubusercontent.com/AmoreForever/e5927fdd510097c37b5047fae333b8b4/raw/a8456cd97445b672fec6ac7a7aba843f73e3863c/phones.json"
+        "https://gist.githubusercontent.com/ibeswipin/e5927fdd510097c37b5047fae333b8b4/raw/a8456cd97445b672fec6ac7a7aba843f73e3863c/phones.json"
     ).json()
     return random.choice(devices)
 
