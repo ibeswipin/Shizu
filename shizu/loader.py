@@ -31,13 +31,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
 import contextlib
 import inspect
 import logging
 import os
-import requests
-import asyncio
 import random
 import re
 import string
@@ -48,13 +45,15 @@ from importlib.abc import SourceLoader
 from importlib.machinery import ModuleSpec
 from importlib.util import module_from_spec, spec_from_file_location
 from types import FunctionType
-from typing import Any, Callable, Dict, List, Union
-from functools import wraps
+from typing import Any, Dict, List, Union
 
+import requests
 from pyrogram import Client, filters, types
+
 from . import bot, database, dispatcher, utils, logger as logger_, extrapatchs
 from .types import InfiniteLoop
 from .translator import Strings, Translator
+from .inter import inter
 
 VALID_URL = r"[-[\]_.~:/?#@!$&'()*+,;%<=>a-zA-Z0-9]+"
 VALID_PIP_PACKAGES = re.compile(
@@ -86,6 +85,11 @@ def module(
         return instance
 
     return decorator
+
+
+def tds(*args, **kwargs):
+    """Сompatibility function for Telethon modules"""
+    return module(*args, **kwargs)
 
 
 @module(name="Unknown")
@@ -316,7 +320,6 @@ class ModulesManager:
         self.bot_manager: bot.BotManager = None
 
         self.root_module: Module = None
-        # self.aelis = aelis.AelisAPI(self._app)
         self.cmodules = [
             "ShizuBackuper",
             "ShizuHelp",
@@ -336,6 +339,21 @@ class ModulesManager:
         ]
         self.hidden = []
         app.db = db
+
+    def _is_telethon_module(self, source_code: str) -> bool:
+        """Checks if the module is a Telethon module"""
+        telethon_patterns = [
+            r"@loader\.tds\b",
+            r"async def \w+\(self,\s*message\)",
+            r"from \.\.inline\b",
+            r'"telethon"',
+            r"'telethon'",
+        ]
+
+        return any(
+            re.search(pattern, source_code, re.IGNORECASE)
+            for pattern in telethon_patterns
+        )
 
     async def load(self, app: Client) -> bool:
         """Loads the module manager"""
@@ -363,7 +381,33 @@ class ModulesManager:
                 os.path.abspath("."), self._local_modules_path, local_module
             )
             try:
-                self.register_instance(module_name, file_path)
+                with open(file_path, "r", encoding="utf-8") as f:
+                    source_code = f.read()
+
+                is_telethon = self._is_telethon_module(source_code)
+
+                if is_telethon:
+                    transformed_code = inter.transform(source_code)
+
+                    temp_dir = os.path.join(os.path.dirname(file_path), "__temp__")
+                    os.makedirs(temp_dir, exist_ok=True)
+                    temp_file = os.path.join(temp_dir, local_module)
+
+                    with open(temp_file, "w", encoding="utf-8") as f:
+                        f.write(transformed_code)
+
+                    instance = self.register_instance(module_name, temp_file)
+
+                    if instance and is_telethon:
+                        instance.m__telethon = True
+
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+                else:
+                    self.register_instance(module_name, file_path)
+
             except Exception as error:
                 logging.exception(f"Error loading local module {module_name}: {error}")
 
@@ -421,8 +465,8 @@ class ModulesManager:
             value.lookup = self._lookup
 
             instance = value()
+
             instance.reconfmod = self.config_reconfigure
-            # instance.aelis = self.aelis
             instance.shizu = True
             instance.hidden = self.hidden
 
@@ -464,6 +508,15 @@ class ModulesManager:
     ) -> str:
         """Loads a third-party module"""
 
+        original_source = module_source
+
+        is_telethon = self._is_telethon_module(original_source)
+
+        if is_telethon:
+            module_source = inter.transform(original_source)
+        else:
+            module_source = original_source
+
         module_name = f"shizu.modules.{self.me.id}-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(10))}"
         pattern = re.compile(r"@loader\.module\((.*?)\)\nclass\s+(\w+)\(")
 
@@ -493,6 +546,9 @@ class ModulesManager:
             )
 
             instance = self.register_instance(module_name, spec=spec)
+
+            if instance and is_telethon:
+                instance.m__telethon = True
 
         except ImportError as error:
             logging.error(error)
@@ -681,3 +737,7 @@ class ModulesManager:
                 return self.command_handlers[matching_commands[0]].__self__
 
         return None
+
+
+current_module = sys.modules[__name__]
+setattr(current_module, "tds", tds)
