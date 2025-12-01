@@ -8,3 +8,4 @@ shizu.log
 shizu-tl.session
 shizu-tl.session-journal
 .idea
+venv/

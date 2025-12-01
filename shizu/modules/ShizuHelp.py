@@ -185,11 +185,12 @@ class Help(loader.Module):
                 )
 
                 if commands or inline:
-                    module_emoji = (
-                        self.config["core_modules"]
-                        if module.name in self.cmodules
-                        else self.config["custom_modules"]
-                    )
+                    if hasattr(module, 'm__telethon') and module.m__telethon:
+                        module_emoji = "🪢"
+                    elif module.name in self.cmodules:
+                        module_emoji = self.config["core_modules"]
+                    else:
+                        module_emoji = self.config["custom_modules"]
 
                     text += (
                         f"\n<b>{module_emoji} {module.name}</b> - [ "
