@@ -24,159 +24,7 @@ logger = logging.getLogger(__name__)
 class ShizuOwner(loader.Module):
     """Give owner permissions to users"""
 
-    strings = {
-        "who": "<emoji id=5780801684338905670>🕶</emoji> <b>Whom i must give owner permissions?</b>",
-        "whod": "<emoji id=5780801684338905670>🕶</emoji> <b>Whom i must remove owner permissions?</b>",
-        "done": "<emoji id=5780722455077196625>🔗</emoji> {} <b>user now owner!</b>",
-        "doned": "<emoji id=5780722455077196625>🔗</emoji> {} <b>user now not owner!</b>",
-        "already": "<emoji id=5780689203440390462>1️⃣</emoji> <b>This user is already owner</b>",
-        "owners": "<emoji id=5467406098367521267>👑</emoji> <b>Owners:</b>\n{}",
-        "not_owner": "<emoji id=5780689203440390462>1️⃣</emoji> <b>This user is not owner</b>",
-        "no_owners": "<emoji id=5963242192741863664>📝</emoji> <b>There are no owners</b>",
-        "owner_on": "👑 <b>Owner mode enabled</b>",
-        "owner_off": "👑 <b>Owner mode disabled</b>",
-        "button_on": "🔓 Enable",
-        "button_off": "🔐 Disable",
-        "add_owner": "➕ Add owner",
-        "enter_id": "🆔 Enter user id",
-        "back": "🔙 Back",
-        "successfull": "✅ Successfully",
-        "advanced_security": "🌗 Advanced security",
-        "del_owner": "➖ Remove owner",
-        "close": "🚫 Close",
-    }
-
-    strings_ru = {
-        "who": "<emoji id=5780801684338905670>🕶</emoji> <b>Кому я должен дать права владельца?</b>",
-        "whod": "<emoji id=5780801684338905670>🕶</emoji> <b>Кому я должен забрать права владельца?</b>",
-        "done": "<emoji id=5780722455077196625>🔗</emoji> {} <b>пользователь теперь владелец!</b>",
-        "doned": "<emoji id=5780722455077196625>🔗</emoji> {} <b>пользователь больше не владелец!</b>",
-        "already": "<emoji id=5780689203440390462>1️⃣</emoji> <b>Этот пользователь уже владелец</b>",
-        "owners": "<emoji id=5467406098367521267>👑</emoji> <b>Владельцы:</b>\n{}",
-        "not_owner": "<emoji id=5780689203440390462>1️⃣</emoji> <b>Этот пользователь не владелец</b>",
-        "no_owners": "<emoji id=5963242192741863664>📝</emoji> <b>Владельцев нет</b>",
-        "owner_on": "👑 <b>Режим владельца включен</b>",
-        "owner_off": "👑 <b>Режим владельца отключен</b>",
-        "button_on": "🔓 Включить",
-        "button_off": "🔐 Отключить",
-        "add_owner": "➕ Добавить владельца",
-        "enter_id": "🆔 Введите id пользователя",
-        "back": "🔙 Назад",
-        "successfull": "✅ Успешно",
-        "advanced_security": "🌗 Расширенная безопасность",
-        "del_owner": "➖ Удалить владельца",
-        "close": "🚫 Закрыть",
-    }
-
-    strings_uz = {
-        "who": "<emoji id=5780801684338905670>🕶</emoji> <b>Kimni egasi huquqini berishim kerak?</b>",
-        "whod": "<emoji id=5780801684338905670>🕶</emoji> <b>Kimni egasi huquqini olib tashlashim kerak?</b>",
-        "done": "<emoji id=5780722455077196625>🔗</emoji> {} <b>foydalanuvchi hozir egasi!</b>",
-        "doned": "<emoji id=5780722455077196625>🔗</emoji> {} <b>foydalanuvchi artik egasi emas!</b>",
-        "already": "<emoji id=5780689203440390462>1️⃣</emoji> <b>Ushbu foydalanuvchi allaqachon egasi</b>",
-        "owners": "<emoji id=5467406098367521267>👑</emoji> <b>Egalar:</b>\n{}",
-        "not_owner": "<emoji id=5780689203440390462>1️⃣</emoji> <b>Ushbu foydalanuvchi egasi emas</b>",
-        "no_owners": "<emoji id=5963242192741863664>📝</emoji> <b>Egalar yo'q</b>",
-        "owner_on": "👑 <b>Egasi rejimi yoqilgan</b>",
-        "owner_off": "👑 <b>Egasi rejimi o'chirilgan</b>",
-        "button_on": "🔓 Yoqish",
-        "button_off": "🔐 O'chirish",
-        "add_owner": "➕ Egani qo'shish",
-        "enter_id": "🆔 Foydalanuvchi id sini kiriting",
-        "back": "🔙 Orqaga",
-        "successfull": "✅ Muvaffaqiyatli",
-        "advanced_security": "🌗 Kengaytirilgan xavfsizlik",
-        "del_owner": "➖ Egani o'chirish",
-        "close": "🚫 Yopish",
-    }
-
-    strings_jp = {
-        "who": "<emoji id=5780801684338905670>🕶</emoji> <b>誰に所有者の権限を与える必要がありますか？</b>",
-        "whod": "<emoji id=5780801684338905670>🕶</emoji> <b>誰から所有者の権限を削除する必要がありますか？</b>",
-        "done": "<emoji id=5780722455077196625>🔗</emoji> {} <b>ユーザーは所有者です！</b>",
-        "doned": "<emoji id=5780722455077196625>🔗</emoji> {} <b>ユーザーは所有者ではありません！</b>",
-        "already": "<emoji id=5780689203440390462>1️⃣</emoji> <b>このユーザーはすでに所有者です</b>",
-        "owners": "<emoji id=5467406098367521267>👑</emoji> <b>所有者：</b>\n{}",
-        "not_owner": "<emoji id=5780689203440390462>1️⃣</emoji> <b>このユーザーは所有者ではありません</b>",
-        "no_owners": "<emoji id=5963242192741863664>📝</emoji> <b>所有者はいません</b>",
-        "owner_on": "👑 <b>所有者モードが有効になっています</b>",
-        "owner_off": "👑 <b>所有者モードが無効になっています</b>",
-        "button_on": "🔓 有効にする",
-        "button_off": "🔐 無効にする",
-        "add_owner": "➕ 所有者を追加",
-        "enter_id": "🆔 ユーザーIDを入力してください",
-        "back": "🔙 戻る",
-        "successfull": "✅ 成功",
-        "advanced_security": "🌗 拡張セキュリティ",
-        "del_owner": "➖ 所有者を削除",
-        "close": "🚫 閉じる",
-    }
-
-    strings_kz = {
-        "who": "<emoji id=5780801684338905670>🕶</emoji> <b>Кімге қолданушының құқығын беру керек?</b>",
-        "whod": "<emoji id=5780801684338905670>🕶</emoji> <b>Кімнің қолданушы құқығын алуы керек?</b>",
-        "done": "<emoji id=5780722455077196625>🔗</emoji> {} <b>пайдаланушы қазір қолданушы!</b>",
-        "doned": "<emoji id=5780722455077196625>🔗</emoji> {} <b>пайдаланушы қазір қолданушы емес!</b>",
-        "already": "<emoji id=5780689203440390462>1️⃣</emoji> <b>Бұл пайдаланушы әлі де қолданушы</b>",
-        "owners": "<emoji id=5467406098367521267>👑</emoji> <b>Егерлер:</b>\n{}",
-        "not_owner": "<emoji id=5780689203440390462>1️⃣</emoji> <b>Бұл пайдаланушы қолданушы емес</b>",
-        "no_owners": "<emoji id=5963242192741863664>📝</emoji> <b>Егерлер жоқ</b>",
-        "owner_on": "👑 <b>Егер режимі қосылған</b>",
-        "owner_off": "👑 <b>Егер режимі өшірілген</b>",
-        "button_on": "🔓 Қосу",
-        "button_off": "🔐 Өшіру",
-        "add_owner": "➕ Егерді қосу",
-        "enter_id": "🆔 Пайдаланушының ID-сін енгізіңіз ",
-        "back": "🔙 Артқа",
-        "successfull": "✅ Сәтті",
-        "advanced_security": "🌗 Кеңейтілген қауіпсіздік",
-        "del_owner": "➖ Егерді өшіру",
-        "close": "🚫 Жабу",
-    }
-
-    strings_ua = {
-        "who": "<emoji id=5780801684338905670>🕶</emoji> <b>Кому я повинен дати права власника?</b>",
-        "whod": "<emoji id=5780801684338905670>🕶</emoji> <b>Кому я повинен забрати права власника?</b>",
-        "done": "<emoji id=5780722455077196625>🔗</emoji> {} <b>користувач тепер власник!</b>",
-        "doned": "<emoji id=5780722455077196625>🔗</emoji> {} <b>користувач більше не власник!</b>",
-        "already": "<emoji id=5780689203440390462>1️⃣</emoji> <b>Цей користувач вже власник</b>",
-        "owners": "<emoji id=5467406098367521267>👑</emoji> <b>Власники:</b>\n{}",
-        "not_owner": "<emoji id=5780689203440390462>1️⃣</emoji> <b>Цей користувач не власник</b>",
-        "no_owners": "<emoji id=5963242192741863664>📝</emoji> <b>Власників немає</b>",
-        "owner_on": "👑 <b>Режим власника увімкнено</b>",
-        "owner_off": "👑 <b>Режим власника вимкнено</b>",
-        "button_on": "🔓 Увімкнути",
-        "button_off": "🔐 Вимкнути",
-        "add_owner": "➕ Додати власника",
-        "enter_id": "🆔 Введіть id користувача",
-        "back": "🔙 Назад",
-        "successfull": "✅ Успішно",
-        "advanced_security": "🌗 Розширена безпека",
-        "del_owner": "➖ Видалити власника",
-        "close": "🚫 Закрити",
-    }
-
-    strings_kr = {
-        "who": "<emoji id=5780801684338905670>🕶</emoji> <b>누구에게 소유자 권한을 부여해야합니까?</b>",
-        "whod": "<emoji id=5780801684338905670>🕶</emoji> <b>누구에게 소유자 권한을 제거해야합니까?</b>",
-        "done": "<emoji id=5780722455077196625>🔗</emoji> {} <b>사용자는 이제 소유자입니다!</b>",
-        "doned": "<emoji id=5780722455077196625>🔗</emoji> {} <b>사용자는 더 이상 소유자가 아닙니다!</b>",
-        "already": "<emoji id=5780689203440390462>1️⃣</emoji> <b>이 사용자는 이미 소유자입니다</b>",
-        "owners": "<emoji id=5467406098367521267>👑</emoji> <b>소유자:</b>\n{}",
-        "not_owner": "<emoji id=5780689203440390462>1️⃣</emoji> <b>이 사용자는 소유자가 아닙니다</b>",
-        "no_owners": "<emoji id=5963242192741863664>📝</emoji> <b>소유자가 없습니다</b>",
-        "owner_on": "👑 <b>소유자 모드가 활성화되었습니다</b>",
-        "owner_off": "👑 <b>소유자 모드가 비활성화되었습니다</b>",
-        "button_on": "🔓 활성화",
-        "button_off": "🔐 비활성화",
-        "add_owner": "➕ 소유자 추가",
-        "enter_id": "🆔 사용자 ID를 입력하십시오",
-        "back": "🔙 뒤로",
-        "successfull": "✅ 성공",
-        "advanced_security": "🌗 고급 보안",
-        "del_owner": "➖ 소유자 삭제",
-        "close": "🚫 닫기",
-    }
+    strings = {}
 
     async def close_(self, call):
         await call.delete()
@@ -188,9 +36,11 @@ class ShizuOwner(loader.Module):
             reply_markup=[
                 [
                     {
-                        "text": self.strings("button_off")
-                        if status
-                        else self.strings("button_on"),
+                        "text": (
+                            self.strings("button_off")
+                            if status
+                            else self.strings("button_on")
+                        ),
                         "callback": self.owner_off_on,
                         "kwargs": {"status": False} if status else {"status": True},
                     },
@@ -286,9 +136,11 @@ class ShizuOwner(loader.Module):
             reply_markup=[
                 [
                     {
-                        "text": self.strings("button_off")
-                        if status
-                        else self.strings("button_on"),
+                        "text": (
+                            self.strings("button_off")
+                            if status
+                            else self.strings("button_on")
+                        ),
                         "callback": self.owner_off_on,
                         "kwargs": {"status": False} if status else {"status": True},
                     },

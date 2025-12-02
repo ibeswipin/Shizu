@@ -30,35 +30,7 @@ from ..version import __version__, branch
 class ShizuOnload(loader.Module):
     """This module for shizu onload events"""
 
-    strings = {
-        "start_r": "<emoji id=5017470156276761427>🔄</emoji> <b>The reboot was successful!</b>\n<emoji id=5451646226975955576>⌛️</emoji> The reboot took <code>{}</code> seconds",
-        "start_u": "<emoji id=5258420634785947640>🔄</emoji> <b>The update was successful!</b>\n<emoji id=5451646226975955576>⌛️</emoji> The update took <code>{}</code> seconds",
-    }
-
-    strings_ru = {
-        "start_r": "<emoji id=5017470156276761427>🔄</emoji> <b>Перезагрузка прошла успешно!</b>\n<emoji id=5451646226975955576>⌛️</emoji> Перезагрузка заняла <code>{}</code> секунд",
-        "start_u": "<emoji id=5258420634785947640>🔄</emoji> <b>Обновление прошло успешно!</b>\n<emoji id=5451646226975955576>⌛️</emoji> Обновление заняло <code>{}</code> секунд",
-    }
-
-    strings_uz = {
-        "start_r": "<emoji id=5017470156276761427>🔄</emoji> <b>Qayta yuklash muvaffaqiyatli o'tdi!</b>\n<emoji id=5451646226975955576>⌛️</emoji> Qayta yuklash <code>{}</code> soniyadan iborat",
-        "start_u": "<emoji id=5258420634785947640>🔄</emoji> <b>Yangilash muvaffaqiyatli o'tdi!</b>\n<emoji id=5451646226975955576>⌛️</emoji> Yangilash <code>{}</code> soniyadan iborat",
-    }
-
-    strings_jp = {
-        "start_r": "<emoji id=5017470156276761427>🔄</emoji> <b>再起動に成功しました！</b>\n<emoji id=5451646226975955576>⌛️</emoji> 再起動には <code>{}</code> 秒かかりました",
-        "start_u": "<emoji id=5258420634785947640>🔄</emoji> <b>更新に成功しました！</b>\n<emoji id=5451646226975955576>⌛️</emoji> 更新には <code>{}</code> 秒かかりました",
-    }
-
-    strings_ua = {
-        "start_r": "<emoji id=5017470156276761427>🔄</emoji> <b>Перезавантаження пройшло успішно!</b>\n<emoji id=5451646226975955576>⌛️</emoji> Перезавантаження зайняло <code>{}</code> секунд",
-        "start_u": "<emoji id=5258420634785947640>🔄</emoji> <b>Оновлення пройшло успішно!</b>\n<emoji id=5451646226975955576>⌛️</emoji> Оновлення зайняло <code>{}</code> секунд",
-    }
-
-    strings_kz = {
-        "start_r": "<emoji id=5017470156276761427>🔄</emoji> <b>Қайта іске қосу сәтті аяқталды!</b>\n<emoji id=5451646226975955576>⌛️</emoji> Қайта іске қосу <code>{}</code> секунд ұзақтығынан тұрады",
-        "start_u": "<emoji id=5258420634785947640>🔄</emoji> <b>Жаңарту сәтті аяқталды!</b>\n<emoji id=5451646226975955576>⌛️</emoji> Жаңарту <code>{}</code> секунд ұзақтығынан тұрады",
-    }
+    strings = {}
 
     async def on_load(self, app: Client):
         with contextlib.suppress(Exception):

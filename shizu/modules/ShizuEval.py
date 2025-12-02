@@ -23,6 +23,9 @@ from .. import loader, utils, logger
 @loader.module(name="ShizuEval", author="hikamoru")
 class EvaluatorMod(loader.Module):
     """Execute python code"""
+    
+    
+    strings = {}
 
     @loader.command(aliases=["e"])
     async def eval(self, app: Client, message: types.Message):

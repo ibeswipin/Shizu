@@ -447,17 +447,17 @@ class ModulesManager:
             for module in self.modules:
                 if module.__class__.__name__ == value.__name__:
                     self.unload_module(module, True)
-
+                    
             value.db = self._db
             value.all_modules = self
             value.bot = self.bot_manager
-
             value._bot = self.bot_manager.bot
             value.inline_bot = self.bot_manager.bot
             value.me = self.me
             value.tg_id = self.me.id
             value.app = self._app
             value._app = self._app
+            value.strings = Strings(value, Translator(self._app, self._db), self._db)
             value.userbot = "Shizu"
             value.cmodules = self.cmodules
             value.get_mod = self.get_module
