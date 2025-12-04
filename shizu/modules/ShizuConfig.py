@@ -74,6 +74,30 @@ class ShizuConfig(loader.Module):
             inline_message_id=inline_message_id,
         )
 
+    def _get_validator_info(self, module, option):
+        if (
+            hasattr(module.config, "_config_values")
+            and option in module.config._config_values
+        ):
+            config_value = module.config._config_values[option]
+            if config_value and config_value.validator:
+                validator = config_value.validator
+                info = []
+                validator_type = type(validator).__name__
+                
+                if hasattr(validator, "minimum") and validator.minimum is not None:
+                    info.append(f"Min: {validator.minimum}")
+                if hasattr(validator, "maximum") and validator.maximum is not None:
+                    info.append(f"Max: {validator.maximum}")
+                if hasattr(validator, "pattern"):
+                    info.append(f"Pattern: {validator.pattern.pattern}")
+                
+                if info:
+                    return config_value, " | ".join(info)
+                else:
+                    return config_value, f"Validator: {validator_type}"
+        return None, None
+
     async def inline__set_config(
         self,
         call: CallbackQuery,
@@ -82,12 +106,26 @@ class ShizuConfig(loader.Module):
         option: str,
         inline_message_id: str,
     ) -> None:
+        validation_error = None
         with contextlib.suppress(ValueError, SyntaxError):
             query = ast.literal_eval(query)
 
         for module in self.all_modules.modules:
             if module.name == mod:
-                if query:
+                if query is not None and query != "":
+                    config_value, validator_info = self._get_validator_info(
+                        module, option
+                    )
+                    if config_value and config_value.validator:
+                        try:
+                            query = config_value.validator.validate(query)
+                        except ValueError as e:
+                            validation_error = str(e)
+                            await call.answer(
+                                f"Validation error: {validation_error}", 
+                            )
+                            return
+
                     self.db.setdefault(module.name, {}).setdefault("__config__", {})[
                         option
                     ] = query
@@ -98,8 +136,8 @@ class ShizuConfig(loader.Module):
                             "__config__", {}
                         )[option]
 
-            self.reconfmod(module, self.db)
-            self.db.save()
+                self.reconfmod(module, self.db)
+                self.db.save()
 
         await call.edit(
             self.strings("option_saved").format(mod, option, query),
@@ -129,6 +167,16 @@ class ShizuConfig(loader.Module):
 
         for module in self.all_modules.modules:
             if module.name == mod:
+                config_value, _ = self._get_validator_info(module, option)
+                if config_value and config_value.validator:
+                    try:
+                        query = config_value.validator.validate(query)
+                    except ValueError as e:
+                        await call.answer(
+                            f"Validation error: {str(e)}", show_alert=True
+                        )
+                        return
+
                 try:
                     self.db.setdefault(module.name, {}).setdefault("__config__", {})[
                         option
@@ -433,20 +481,97 @@ class ShizuConfig(loader.Module):
 
                 await self.inline__choose(call, mod, option)
 
+    async def inline__increment_value(
+        self,
+        call: CallbackQuery,
+        mod: str,
+        option: str,
+        delta: int,
+        inline_message_id: str,
+    ) -> None:
+        for module in self.all_modules.modules:
+            if module.name == mod:
+                current_value = module.config[option]
+                if isinstance(current_value, (int, float)):
+                    new_value = current_value + delta
+                    config_value, _ = self._get_validator_info(module, option)
+                    if config_value and config_value.validator:
+                        try:
+                            new_value = config_value.validator.validate(new_value)
+                        except ValueError as e:
+                            await call.answer(
+                                f"Validation error: {str(e)}", show_alert=True
+                            )
+                            return
+
+                    self.db.setdefault(module.name, {}).setdefault("__config__", {})[
+                        option
+                    ] = new_value
+                    module.config[option] = new_value
+                    self.reconfmod(module, self.db)
+                    self.db.save()
+
+                    await self.inline__configure_option(call, mod, option)
+
     async def inline__configure_option(
         self, call: CallbackQuery, mod: str, config_opt: str
     ) -> None:
         for module in self.all_modules.modules:
             if module.name == mod:
-                await call.edit(
-                    self.strings("configuring_option").format(
-                        utils.escape_html(config_opt),
-                        utils.escape_html(mod),
-                        utils.escape_html(module.config.getdoc(config_opt)),
-                        utils.escape_html(module.config.getdef(config_opt)),
-                        utils.escape_html(module.config[config_opt]),
-                    ),
-                    reply_markup=[
+                config_value, validator_info = self._get_validator_info(
+                    module, config_opt
+                )
+                current_value = module.config[config_opt]
+                
+                is_numeric = isinstance(current_value, (int, float))
+                if not is_numeric and current_value is not None:
+                    try:
+                        float(current_value)
+                        is_numeric = True
+                    except (ValueError, TypeError):
+                        pass
+                
+                has_validator = config_value is not None and config_value.validator is not None
+                
+                is_float_or_int_validator = False
+                if has_validator:
+                    validator = config_value.validator
+                    validator_type = type(validator).__name__
+                    is_float_or_int_validator = validator_type in ("Float", "Integer")
+
+                doc = module.config.getdoc(config_opt)
+                if validator_info:
+                    doc = f"{doc}\n\n{validator_info}"
+
+                markup = []
+                if (is_numeric or is_float_or_int_validator) and has_validator:
+                    markup.append(
+                        [
+                            {
+                                "text": "➖ 1",
+                                "callback": self.inline__increment_value,
+                                "args": (mod, config_opt, -1, call.inline_message_id),
+                            },
+                            {
+                                "text": "➕ 1",
+                                "callback": self.inline__increment_value,
+                                "args": (mod, config_opt, 1, call.inline_message_id),
+                            },
+                            {
+                                "text": "➖ 10",
+                                "callback": self.inline__increment_value,
+                                "args": (mod, config_opt, -10, call.inline_message_id),
+                            },
+                            {
+                                "text": "➕ 10",
+                                "callback": self.inline__increment_value,
+                                "args": (mod, config_opt, 10, call.inline_message_id),
+                            },
+                        ]
+                    )
+
+                markup.extend(
+                    [
                         [
                             {
                                 "text": self.strings("ent_value"),
@@ -478,7 +603,18 @@ class ShizuConfig(loader.Module):
                                 "callback": self.inline__close,
                             },
                         ],
-                    ],
+                    ]
+                )
+
+                await call.edit(
+                    self.strings("configuring_option").format(
+                        utils.escape_html(config_opt),
+                        utils.escape_html(mod),
+                        utils.escape_html(doc),
+                        utils.escape_html(module.config.getdef(config_opt)),
+                        utils.escape_html(module.config[config_opt]),
+                    ),
+                    reply_markup=markup,
                 )
 
     async def inline__configure(self, call: CallbackQuery, mod: str) -> None:

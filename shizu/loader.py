@@ -124,7 +124,6 @@ class Module:
                 self._module = module
                 self._key = key
                 self._db_key = f"{module.name}.{key}"
-                # Load initial value
                 db = getattr(module, "db", None)
                 if db is not None:
                     value = db.get(module.name, key, default)
@@ -339,6 +338,99 @@ def on_bot(custom_filters):
     return lambda func: setattr(func, "_filters", custom_filters) or func
 
 
+class ConfigValue:
+    """Config value descriptor for ModuleConfig compatibility"""
+
+    def __init__(self, key, default, doc=None, validator=None):
+        self.key = key
+        self.default = default
+        self.doc = doc
+        self.validator = validator
+
+    def validate(self, value):
+        """Validate value using validator if present"""
+        if self.validator:
+            return self.validator.validate(value)
+        return value
+
+
+class Validators:
+    """Validators for ConfigValue"""
+
+    class Integer:
+        def __init__(self, minimum=None, maximum=None):
+            self.minimum = minimum
+            self.maximum = maximum
+
+        def validate(self, value):
+            try:
+                value = int(value)
+                if self.minimum is not None and value < self.minimum:
+                    raise ValueError(f"Value must be >= {self.minimum}")
+                if self.maximum is not None and value > self.maximum:
+                    raise ValueError(f"Value must be <= {self.maximum}")
+                return value
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid integer value: {e}")
+
+    class RegExp:
+        def __init__(self, pattern):
+            self.pattern = re.compile(pattern)
+
+        def validate(self, value):
+            if not self.pattern.match(str(value)):
+                raise ValueError(
+                    f"Value does not match pattern: {self.pattern.pattern}"
+                )
+            return value
+
+    class Series:
+        def __init__(self, *args):
+            self.validators = args
+
+        def validate(self, value):
+            for validator in self.validators:
+                value = validator.validate(value)
+            return value
+
+    class Boolean:
+        def validate(self, value):
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() in ("true", "1", "yes", "on")
+            return bool(value)
+
+    class NoneType:
+        def validate(self, value):
+            if value is None:
+                return None
+            raise ValueError("Value must be None")
+
+    class String:
+        def validate(self, value):
+            return str(value)
+
+    class Float:
+        def __init__(self, minimum=None, maximum=None):
+            self.minimum = minimum
+            self.maximum = maximum
+
+        def validate(self, value):
+            try:
+                value = float(value)
+                if self.minimum is not None and value < self.minimum:
+                    raise ValueError(f"Value must be >= {self.minimum}")
+                if self.maximum is not None and value > self.maximum:
+                    raise ValueError(f"Value must be <= {self.maximum}")
+                return value
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid float value: {e}")
+
+
+validators = Validators()
+
+
 class ModuleConfig(dict):
     """Like a dict but contains doc for each key"""
 
@@ -347,22 +439,35 @@ class ModuleConfig(dict):
         values = []
         defaults = []
         docstrings = []
-        for i, entry in enumerate(entries):
-            if i % 3 == 0:
-                keys.append(entry)
-            elif i % 3 == 1:
-                values.append(entry)
-                defaults.append(entry)
-            else:
-                docstrings.append(entry)
+        self._config_values = {}
 
-        super().__init__(zip(keys, values))
-        self._docstrings = dict(zip(keys, docstrings))
-        self._defaults = dict(zip(keys, defaults))
+        if entries and isinstance(entries[0], ConfigValue):
+            for entry in entries:
+                if isinstance(entry, ConfigValue):
+                    keys.append(entry.key)
+                    defaults.append(entry.default)
+                    values.append(entry.default)
+                    docstrings.append(entry.doc)
+                    self._config_values[entry.key] = entry
+        else:
+            for i, entry in enumerate(entries):
+                if i % 3 == 0:
+                    keys.append(entry)
+                elif i % 3 == 1:
+                    values.append(entry)
+                    defaults.append(entry)
+                else:
+                    docstrings.append(entry)
+
+        super().__init__(zip(keys, values) if keys else {})
+        self._docstrings = dict(zip(keys, docstrings)) if keys else {}
+        self._defaults = dict(zip(keys, defaults)) if keys else {}
 
     def getdoc(self, key, message=None):
         """Get the documentation by key"""
-        ret = self._docstrings[key]
+        ret = self._docstrings.get(key)
+        if ret is None:
+            return "No description"
         if callable(ret):
             try:
                 ret = ret(message)
@@ -374,7 +479,7 @@ class ModuleConfig(dict):
 
     def getdef(self, key):
         """Get the default value by key"""
-        return self._defaults[key]
+        return self._defaults.get(key)
 
 
 class ModulesManager:
@@ -401,8 +506,6 @@ class ModulesManager:
 
         self.dp: dispatcher.DispatcherManager = None
         self.bot_manager: bot.BotManager = None
-
-        self.raw_modules: Dict[str, bytes] = {}
 
         self.root_module: Module = None
         self.cmodules = [
@@ -486,8 +589,6 @@ class ModulesManager:
 
                     with open(temp_file, "w", encoding="utf-8") as f:
                         f.write(transformed_code)
-                        
-                    self.raw_modules[module_name] = source_code.encode("utf-8")
 
                     instance = self.register_instance(
                         module_name, temp_file, is_telethon=True
@@ -747,6 +848,7 @@ class ModulesManager:
             )
 
             if instance and is_telethon:
+                # Register Telethon handlers for this module
                 if (
                     utils.is_tl_enabled()
                     and hasattr(self._app, "tl")
@@ -791,7 +893,7 @@ class ModulesManager:
                     check=True,
                 )
             except subprocess.CalledProcessError as error:
-                logging.exception(f"Error while installing packages: {error}")
+                logging.exception(f"Ошибка при установке пакетов: {error}")
 
             return await self.load_module(module_source, origin, True)
         except Exception as error:
@@ -834,10 +936,35 @@ class ModulesManager:
             modcfg = db.get(module.name, "__config__", {})
             for conf in module.config.keys():
                 if conf in modcfg.keys():
-                    module.config[conf] = modcfg[conf]
+                    value = modcfg[conf]
+                    if (
+                        hasattr(module.config, "_config_values")
+                        and conf in module.config._config_values
+                    ):
+                        config_value = module.config._config_values[conf]
+                        if config_value.validator:
+                            try:
+                                value = config_value.validator.validate(value)
+                            except ValueError as e:
+                                logging.warning(
+                                    f"Invalid config value for {module.name}.{conf}: {e}, using default"
+                                )
+                                value = config_value.default
+                    module.config[conf] = value
                 else:
                     try:
-                        module.config[conf] = os.environ[f"{module.name}.{conf}"]
+                        value = os.environ[f"{module.name}.{conf}"]
+                        if (
+                            hasattr(module.config, "_config_values")
+                            and conf in module.config._config_values
+                        ):
+                            config_value = module.config._config_values[conf]
+                            if config_value.validator:
+                                try:
+                                    value = config_value.validator.validate(value)
+                                except ValueError:
+                                    value = config_value.default
+                        module.config[conf] = value
                     except KeyError:
                         module.config[conf] = module.config.getdef(conf)
 
@@ -865,28 +992,23 @@ class ModulesManager:
                 try:
                     sig = inspect.signature(module.client_ready)
                     params = list(sig.parameters.keys())
-                    param_count = len(params) - 1
-
-                    if getattr(module, "m__telethon", False):
-                        if param_count == 0:
-                            await module.client_ready()
-                        elif (
-                            param_count == 1
-                            and utils.is_tl_enabled()
-                            and hasattr(self._app, "tl")
-                            and self._app.tl != "Not enabled"
-                        ):
-                            await module.client_ready(self._app.tl)
-                        else:
-                            await module.client_ready()
-                    else:
-                        if param_count == 1:
-                            await module.client_ready(self._app)
-                        else:
-                            await module.client_ready()
+                    has_client_param = len(params) > 1
                 except (ValueError, TypeError):
-                    if getattr(module, "m__telethon", False):
+                    has_client_param = False
+
+                if (
+                    getattr(module, "m__telethon", False)
+                    and utils.is_tl_enabled()
+                    and hasattr(self._app, "tl")
+                    and self._app.tl != "Not enabled"
+                ):
+                    if has_client_param:
                         await module.client_ready(self._app.tl)
+                    else:
+                        await module.client_ready(self._app.tl)
+                else:
+                    if has_client_param:
+                        await module.client_ready(self._app)
                     else:
                         await module.client_ready(self._app)
         except Exception as error:
@@ -969,3 +1091,5 @@ class ModulesManager:
 
 current_module = sys.modules[__name__]
 setattr(current_module, "tds", tds)
+setattr(current_module, "ConfigValue", ConfigValue)
+setattr(current_module, "validators", validators)

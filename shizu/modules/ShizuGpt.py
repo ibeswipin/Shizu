@@ -30,9 +30,24 @@ class ShizuGpt(loader.Module):
 
     def __init__(self):
         self.config = loader.ModuleConfig(
-            "GPT_KEY", None, lambda m: self.strings("cfg_doc"),
-            "GPT_MODEL", "gpt-4o-mini", lambda m: self.strings("cfg_model_doc"),
-            "GPT_TEMPERATURE", 0.7, lambda m: self.strings("cfg_temp_doc"),
+            loader.ConfigValue(
+                "GPT_KEY",
+                None,
+                lambda m: self.strings("cfg_doc"),
+                validator=None,
+            ),
+            loader.ConfigValue(
+                "GPT_MODEL",
+                "gpt-4o-mini",
+                lambda m: self.strings("cfg_model_doc"),
+                validator=loader.validators.String(),
+            ),
+            loader.ConfigValue(
+                "GPT_TEMPERATURE",
+                0.7,
+                lambda m: self.strings("cfg_temp_doc"),
+                validator=loader.validators.Float(minimum=0.0, maximum=2.0),
+            ),
         )
         self._conversation_history = {} 
 
@@ -91,8 +106,8 @@ class ShizuGpt(loader.Module):
         self, prompt: str, token: str, chat_id: int = None
     ) -> str:
         """Enhanced chat completion with conversation history and better prompts"""
-        model = self.config.get("GPT_MODEL", "gpt-4o-mini")
-        temperature = float(self.config.get("GPT_TEMPERATURE", 0.7))
+        model = self.config["GPT_MODEL"]
+        temperature = float(self.config["GPT_TEMPERATURE"])
         
         messages = [{"role": "system", "content": self._get_system_prompt()}]
         
