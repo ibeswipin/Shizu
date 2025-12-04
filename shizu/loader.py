@@ -103,6 +103,83 @@ class Module:
     async def on_load(self, app: Client) -> Any:
         """Called when loading the module"""
 
+    async def client_ready(self, client) -> Any:
+        """Called when client is ready (Telethon compatibility)
+        For Telethon modules, client is Telethon client
+        For Pyrogram modules, client is Pyrogram client
+        """
+
+    def pointer(self, key: str, default: Any = None):
+        """Get a pointer to a database value (Telethon compatibility)
+        Returns a list-like object that can be modified and automatically saves to DB
+        """
+        if not hasattr(self, "db"):
+            return default if default is not None else []
+
+        class PointerList(list):
+            """List-like object that automatically saves to database"""
+
+            def __init__(self, module, key, default):
+                super().__init__()
+                self._module = module
+                self._key = key
+                self._db_key = f"{module.name}.{key}"
+                # Load initial value
+                db = getattr(module, "db", None)
+                if db is not None:
+                    value = db.get(module.name, key, default)
+                    if isinstance(value, list):
+                        self.extend(value)
+                    elif value is not None:
+                        self.append(value)
+
+            def _save(self):
+                """Save current state to database"""
+                db = getattr(self._module, "db", None)
+                if db is not None:
+                    db.set(self._module.name, self._key, list(self))
+
+            def append(self, item):
+                super().append(item)
+                self._save()
+
+            def extend(self, iterable):
+                super().extend(iterable)
+                self._save()
+
+            def clear(self):
+                super().clear()
+                self._save()
+
+            def remove(self, item):
+                super().remove(item)
+                self._save()
+
+            def pop(self, index=-1):
+                result = super().pop(index)
+                self._save()
+                return result
+
+            def insert(self, index, item):
+                super().insert(index, item)
+                self._save()
+
+        return PointerList(self, key, default)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a value from database (Telethon compatibility)"""
+        db = getattr(self, "db", None)
+        if db is None:
+            return default
+        return db.get(self.name, key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        """Set a value in database (Telethon compatibility)"""
+        db = getattr(self, "db", None)
+        if db is None:
+            return
+        db.set(self.name, key, value)
+
 
 class StringLoader(SourceLoader):
     """Loads the module from the line"""
@@ -232,7 +309,9 @@ def iter_attrs(obj: typing.Any, /) -> typing.List[typing.Tuple[str, typing.Any]]
     return ((attr, getattr(obj, attr)) for attr in dir(obj))
 
 
-def command(aliases: list = None, hidden: bool = False):
+def command(aliases: list = None, hidden: bool = False, **kwargs: Any) -> FunctionType:
+    """Command decorator with support for documentation parameters"""
+
     def decorator(func):
         if hidden:
             func.is_hidden = True
@@ -244,6 +323,10 @@ def command(aliases: list = None, hidden: bool = False):
                 list_[alias] = func.__name__
 
             database.db.set(__name__, "aliases", list_)
+
+        for key, value in kwargs.items():
+            if key.endswith("_doc"):
+                setattr(func, key, value)
 
         func.is_command = True
         return func
@@ -387,6 +470,12 @@ class ModulesManager:
                 is_telethon = self._is_telethon_module(source_code)
 
                 if is_telethon:
+                    if not utils.is_tl_enabled():
+                        logging.warning(
+                            f"Module {module_name} is a Telethon module, but Telethon mode is not enabled. Skipping..."
+                        )
+                        continue
+
                     transformed_code = inter.transform(source_code)
 
                     temp_dir = os.path.join(os.path.dirname(file_path), "__temp__")
@@ -396,10 +485,17 @@ class ModulesManager:
                     with open(temp_file, "w", encoding="utf-8") as f:
                         f.write(transformed_code)
 
-                    instance = self.register_instance(module_name, temp_file)
+                    instance = self.register_instance(
+                        module_name, temp_file, is_telethon=True
+                    )
 
-                    if instance and is_telethon:
-                        instance.m__telethon = True
+                    if instance:
+                        if (
+                            utils.is_tl_enabled()
+                            and hasattr(self._app, "tl")
+                            and self._app.tl != "Not enabled"
+                        ):
+                            self._register_telethon_handlers(instance)
 
                     try:
                         os.remove(temp_file)
@@ -427,7 +523,11 @@ class ModulesManager:
         return True
 
     def register_instance(
-        self, module_name: str, file_path: str = "", spec: ModuleSpec = None
+        self,
+        module_name: str,
+        file_path: str = "",
+        spec: ModuleSpec = None,
+        is_telethon: bool = False,
     ) -> Module:
         """Registers the module"""
         spec = spec or spec_from_file_location(module_name, file_path)
@@ -447,7 +547,7 @@ class ModulesManager:
             for module in self.modules:
                 if module.__class__.__name__ == value.__name__:
                     self.unload_module(module, True)
-                    
+
             value.db = self._db
             value.all_modules = self
             value.bot = self.bot_manager
@@ -464,11 +564,32 @@ class ModulesManager:
             value.prefix = self._db.get("shizu.loader", "prefixes", ["."])
             value.lookup = self._lookup
 
+            if (
+                utils.is_tl_enabled()
+                and hasattr(self._app, "tl")
+                and self._app.tl != "Not enabled"
+            ):
+                value.client = self._app.tl
+                value._client = self._app.tl
+                value.tl = self._app.tl
+
             instance = value()
+
+            if is_telethon:
+                instance.m__telethon = True
 
             instance.reconfmod = self.config_reconfigure
             instance.shizu = True
             instance.hidden = self.hidden
+
+            if (
+                utils.is_tl_enabled()
+                and hasattr(self._app, "tl")
+                and self._app.tl != "Not enabled"
+            ):
+                instance.client = self._app.tl
+                instance._client = self._app.tl
+                instance.tl = self._app.tl
 
             instance.command_handlers = get_command_handlers(instance)
             instance.watcher_handlers = get_watcher_handlers(instance)
@@ -477,13 +598,34 @@ class ModulesManager:
             instance.callback_handlers = get_callback_handlers(instance)
             instance.inline_handlers = get_inline_handlers(instance)
 
-            self.modules.append(instance)
-            self.command_handlers.update(instance.command_handlers)
-            self.watcher_handlers.extend(instance.watcher_handlers)
+            if not hasattr(instance, "m__telethon") or not instance.m__telethon:
+                for handler in instance.command_handlers.values():
+                    try:
+                        sig = inspect.signature(handler)
+                        params = list(sig.parameters.keys())
+                        if (
+                            len(params) == 2
+                            and "message" in params
+                            and "app" not in params
+                        ):
+                            instance.m__telethon = True
+                            break
+                    except (ValueError, TypeError):
+                        continue
 
-            self.message_handlers.update(instance.message_handlers)
-            self.callback_handlers.update(instance.callback_handlers)
-            self.inline_handlers.update(instance.inline_handlers)
+            self.modules.append(instance)
+
+            is_telethon_module = getattr(instance, "m__telethon", False)
+            if not is_telethon_module:
+                self.command_handlers.update(instance.command_handlers)
+                self.watcher_handlers.extend(instance.watcher_handlers)
+                self.message_handlers.update(instance.message_handlers)
+                self.callback_handlers.update(instance.callback_handlers)
+                self.inline_handlers.update(instance.inline_handlers)
+            else:
+                for cmd_name in list(instance.command_handlers.keys()):
+                    if cmd_name in self.command_handlers:
+                        del self.command_handlers[cmd_name]
 
         if not instance:
             logging.warning(f"Module {module_name} not found")
@@ -493,6 +635,52 @@ class ModulesManager:
                 self.hidden.append(name)
 
         return instance
+
+    def _register_telethon_handlers(self, module: Module):
+        """Register Telethon event handlers for Telethon modules"""
+        if (
+            not utils.is_tl_enabled()
+            or not hasattr(self._app, "tl")
+            or self._app.tl == "Not enabled"
+        ):
+            return
+
+        try:
+            from telethon import events
+        except ImportError:
+            logging.error("Telethon is not installed")
+            return
+
+        client = self._app.tl
+        prefix = self._db.get("shizu.loader", "prefixes", ["."])[0]
+
+        for cmd_name, handler in module.command_handlers.items():
+
+            def make_command_handler(cmd, handler_func):
+                pattern = re.compile(rf"^{re.escape(prefix)}{re.escape(cmd)}(?:\s|$)")
+
+                @client.on(events.NewMessage(outgoing=True, pattern=pattern))
+                async def telethon_command_handler(event, h=handler_func):
+                    try:
+                        await h(event.message)
+                    except Exception as error:
+                        logging.exception(
+                            f"Error in Telethon command handler {cmd}: {error}"
+                        )
+
+            make_command_handler(cmd_name, handler)
+
+        for watcher in module.watcher_handlers:
+
+            def make_watcher_handler(watcher_func):
+                @client.on(events.NewMessage())
+                async def telethon_watcher_handler(event, w=watcher_func):
+                    try:
+                        await w(event.message)
+                    except Exception as error:
+                        logging.exception(f"Error in Telethon watcher handler: {error}")
+
+            make_watcher_handler(watcher)
 
     def _lookup(self, modname: str):
         return next(
@@ -513,6 +701,11 @@ class ModulesManager:
         is_telethon = self._is_telethon_module(original_source)
 
         if is_telethon:
+            if not utils.is_tl_enabled():
+                logging.error(
+                    f"Module {origin} is a Telethon module, but Telethon mode is not enabled. Skipping..."
+                )
+                return "OTL"
             module_source = inter.transform(original_source)
         else:
             module_source = original_source
@@ -545,10 +738,17 @@ class ModulesManager:
                 module_name, StringLoader(module_source, origin), origin=origin
             )
 
-            instance = self.register_instance(module_name, spec=spec)
+            instance = self.register_instance(
+                module_name, spec=spec, is_telethon=is_telethon
+            )
 
             if instance and is_telethon:
-                instance.m__telethon = True
+                if (
+                    utils.is_tl_enabled()
+                    and hasattr(self._app, "tl")
+                    and self._app.tl != "Not enabled"
+                ):
+                    self._register_telethon_handlers(instance)
 
         except ImportError as error:
             logging.error(error)
@@ -587,7 +787,7 @@ class ModulesManager:
                     check=True,
                 )
             except subprocess.CalledProcessError as error:
-                logging.exception(f"Ошибка при установке пакетов: {error}")
+                logging.exception(f"Error while installing packages: {error}")
 
             return await self.load_module(module_source, origin, True)
         except Exception as error:
@@ -654,7 +854,39 @@ class ModulesManager:
         try:
             await module.on_load(self._app)
         except Exception as error:
-            return logging.exception(error)
+            logging.exception(error)
+
+        try:
+            if hasattr(module, "client_ready") and callable(module.client_ready):
+                try:
+                    sig = inspect.signature(module.client_ready)
+                    params = list(sig.parameters.keys())
+                    param_count = len(params) - 1
+
+                    if getattr(module, "m__telethon", False):
+                        if param_count == 0:
+                            await module.client_ready()
+                        elif (
+                            param_count == 1
+                            and utils.is_tl_enabled()
+                            and hasattr(self._app, "tl")
+                            and self._app.tl != "Not enabled"
+                        ):
+                            await module.client_ready(self._app.tl)
+                        else:
+                            await module.client_ready()
+                    else:
+                        if param_count == 1:
+                            await module.client_ready(self._app)
+                        else:
+                            await module.client_ready()
+                except (ValueError, TypeError):
+                    if getattr(module, "m__telethon", False):
+                        await module.client_ready(self._app.tl)
+                    else:
+                        await module.client_ready(self._app)
+        except Exception as error:
+            logging.exception(f"Error in client_ready for {module.name}: {error}")
 
         return True
 
@@ -707,34 +939,26 @@ class ModulesManager:
         return module.name
 
     def get_module(
-        self, name: str, by_commands_too: bool = False, advanced=False
+        self, name: str, by_commands_too: bool = False, _=None
     ) -> Union[Module, None]:
         name = name.lower()
-        lowercase_names = {module.name.lower() for module in self.modules}
 
-        if name in lowercase_names:
-            return next(
-                module for module in self.modules if module.name.lower() == name
-            )
+        for module in self.modules:
+            if module.name.lower() == name:
+                return module
 
-        if advanced:
-            if description := next(
-                (module for module in self.modules if name in module.__doc__.lower()),
-                None,
-            ):
-                return description
-            elif name_mathing := next(
-                (module for module in self.modules if name in module.name.lower()), None
-            ):
-                return name_mathing
+        for module in self.modules:
+            if module.__doc__ and name in module.__doc__.lower():
+                return module
+
+        for module in self.modules:
+            if name in module.name.lower():
+                return module
 
         if by_commands_too:
-            if matching_commands := [
-                cmd_name
-                for cmd_name in self.command_handlers
-                if name in cmd_name.lower()
-            ]:
-                return self.command_handlers[matching_commands[0]].__self__
+            for cmd_name, handler in self.command_handlers.items():
+                if name in cmd_name.lower():
+                    return handler.__self__
 
         return None
 

@@ -61,6 +61,7 @@
   "shizu.modules.ShizuLanguages.must_be_json": "<emoji id=5257965810634202885>📁</emoji> <b>Языковой пакет должен быть json</b>",
   "shizu.modules.ShizuLanguages.downloading": "<emoji id=5361615491884398003>🔽</emoji> <b>Загрузка...</b>",
   "shizu.modules.ShizuLanguages.specify_lang": "<emoji id=5807626765874499116>🚫</emoji> <b>Укажите код языка</b>",
+  "shizu.modules.ShizuLanguages.loaded": "<emoji id=5267468588985363056>✔️</emoji> Модуль <b>{}</b> загружен\n<i>ℹ️ {}</i><emoji id=5787544344906959608>ℹ️</emoji>  {} \n\n",
   "shizu.modules.ShizuLoader.invalid_repo": "❌ Недопустимый репозиторий.\n",
   "shizu.modules.ShizuLoader.no_all": "❌ Не найдено all.txt в репозитории <a href='{}'>repository</a>.\n",
   "shizu.modules.ShizuLoader.mods_in_repo": "{} <b>Список доступных модулей в <a href='{}'>repository</a></b>:\n\n",

@@ -501,79 +501,164 @@ async def answer(
 
     """
     messages = []
-    app = message._client
-    reply = message.reply_to_message
+    is_telethon = hasattr(message, "reply_to_msg_id") or (
+        hasattr(message, "reply_to") and not hasattr(message, "reply_to_message")
+    )
+
+    if is_telethon:
+        from telethon.tl.types import Message as TelethonMessage
+
+        if isinstance(message, TelethonMessage):
+            app = message._client
+            reply = getattr(message, "reply_to", None)
+            reply_id = getattr(message, "reply_to_msg_id", None)
+        else:
+            app = getattr(message, "_client", None) or getattr(message, "client", None)
+            reply = None
+            reply_id = getattr(message, "reply_to_msg_id", None)
+    else:
+        app = message._client
+        reply = getattr(message, "reply_to_message", None)
+        reply_id = reply.id if reply else None
 
     if doc:
-        app.me = await app.get_me()
-        messages.append(await message.reply_document(response, **kwargs))
-        return messages
+        if is_telethon:
+            messages.append(await message.reply(file=response, **kwargs))
+        else:
+            app.me = await app.get_me()
+            messages.append(await message.reply_document(response, **kwargs))
+        return messages[0] if messages else None
 
     if photo_:
-        app.me = await app.get_me()
-        await message.delete()
-        messages.append(
-            await app._inline.form(
-                message=message,
-                photo=response,
-                reply_markup=reply_markup,
-                **kwargs,
+        if is_telethon:
+            if "parse_mode" not in kwargs:
+                kwargs["parse_mode"] = "html"
+            await message.delete()
+            messages.append(
+                await app.send_file(
+                    message.peer_id, response, reply_to=reply_id, **kwargs
+                )
             )
-            if reply_markup
-            else await message.reply_photo(
-                response, reply_to_message_id=reply.id if reply else None, **kwargs
-            )
-        )
-        return messages
-
-    if isinstance(response, str):
-        info = await app.parser.parse(response, kwargs.get("parse_mode", None))
-        text, entities = str(info["message"]), info.get("entities", [])
-        if len(text) >= 4096:
-            try:
-                strings = [
-                    txt
-                    async for txt in smart_split(app, escape_html(text), entities, 4096)
-                ]
-                messages.append(await app._inline.list(message, strings, **kwargs))
-            except Exception:
-                file = io.BytesIO(text.encode())
-                file.name = "output.txt"
-                messages.append(await message.reply_document(file, **kwargs))
         else:
+            app.me = await app.get_me()
+            await message.delete()
             messages.append(
                 await app._inline.form(
                     message=message,
-                    text=response,
+                    photo=response,
                     reply_markup=reply_markup,
-                    msg_id=(
-                        reply.id
-                        if reply
-                        else message.topic.id if message.topic else None
-                    ),
                     **kwargs,
                 )
                 if reply_markup
-                else (
-                    await message.edit(
-                        text=response,
-                        **kwargs,
+                else await message.reply_photo(
+                    response, reply_to_message_id=reply_id, **kwargs
+                )
+            )
+        return messages[0] if messages else None
+
+    if isinstance(response, str):
+        if is_telethon:
+            if "parse_mode" not in kwargs:
+                kwargs["parse_mode"] = "html"
+
+            if len(response) >= 4096:
+                file = io.BytesIO(response.encode())
+                file.name = "output.txt"
+                messages.append(await message.reply(file=file, **kwargs))
+            else:
+                is_outgoing = getattr(message, "out", False) or (
+                    hasattr(message, "from_id")
+                    and message.from_id
+                    and hasattr(message.from_id, "user_id")
+                    and message.from_id.user_id == (await app.get_me()).id
+                )
+
+                if is_outgoing:
+                    try:
+                        await message.edit(response, **kwargs)
+                        messages.append(message)
+                    except Exception:
+                        messages.append(
+                            await app.send_message(
+                                message.peer_id, response, reply_to=reply_id, **kwargs
+                            )
+                        )
+                else:
+                    messages.append(
+                        await app.send_message(
+                            message.peer_id, response, reply_to=reply_id, **kwargs
+                        )
                     )
-                    if message.outgoing or message.from_user.is_self
-                    else await app.send_message(
-                        message.chat.id,
-                        response,
-                        reply_to_message_id=(
-                            message.topic.id
-                            if message.topic
-                            else None or reply.id if reply else None
+        else:
+            info = await app.parser.parse(response, kwargs.get("parse_mode", None))
+            text, entities = str(info["message"]), info.get("entities", [])
+            if len(text) >= 4096:
+                try:
+                    strings = [
+                        txt
+                        async for txt in smart_split(
+                            app, escape_html(text), entities, 4096
+                        )
+                    ]
+                    messages.append(await app._inline.list(message, strings, **kwargs))
+                except Exception:
+                    file = io.BytesIO(text.encode())
+                    file.name = "output.txt"
+                    messages.append(await message.reply_document(file, **kwargs))
+            else:
+                messages.append(
+                    await app._inline.form(
+                        message=message,
+                        text=response,
+                        reply_markup=reply_markup,
+                        msg_id=(
+                            reply_id
+                            if reply_id
+                            else (
+                                message.topic.id
+                                if hasattr(message, "topic") and message.topic
+                                else None
+                            )
                         ),
                         **kwargs,
                     )
+                    if reply_markup
+                    else (
+                        await message.edit(
+                            text=response,
+                            **kwargs,
+                        )
+                        if message.outgoing
+                        or (
+                            hasattr(message, "from_user")
+                            and message.from_user
+                            and message.from_user.is_self
+                        )
+                        else await app.send_message(
+                            message.chat.id,
+                            response,
+                            reply_to_message_id=(
+                                message.topic.id
+                                if hasattr(message, "topic") and message.topic
+                                else reply_id if reply_id else None
+                            ),
+                            **kwargs,
+                        )
+                    )
                 )
-            )
 
-    return messages[0]
+    return messages[0] if messages else None
+
+
+def array_sum(array: list) -> Any:
+    """Performs basic sum operation on array (flattens nested lists)"""
+    result = []
+    for item in array:
+        if isinstance(item, (list, tuple, set)):
+            result.extend(array_sum(item))
+        else:
+            result.append(item)
+    return result
 
 
 def rand(size: int, /) -> str:

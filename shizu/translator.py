@@ -103,7 +103,21 @@ class Strings:
         lang = self._db.get("shizu.me", "lang", "en")
         lang_attr = getattr(self._mod, f"strings_{lang}", self._base_strings)
 
-        return lang_attr.get(key, self._base_strings.get(key, "Unknown string"))
+        if isinstance(lang_attr, dict):
+            result = lang_attr.get(key)
+            if result:
+                return result
+
+        if isinstance(self._base_strings, dict):
+            return self._base_strings.get(key, "Unknown string")
+
+        if hasattr(self._base_strings, "__getitem__"):
+            try:
+                return self._base_strings[key]
+            except (KeyError, TypeError):
+                pass
+
+        return "Unknown string"
 
     def __call__(self, key: str) -> str:
         return self.__getitem__(key)

@@ -90,6 +90,14 @@ class DispatcherManager:
         if not func:
             return
 
+        try:
+            sig = inspect.signature(func)
+            params = list(sig.parameters.keys())
+            if len(params) == 2 and "message" in params and "app" not in params:
+                return
+        except (ValueError, TypeError):
+            pass
+
         if not await check_filters(func, app, message):
             return
 

@@ -64,6 +64,7 @@
   "shizu.modules.ShizuLanguages.must_be_json": "<emoji id=5257965810634202885>📁</emoji> <b>Language pack must be json</b>",
   "shizu.modules.ShizuLanguages.downloading": "<emoji id=5361615491884398003>🔽</emoji> <b>Downloading...</b>",
   "shizu.modules.ShizuLanguages.specify_lang": "<emoji id=5807626765874499116>🚫</emoji> <b>Specify language code</b>",
+  "shizu.modules.ShizuLoader.loaded": "<emoji id=5267468588985363056>✔️</emoji> Module <b>{}</b> loaded\n<emoji id=5787544344906959608>ℹ️</emoji>  {} \n\n",
   "shizu.modules.ShizuLoader.invalid_repo": "❌ Invalid repository link.\n",
   "shizu.modules.ShizuLoader.no_all": "❌ The all.txt file was not found in the <a href='{}'>repository</a>.\n",
   "shizu.modules.ShizuLoader.mods_in_repo": "{} <b>List of available modules in <a href='{}'>repository</a></b>:\n\n",
