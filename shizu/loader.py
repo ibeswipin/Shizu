@@ -402,6 +402,8 @@ class ModulesManager:
         self.dp: dispatcher.DispatcherManager = None
         self.bot_manager: bot.BotManager = None
 
+        self.raw_modules: Dict[str, bytes] = {}
+
         self.root_module: Module = None
         self.cmodules = [
             "ShizuBackuper",
@@ -484,6 +486,8 @@ class ModulesManager:
 
                     with open(temp_file, "w", encoding="utf-8") as f:
                         f.write(transformed_code)
+                        
+                    self.raw_modules[module_name] = source_code.encode("utf-8")
 
                     instance = self.register_instance(
                         module_name, temp_file, is_telethon=True

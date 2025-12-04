@@ -59,7 +59,7 @@ class ModulesLinkMod(loader.Module):
                 self.strings("what_"),
             )
 
-        if "-c" in args:  # it will search from core files
+        if "-c" in args:
             args = args.replace("-c", "").strip()
 
             try:
@@ -91,10 +91,19 @@ class ModulesLinkMod(loader.Module):
         get_module = inspect.getmodule(module)
         origin = get_module.__spec__.origin
 
+        mod = inspect.getmodule(module)
         try:
-            source = get_module.__loader__.data
-        except AttributeError:
-            source = inspect.getsource(get_module).encode("utf-8")
+            source = self.all_modules.raw_modules.get(mod.__name__)
+
+            if not source and hasattr(mod.__loader__, "data"):
+                source = mod.__loader__.data
+
+            if not source:
+                source = inspect.getsource(mod).encode("utf-8")
+            elif isinstance(source, str):
+                source = source.encode("utf-8")
+        except Exception:
+            return await message.answer("❌ Source unavailable for this module!")
 
         source_code = io.BytesIO(source)
         source_code.name = f"{module.name}.py"
