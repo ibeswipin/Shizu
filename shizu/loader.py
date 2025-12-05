@@ -389,8 +389,37 @@ class Validators:
             self.validators = args
 
         def validate(self, value):
-            for validator in self.validators:
-                value = validator.validate(value)
+            if not isinstance(value, (list, tuple)):
+                if isinstance(value, str):
+                    try:
+                        import json
+                        value = json.loads(value)
+
+                        if not isinstance(value, list):
+                            value = [value]
+                    except (json.JSONDecodeError, ValueError):
+
+                        value = [v.strip() for v in value.split(",") if v.strip()]
+                else:
+                    value = [str(value)] if value is not None else []
+            
+            if isinstance(value, tuple):
+                value = list(value)
+            
+      
+            value = [str(v) for v in value]
+            
+            if self.validators:
+                validated_list = []
+                for v in value:
+                    try:
+                        for validator in self.validators:
+                            v = validator.validate(v)
+                        validated_list.append(str(v))
+                    except (ValueError, TypeError):
+                        validated_list.append(str(v))
+                value = validated_list
+            
             return value
 
     class Boolean:
@@ -717,6 +746,21 @@ class ModulesManager:
                             break
                     except (ValueError, TypeError):
                         continue
+                
+                if not getattr(instance, "m__telethon", False):
+                    for watcher in instance.watcher_handlers:
+                        try:
+                            sig = inspect.signature(watcher)
+                            params = list(sig.parameters.keys())
+                            if (
+                                len(params) == 2
+                                and "message" in params
+                                and "app" not in params
+                            ):
+                                instance.m__telethon = True
+                                break
+                        except (ValueError, TypeError):
+                            continue
 
             self.modules.append(instance)
 
@@ -782,6 +826,23 @@ class ModulesManager:
                 async def telethon_watcher_handler(event, w=watcher_func):
                     try:
                         await w(event.message)
+                    except TypeError as error:
+                     
+                        error_msg = str(error)
+                        if "not iterable" in error_msg or "argument of type" in error_msg:
+                          
+                            try:
+                                module_instance = getattr(w, "__self__", None)
+                                if module_instance and hasattr(module_instance, "config"):
+                                  
+                                    self.config_reconfigure(module_instance, self._db)
+                                    self._db.save() 
+                                    await w(event.message)
+                                    logging.info(f"Fixed config error for {module_instance.name} and retried watcher")
+                                    return
+                            except Exception as retry_error:
+                                logging.exception(f"Failed to fix config error: {retry_error}")
+                        logging.exception(f"Error in Telethon watcher handler: {error}")
                     except Exception as error:
                         logging.exception(f"Error in Telethon watcher handler: {error}")
 
@@ -848,7 +909,7 @@ class ModulesManager:
             )
 
             if instance and is_telethon:
-                # Register Telethon handlers for this module
+              
                 if (
                     utils.is_tl_enabled()
                     and hasattr(self._app, "tl")
@@ -945,11 +1006,16 @@ class ModulesManager:
                         if config_value.validator:
                             try:
                                 value = config_value.validator.validate(value)
-                            except ValueError as e:
+                                modcfg[conf] = value
+                                db.set(module.name, "__config__", modcfg)
+                            except (ValueError, TypeError) as e:
                                 logging.warning(
                                     f"Invalid config value for {module.name}.{conf}: {e}, using default"
                                 )
                                 value = config_value.default
+                              
+                                modcfg[conf] = value
+                                db.set(module.name, "__config__", modcfg)
                     module.config[conf] = value
                 else:
                     try:
@@ -962,8 +1028,13 @@ class ModulesManager:
                             if config_value.validator:
                                 try:
                                     value = config_value.validator.validate(value)
+
+                                    modcfg[conf] = value
+                                    db.set(module.name, "__config__", modcfg)
                                 except ValueError:
                                     value = config_value.default
+                                    modcfg[conf] = value
+                                    db.set(module.name, "__config__", modcfg)
                         module.config[conf] = value
                     except KeyError:
                         module.config[conf] = module.config.getdef(conf)

@@ -93,7 +93,7 @@ class DispatcherManager:
         try:
             sig = inspect.signature(func)
             params = list(sig.parameters.keys())
-            if len(params) == 2 and "message" in params and "app" not in params:
+            if len(params) == 2 and 'message' in params and 'app' not in params:
                 return
         except (ValueError, TypeError):
             pass
@@ -132,9 +132,30 @@ class DispatcherManager:
         if isinstance(raw.types, raw.types.UpdatesTooLong):
             return
 
-        for watcher in self.modules.watcher_handlers:
+        for watcher_item in self.modules.watcher_handlers:
+            if isinstance(watcher_item, tuple):
+                watcher, is_telethon = watcher_item
+                if is_telethon:
+                    continue  
+            else:
+                watcher = watcher_item
+            
+            try:
+                sig = inspect.signature(watcher)
+                params = list(sig.parameters.keys())
+                if len(params) == 2 and 'message' in params and 'app' not in params:
+                    continue
+            except (ValueError, TypeError):
+                pass
+            
             try:
                 await watcher(app, message)
+            except TypeError as error:
+                error_msg = str(error)
+                if "takes" in error_msg and "positional arguments" in error_msg:
+                    logging.debug(f"Skipping Telethon watcher: {error_msg}")
+                    continue
+                logging.exception(error)
             except Exception as error:
                 logging.exception(error)
 
