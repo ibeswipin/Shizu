@@ -1058,6 +1058,10 @@ class ModulesManager:
                     and hasattr(self._app, "tl")
                     and self._app.tl != "Not enabled"
                 ):
+                    if not hasattr(module, "_client") or module._client is None:
+                        module._client = self._app.tl
+                        module.client = self._app.tl
+                        module.tl = self._app.tl
                     if has_client_param:
                         await module.client_ready(self._app.tl)
                     else:
