@@ -58,6 +58,20 @@ class UpdateNotifier(loader.Module):
             logging.error("Error fetching commit: %s", e)
             return None
 
+    async def _get_commits_since(self, owner: str, repo: str, branch_name: str, since_sha: str) -> list:
+        """Get all commits since a specific SHA"""
+        try:
+            url = f"https://api.github.com/repos/{owner}/{repo}/compare/{since_sha}...{branch_name}"
+            response = await utils.run_sync(requests.get, url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                commits = data.get("commits", [])
+                return list(reversed(commits))
+            return []
+        except Exception as e:
+            logging.error("Error fetching commits: %s", e)
+            return []
+
     @loader.loop(interval=60, autostart=True)
     async def check_updates_loop(self):
         """Periodically check for new commits"""
@@ -77,37 +91,32 @@ class UpdateNotifier(loader.Module):
 
         if commit_sha and commit_sha != last_sha:
             if last_sha:
-                await self._send_update_notification(self.bot, commit)
+                commits = await self._get_commits_since(owner, repo, branch_name, last_sha)
+                if commits:
+                    await self._send_update_notification(self.bot, commits)
             self.db.set("shizu.update_notifier", "last_commit_sha", commit_sha)
             self.db.save()
 
-    async def _send_update_notification(self, bot: "bot.BotManager", commit: dict):
+    async def _send_update_notification(self, bot: "bot.BotManager", commits: list):
         """Send notification about new update"""
         try:
-            commit_message = commit.get("commit", {}).get("message", "No message")
-            commit_author = (
-                commit.get("commit", {}).get("author", {}).get("name", "Unknown")
-            )
-            commit_date = commit.get("commit", {}).get("author", {}).get("date", "")
-            commit_url = commit.get("html_url", "")
-            commit_sha_short = commit.get("sha", "")[:7]
-
-            if commit_date:
-                try:
-                    dt = datetime.fromisoformat(commit_date.replace("Z", "+00:00"))
-                    commit_date_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-                except (ValueError, AttributeError):
-                    commit_date_str = commit_date
-            else:
-                commit_date_str = "Unknown"
-
-            text = self.strings("update_available").format(
-                commit_sha_short=commit_sha_short,
-                commit_author=utils.escape_html(commit_author),
-                commit_date=commit_date_str,
-                commit_message=utils.escape_html(commit_message.split(chr(10))[0]),
-                commit_url=commit_url,
-            )
+            owner = self.config["repo_owner"]
+            repo = self.config["repo_name"]
+            
+            commits_text = []
+            for commit in commits:
+                commit_sha = commit.get("sha", "")
+                commit_sha_short = commit_sha[:7]
+                commit_message = commit.get("commit", {}).get("message", "No message")
+                commit_link = f"https://github.com/{owner}/{repo}/commit/{commit_sha}"
+                
+                message_line = utils.escape_html(commit_message.split(chr(10))[0])
+                commits_text.append(
+                    f"▫️ <a href='{commit_link}'>{commit_sha_short}</a> - {message_line}"
+                )
+            
+            commits_list = "\n\n".join(commits_text)
+            text = self.strings("update_available").format(commits_list=commits_list)
 
             markup = self.bot._generate_markup(
                 [
@@ -124,7 +133,7 @@ class UpdateNotifier(loader.Module):
                 ]
             )
 
-            await self.bot.bot.send_message(self.me.id, text, reply_markup=markup)
+            await self.bot.bot.send_message(self.me.id, text, reply_markup=markup, disable_web_page_preview=True)
 
         except Exception as e:
             logging.exception("Error sending update notification: %s", e)
@@ -186,10 +195,27 @@ class UpdateNotifier(loader.Module):
         if commit_sha == last_sha:
             await utils.answer(message, self.strings("latest_version"))
         else:
-            commit_message = commit.get("commit", {}).get("message", "No message")
-            commit_sha_short = commit.get("sha", "")[:7]
-            text = self.strings("update_available_manual").format(
-                commit_sha_short=commit_sha_short,
-                commit_message=utils.escape_html(commit_message.split(chr(10))[0]),
-            )
-            await utils.answer(message, text)
+            if last_sha:
+                commits = await self._get_commits_since(owner, repo, branch_name, last_sha)
+            else:
+                commits = [commit]
+            
+            if commits:
+                owner = self.config["repo_owner"]
+                repo = self.config["repo_name"]
+                
+                commits_text = []
+                for commit_item in commits:
+                    commit_sha_item = commit_item.get("sha", "")
+                    commit_sha_short = commit_sha_item[:7]
+                    commit_message = commit_item.get("commit", {}).get("message", "No message")
+                    commit_link = f"https://github.com/{owner}/{repo}/commit/{commit_sha_item}"
+                    
+                    message_line = utils.escape_html(commit_message.split(chr(10))[0])
+                    commits_text.append(
+                        f"▫️ <a href='{commit_link}'>{commit_sha_short}</a> - {message_line}"
+                    )
+                
+                commits_list = "\n\n".join(commits_text)
+                text = self.strings("update_available_manual").format(commits_list=commits_list)
+                await utils.answer(message, text)

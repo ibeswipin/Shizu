@@ -154,7 +154,7 @@
   "shizu.modules.ShizuUpdateNotifier.cfg_doc_check_interval": "Check interval in seconds",
   "shizu.modules.ShizuUpdateNotifier.cfg_doc_repo_owner": "Repository owner",
   "shizu.modules.ShizuUpdateNotifier.cfg_doc_repo_name": "Repository name",
-  "shizu.modules.ShizuUpdateNotifier.update_available": "🆕 <b>New update available!</b>\n\n📝 <b>Commit:</b> <code>{commit_sha_short}</code>\n👤 <b>Author:</b> {commit_author}\n📅 <b>Date:</b> {commit_date}\n💬 <b>Message:</b> {commit_message}\n\n🔗 <a href='{commit_url}'>View on GitHub</a>",
+  "shizu.modules.ShizuUpdateNotifier.update_available": "🆕 <b>New update available!</b>\n\n{commits_list}",
   "shizu.modules.ShizuUpdateNotifier.button_update": "🔄 Update",
   "shizu.modules.ShizuUpdateNotifier.button_close": "❌ Close",
   "shizu.modules.ShizuUpdateNotifier.updating": "🔄 Updating...",
@@ -164,5 +164,5 @@
   "shizu.modules.ShizuUpdateNotifier.checking": "🔍 Checking for updates...",
   "shizu.modules.ShizuUpdateNotifier.fetch_error": "❌ Failed to fetch commit information.",
   "shizu.modules.ShizuUpdateNotifier.latest_version": "✅ You are using the latest version.",
-  "shizu.modules.ShizuUpdateNotifier.update_available_manual": "🆕 <b>New update available!</b>\n\n📝 <b>Commit:</b> <code>{commit_sha_short}</code>\n💬 <b>Message:</b> {commit_message}\n\nUse <code>.update</code> to update."
+  "shizu.modules.ShizuUpdateNotifier.update_available_manual": "🆕 <b>New update available!</b>\n\n{commits_list}\n\nUse <code>.update</code> to update."
 }
