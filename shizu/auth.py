@@ -20,7 +20,6 @@ import logging
 import random
 import base64
 import sys
-import os
 import argparse
 
 from datetime import datetime
@@ -109,7 +108,11 @@ class Auth:
                 "shizu-tl",
                 api_id=cfg.get("pyrogram", "api_id"),
                 api_hash=cfg.get("pyrogram", "api_hash"),
-                device_model="Shizu-TL",
+                device_model="MacBook Pro",
+                app_version="11.12.0",
+                system_version="14.0",
+                lang_code="en",
+                system_lang_code="en-US"
             )
 
     def _check_api_tokens(self) -> bool:

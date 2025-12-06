@@ -24,6 +24,7 @@ from pyrogram import Client, types
 
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
+from telethon.errors.rpcerrorlist import UpdateAppToLoginError
 
 
 @loader.module(name="ShizuSettings", author="shizu")
@@ -137,14 +138,32 @@ class ShizuSettings(loader.Module):
             api_id = self.app.api_id
             api_hash = self.app.api_hash
 
-            client = TelegramClient("shizu-tl", api_id, api_hash)
+            client = TelegramClient(
+                "shizu-tl",
+                api_id,
+                api_hash,
+                device_model="MacBook Pro",
+                app_version="11.12.0",
+                system_version="14.0",
+                lang_code="en",
+                system_lang_code="en-US"
+            )
             await client.connect()
 
             try:
                 login = await client.send_code_request(phone=phone)
                 await client.disconnect()
             except FloodWaitError as e:
+                await client.disconnect()
                 return await call.edit(f"Too many attempts, please wait  {e.seconds}")
+            except UpdateAppToLoginError:
+                await client.disconnect()
+                return await call.edit(
+                    "❌ <b>UpdateAppToLoginError</b>\n\n"
+                    "Telegram requires app update. Please:\n"
+                    "1. Update Telethon library: <code>pip install --upgrade telethon</code>\n"
+                    "2. Or try using official Telegram app to login first"
+                )
 
             async for message in self.app.get_chat_history(
                 777000, limit=1, offset_id=-1
@@ -155,7 +174,14 @@ class ShizuSettings(loader.Module):
 
             global _client
             _client = TelegramClient(
-                "shizu-tl", api_id, api_hash, device_model="Shizu-Tl"
+                "shizu-tl",
+                api_id,
+                api_hash,
+                device_model="MacBook Pro",
+                app_version="11.12.0",
+                system_version="14.0",
+                lang_code="en",
+                system_lang_code="en-US"
             )
 
             await _client.connect()

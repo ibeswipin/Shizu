@@ -15,4 +15,4 @@ pykeyboard
 meval
 httpx
 grapheme
-Hikka-TL
+telethon

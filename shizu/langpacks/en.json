@@ -149,5 +149,20 @@
   "shizu.modules.birthdaywish.name": "BirthdayWish",
   "shizu.modules.birthdaywish.provide_name": "<emoji document_id=5456652110143693064>🤷‍♂️</emoji> <b>Please provide a name</b>",
   "shizu.modules.birthdaywish.web_url": "<emoji document_id=5334643333488713810>🌐</emoji> <b>URL: {} | Expires in <code>{}</code> seconds</b>",
-  "shizu.modules.birthdaywish.expired": "<emoji document_id=5981043230160981261>⏱</emoji> <b>Url Expired</b>"
+  "shizu.modules.birthdaywish.expired": "<emoji document_id=5981043230160981261>⏱</emoji> <b>Url Expired</b>",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_enable": "Enable update notifications",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_check_interval": "Check interval in seconds",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_repo_owner": "Repository owner",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_repo_name": "Repository name",
+  "shizu.modules.ShizuUpdateNotifier.update_available": "🆕 <b>New update available!</b>\n\n📝 <b>Commit:</b> <code>{commit_sha_short}</code>\n👤 <b>Author:</b> {commit_author}\n📅 <b>Date:</b> {commit_date}\n💬 <b>Message:</b> {commit_message}\n\n🔗 <a href='{commit_url}'>View on GitHub</a>",
+  "shizu.modules.ShizuUpdateNotifier.button_update": "🔄 Update",
+  "shizu.modules.ShizuUpdateNotifier.button_close": "❌ Close",
+  "shizu.modules.ShizuUpdateNotifier.updating": "🔄 Updating...",
+  "shizu.modules.ShizuUpdateNotifier.already_updated": "✅ Already updated to the latest version.",
+  "shizu.modules.ShizuUpdateNotifier.update_complete": "✅ Update completed. Restarting...",
+  "shizu.modules.ShizuUpdateNotifier.update_error": "❌ Error: {error}",
+  "shizu.modules.ShizuUpdateNotifier.checking": "🔍 Checking for updates...",
+  "shizu.modules.ShizuUpdateNotifier.fetch_error": "❌ Failed to fetch commit information.",
+  "shizu.modules.ShizuUpdateNotifier.latest_version": "✅ You are using the latest version.",
+  "shizu.modules.ShizuUpdateNotifier.update_available_manual": "🆕 <b>New update available!</b>\n\n📝 <b>Commit:</b> <code>{commit_sha_short}</code>\n💬 <b>Message:</b> {commit_message}\n\nUse <code>.update</code> to update."
 }

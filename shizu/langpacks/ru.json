@@ -145,5 +145,20 @@
   "shizu.modules.ShizuTester.suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>Недопустимое время приостановки</b>",
   "shizu.modules.birthdaywish.provide_name": "<emoji document_id=5456652110143693064>🤷‍♂️</emoji> <b>Пожалуйста, укажите имя</b>",
   "shizu.modules.birthdaywish.web_url": "<emoji document_id=5334643333488713810>🌐</emoji> <b>URL: {} | Истекает через <code>{}</code> секунд</b>",
-  "shizu.modules.birthdaywish.expired": "<emoji document_id=5981043230160981261>⏱</emoji> <b>Url истек</b>"
+  "shizu.modules.birthdaywish.expired": "<emoji document_id=5981043230160981261>⏱</emoji> <b>Url истек</b>",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_enable": "Включить уведомления об обновлениях",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_check_interval": "Интервал проверки в секундах",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_repo_owner": "Владелец репозитория",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_repo_name": "Название репозитория",
+  "shizu.modules.ShizuUpdateNotifier.update_available": "🆕 <b>Доступно новое обновление!</b>\n\n📝 <b>Коммит:</b> <code>{commit_sha_short}</code>\n👤 <b>Автор:</b> {commit_author}\n📅 <b>Дата:</b> {commit_date}\n💬 <b>Сообщение:</b> {commit_message}\n\n🔗 <a href='{commit_url}'>Посмотреть на GitHub</a>",
+  "shizu.modules.ShizuUpdateNotifier.button_update": "🔄 Обновить",
+  "shizu.modules.ShizuUpdateNotifier.button_close": "❌ Закрыть",
+  "shizu.modules.ShizuUpdateNotifier.updating": "🔄 Обновление...",
+  "shizu.modules.ShizuUpdateNotifier.already_updated": "✅ Уже обновлено до последней версии.",
+  "shizu.modules.ShizuUpdateNotifier.update_complete": "✅ Обновление завершено. Перезапуск...",
+  "shizu.modules.ShizuUpdateNotifier.update_error": "❌ Ошибка: {error}",
+  "shizu.modules.ShizuUpdateNotifier.checking": "🔍 Проверяю обновления...",
+  "shizu.modules.ShizuUpdateNotifier.fetch_error": "❌ Не удалось получить информацию о коммитах.",
+  "shizu.modules.ShizuUpdateNotifier.latest_version": "✅ Вы используете последнюю версию.",
+  "shizu.modules.ShizuUpdateNotifier.update_available_manual": "🆕 <b>Доступно новое обновление!</b>\n\n📝 <b>Коммит:</b> <code>{commit_sha_short}</code>\n💬 <b>Сообщение:</b> {commit_message}\n\nИспользуйте <code>.update</code> для обновления."
 }

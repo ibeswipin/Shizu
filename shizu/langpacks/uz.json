@@ -139,5 +139,20 @@
   "shizu.modules.ShizuTester.no_logs_": "❕ <b>Shu xil xatolik mavjud emas</b> ({})",
   "shizu.modules.ShizuTester.invalid_verb": "Bunday xil xatolik yoq",
   "shizu.modules.ShizuTester.suspend": "<emoji id=5452023368054216810>🥶</emoji> <b>Shizu {} soniya uchun to'xtatildi</b>",
-  "shizu.modules.ShizuTester.suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>To'xtatish uchun noto'g'ri vaqt</b>"
+  "shizu.modules.ShizuTester.suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>To'xtatish uchun noto'g'ri vaqt</b>",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_enable": "Yangilanish xabarnomalarini yoqish",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_check_interval": "Tekshirish intervali soniyalarda",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_repo_owner": "Repository egasi",
+  "shizu.modules.ShizuUpdateNotifier.cfg_doc_repo_name": "Repository nomi",
+  "shizu.modules.ShizuUpdateNotifier.update_available": "🆕 <b>Yangi yangilanish mavjud!</b>\n\n📝 <b>Commit:</b> <code>{commit_sha_short}</code>\n👤 <b>Muallif:</b> {commit_author}\n📅 <b>Sana:</b> {commit_date}\n💬 <b>Xabar:</b> {commit_message}\n\n🔗 <a href='{commit_url}'>GitHub'da ko'rish</a>",
+  "shizu.modules.ShizuUpdateNotifier.button_update": "🔄 Yangilash",
+  "shizu.modules.ShizuUpdateNotifier.button_close": "❌ Yopish",
+  "shizu.modules.ShizuUpdateNotifier.updating": "🔄 Yangilanmoqda...",
+  "shizu.modules.ShizuUpdateNotifier.already_updated": "✅ Eng so'nggi versiyaga yangilandi.",
+  "shizu.modules.ShizuUpdateNotifier.update_complete": "✅ Yangilanish yakunlandi. Qayta ishga tushirilmoqda...",
+  "shizu.modules.ShizuUpdateNotifier.update_error": "❌ Xatolik: {error}",
+  "shizu.modules.ShizuUpdateNotifier.checking": "🔍 Yangilanishlar tekshirilmoqda...",
+  "shizu.modules.ShizuUpdateNotifier.fetch_error": "❌ Commit ma'lumotlarini olish muvaffaqiyatsiz bo'ldi.",
+  "shizu.modules.ShizuUpdateNotifier.latest_version": "✅ Siz eng so'nggi versiyadan foydalanmoqdasiz.",
+  "shizu.modules.ShizuUpdateNotifier.update_available_manual": "🆕 <b>Yangi yangilanish mavjud!</b>\n\n📝 <b>Commit:</b> <code>{commit_sha_short}</code>\n💬 <b>Xabar:</b> {commit_message}\n\nYangilash uchun <code>.update</code> dan foydalaning."
 }
