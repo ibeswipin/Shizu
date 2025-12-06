@@ -82,8 +82,6 @@ class InfiniteLoop:
         self._wait_before = wait_before
         self.module_instance = None
         self._task = None
-        if autostart:
-            self.start()
 
     def _stop(self, *args, **kwargs):
         self._wait_for_stop.set()

@@ -77,7 +77,7 @@ class UpdateNotifier(loader.Module):
         """Periodically check for new commits"""
         if not self.config["enabled"]:
             return
-
+        
         owner = self.config["repo_owner"]
         repo = self.config["repo_name"]
         branch_name = str(branch) if branch else "beta"
