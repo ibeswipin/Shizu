@@ -85,7 +85,7 @@ class Module:
     async def on_load(self, app: Client) -> Any:
         """Called when loading the module"""
 
-    async def client_ready(self, client) -> Any:
+    async def client_ready(self, client=None) -> Any:
         """Called when client is ready (Telethon compatibility)
         For Telethon modules, client is Telethon client
         For Pyrogram modules, client is Pyrogram client
@@ -1061,12 +1061,12 @@ class ModulesManager:
                     if has_client_param:
                         await module.client_ready(self._app.tl)
                     else:
-                        await module.client_ready(self._app.tl)
+                        await module.client_ready()
                 else:
                     if has_client_param:
                         await module.client_ready(self._app)
                     else:
-                        await module.client_ready(self._app)
+                        await module.client_ready()
         except Exception as error:
             logging.exception(f"Error in client_ready for {module.name}: {error}")
 
