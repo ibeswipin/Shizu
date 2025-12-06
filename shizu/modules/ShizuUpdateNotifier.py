@@ -14,9 +14,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+import os
 from datetime import datetime
 
-import requests
+import git
 from aiogram.types import CallbackQuery
 from pyrogram import Client, types
 
@@ -25,10 +26,11 @@ from ..version import branch
 
 
 @loader.module("ShizuUpdateNotifier", "hikamoru")
-class UpdateNotifier(loader.Module):
+class ShizuUpdateNotifier(loader.Module):
     """Notifies about new commits in the repository"""
 
     strings = {}
+    m__telethon = False
 
     def __init__(self):
         self.config = loader.ModuleConfig(
@@ -46,28 +48,83 @@ class UpdateNotifier(loader.Module):
             lambda m: self.strings("cfg_doc_repo_name"),
         )
 
-    async def _get_latest_commit(self, owner: str, repo: str, branch_name: str) -> dict:
-        """Get the latest commit from GitHub API"""
+    async def _get_latest_commit(self, owner: str, repo_name: str, branch_name: str) -> dict:
+        """Get the latest commit from git repository"""
         try:
-            url = f"https://api.github.com/repos/{owner}/{repo}/commits/{branch_name}"
-            response = await utils.run_sync(requests.get, url, timeout=10)
-            if response.status_code == 200:
-                return response.json()
-            return None
+            git_repo = git.Repo()
+            
+            for remote in git_repo.remotes:
+                remote.fetch()
+            
+            try:
+                latest_commit = next(
+                    git_repo.iter_commits(f"origin/{branch_name}", max_count=1)
+                )
+                
+                return {
+                    "sha": latest_commit.hexsha,
+                    "commit": {
+                        "message": latest_commit.message.strip()
+                    }
+                }
+            except (git.exc.GitCommandError, StopIteration):
+                return None
         except Exception as e:
             logging.error("Error fetching commit: %s", e)
             return None
 
-    async def _get_commits_since(self, owner: str, repo: str, branch_name: str, since_sha: str) -> list:
+    async def _get_commits_since(
+        self, owner: str, repo_name: str, branch_name: str, since_sha: str
+    ) -> list:
         """Get all commits since a specific SHA"""
         try:
-            url = f"https://api.github.com/repos/{owner}/{repo}/compare/{since_sha}...{branch_name}"
-            response = await utils.run_sync(requests.get, url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                commits = data.get("commits", [])
-                return list(reversed(commits))
-            return []
+            git_repo = git.Repo()
+            
+            for remote in git_repo.remotes:
+                remote.fetch()
+            
+            try:
+                commits = list(
+                    git_repo.iter_commits(f"{since_sha}..origin/{branch_name}")
+                )
+                
+                result = []
+                for commit in reversed(commits):
+                    result.append({
+                        "sha": commit.hexsha,
+                        "commit": {
+                            "message": commit.message.strip()
+                        }
+                    })
+                
+                return result
+            except (git.exc.GitCommandError, ValueError):
+                logging.warning(
+                    f"Git command failed for {since_sha[:7]}...{branch_name}, trying alternative method"
+                )
+                
+                try:
+                    all_commits = list(
+                        git_repo.iter_commits(f"origin/{branch_name}", max_count=30)
+                    )
+                    
+                    new_commits = []
+                    for commit in all_commits:
+                        if commit.hexsha == since_sha:
+                            break
+                        new_commits.append({
+                            "sha": commit.hexsha,
+                            "commit": {
+                                "message": commit.message.strip()
+                            }
+                        })
+                    
+                    if new_commits:
+                        return list(reversed(new_commits))
+                except Exception as e:
+                    logging.error(f"Alternative method failed: {e}")
+                
+                return []
         except Exception as e:
             logging.error("Error fetching commits: %s", e)
             return []
@@ -77,44 +134,69 @@ class UpdateNotifier(loader.Module):
         """Periodically check for new commits"""
         if not self.config["enabled"]:
             return
-        
+
         owner = self.config["repo_owner"]
-        repo = self.config["repo_name"]
+        repo_name = self.config["repo_name"]
         branch_name = str(branch) if branch else "beta"
 
-        commit = await self._get_latest_commit(owner, repo, branch_name)
+        commit = await self._get_latest_commit(owner, repo_name, branch_name)
         if not commit:
             return
 
         commit_sha = commit.get("sha", "")
+        if not commit_sha:
+            return
+
         last_sha = self.db.get("shizu.update_notifier", "last_commit_sha", "")
 
-        if commit_sha and commit_sha != last_sha:
-            if last_sha:
-                commits = await self._get_commits_since(owner, repo, branch_name, last_sha)
-                if commits:
-                    await self._send_update_notification(self.bot, commits)
+        if not last_sha:
+            logging.info(
+                f"First run, saving commit {commit_sha[:7]} without notification"
+            )
             self.db.set("shizu.update_notifier", "last_commit_sha", commit_sha)
-            self.db.save()
+            return
+
+        if commit_sha == last_sha:
+            return
+
+        logging.info(
+            f"New commit detected: {commit_sha[:7]} (last was: {last_sha[:7]})"
+        )
+        commits = await self._get_commits_since(owner, repo_name, branch_name, last_sha)
+        if not commits:
+            logging.warning(
+                f"Git returned no commits, using latest commit instead"
+            )
+            commits = [commit]
+
+        logging.info(f"Found {len(commits)} new commit(s), sending notification")
+        try:
+            await self._send_update_notification(self.bot, commits)
+            self.db.set("shizu.update_notifier", "last_commit_sha", commit_sha)
+            logging.info(
+                f"Notification sent and last_commit_sha updated to {commit_sha[:7]}"
+            )
+        except Exception as e:
+            logging.exception("Error sending update notification: %s", e)
 
     async def _send_update_notification(self, bot: "bot.BotManager", commits: list):
         """Send notification about new update"""
         try:
             owner = self.config["repo_owner"]
-            repo = self.config["repo_name"]
-            
+            repo_name = self.config["repo_name"]
+
             commits_text = []
             for commit in commits:
                 commit_sha = commit.get("sha", "")
                 commit_sha_short = commit_sha[:7]
                 commit_message = commit.get("commit", {}).get("message", "No message")
-                commit_link = f"https://github.com/{owner}/{repo}/commit/{commit_sha}"
-                
+                commit_link = f"https://github.com/{owner}/{repo_name}/commit/{commit_sha}"
+
                 message_line = utils.escape_html(commit_message.split(chr(10))[0])
                 commits_text.append(
                     f"▫️ <a href='{commit_link}'>{commit_sha_short}</a> - {message_line}"
                 )
-            
+
             commits_list = "\n\n".join(commits_text)
             text = self.strings("update_available").format(commits_list=commits_list)
 
@@ -133,7 +215,16 @@ class UpdateNotifier(loader.Module):
                 ]
             )
 
-            await self.bot.bot.send_message(self.me.id, text, reply_markup=markup, disable_web_page_preview=True)
+            await self.bot.bot.send_animation(
+                self.me.id,
+                "https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/update.mp4",
+                caption=text,
+                reply_markup=markup,
+            )
+            # else:
+            #     await self.bot.bot.send_message(
+            #         self.me.id, text, reply_markup=markup, disable_web_page_preview=True
+                # )
 
         except Exception as e:
             logging.exception("Error sending update notification: %s", e)
@@ -182,10 +273,10 @@ class UpdateNotifier(loader.Module):
         await utils.answer(message, self.strings("checking"))
 
         owner = self.config["repo_owner"]
-        repo = self.config["repo_name"]
+        repo_name = self.config["repo_name"]
         branch_name = str(branch) if branch else "beta"
 
-        commit = await self._get_latest_commit(owner, repo, branch_name)
+        commit = await self._get_latest_commit(owner, repo_name, branch_name)
         if not commit:
             return await utils.answer(message, self.strings("fetch_error"))
 
@@ -196,26 +287,34 @@ class UpdateNotifier(loader.Module):
             await utils.answer(message, self.strings("latest_version"))
         else:
             if last_sha:
-                commits = await self._get_commits_since(owner, repo, branch_name, last_sha)
+                commits = await self._get_commits_since(
+                    owner, repo_name, branch_name, last_sha
+                )
             else:
                 commits = [commit]
-            
+
             if commits:
                 owner = self.config["repo_owner"]
-                repo = self.config["repo_name"]
-                
+                repo_name = self.config["repo_name"]
+
                 commits_text = []
                 for commit_item in commits:
                     commit_sha_item = commit_item.get("sha", "")
                     commit_sha_short = commit_sha_item[:7]
-                    commit_message = commit_item.get("commit", {}).get("message", "No message")
-                    commit_link = f"https://github.com/{owner}/{repo}/commit/{commit_sha_item}"
-                    
+                    commit_message = commit_item.get("commit", {}).get(
+                        "message", "No message"
+                    )
+                    commit_link = (
+                        f"https://github.com/{owner}/{repo_name}/commit/{commit_sha_item}"
+                    )
+
                     message_line = utils.escape_html(commit_message.split(chr(10))[0])
                     commits_text.append(
                         f"▫️ <a href='{commit_link}'>{commit_sha_short}</a> - {message_line}"
                     )
-                
+
                 commits_list = "\n\n".join(commits_text)
-                text = self.strings("update_available_manual").format(commits_list=commits_list)
-                await utils.answer(message, text)
+                text = self.strings("update_available_manual").format(
+                    commits_list=commits_list
+                )
+                await utils.answer(message, text, disable_web_page_preview=True)

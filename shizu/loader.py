@@ -715,7 +715,9 @@ class ModulesManager:
             instance.callback_handlers = get_callback_handlers(instance)
             instance.inline_handlers = get_inline_handlers(instance)
 
-            if not hasattr(instance, "m__telethon") or not instance.m__telethon:
+            if instance.name in self.cmodules:
+                instance.m__telethon = False
+            elif not hasattr(instance, "m__telethon") or not instance.m__telethon:
                 for handler in instance.command_handlers.values():
                     try:
                         sig = inspect.signature(handler)
