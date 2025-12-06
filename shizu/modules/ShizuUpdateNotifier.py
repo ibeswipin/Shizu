@@ -239,7 +239,7 @@ class ShizuUpdateNotifier(loader.Module):
             output = check_output("git pull", shell=True).decode()
 
             if "Already up to date." in output:
-                await call.edit(self.strings("already_updated"))
+                await call.message.edit_caption(self.strings("already_updated"))
             else:
                 self.db.set(
                     "shizu.updater",
@@ -251,7 +251,7 @@ class ShizuUpdateNotifier(loader.Module):
                         "type": "update",
                     },
                 )
-                await call.edit(self.strings("update_complete"))
+                await call.message.edit_caption(self.strings("update_complete"))
                 utils.restart()
         except Exception as e:
             logging.exception("Error updating: %s", e)

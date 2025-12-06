@@ -613,6 +613,16 @@ class ModulesManager:
                             and self._app.tl != "Not enabled"
                         ):
                             self._register_telethon_handlers(instance)
+                        
+                        try:
+                            if not hasattr(instance, "_client") or instance._client is None:
+                                instance._client = self._app.tl
+                                instance.client = self._app.tl
+                                instance.tl = self._app.tl
+                            await self.send_on_load(instance, Translator(self._app, self._db))
+                            self.config_reconfigure(instance, self._db)
+                        except Exception as error:
+                            logging.exception(f"Error in send_on_load for {instance.name}: {error}")
 
                     try:
                         os.remove(temp_file)
@@ -1026,6 +1036,9 @@ class ModulesManager:
 
     async def send_on_load(self, module: Module, translator: Translator) -> bool:
         """Used to perform the function after loading the module"""
+        if hasattr(module, "_client_ready_called") and module._client_ready_called:
+            return True
+        
         for _, method in iter_attrs(module):
             if hasattr(method, "strings"):
                 method.strings = Strings(method, translator, self._db)
@@ -1062,6 +1075,13 @@ class ModulesManager:
                         module._client = self._app.tl
                         module.client = self._app.tl
                         module.tl = self._app.tl
+                    
+                    try:
+                        if hasattr(self._app.tl, "is_connected") and not self._app.tl.is_connected():
+                            await self._app.tl.connect()
+                    except Exception:
+                        pass
+                    
                     if has_client_param:
                         await module.client_ready(self._app.tl)
                     else:
@@ -1071,6 +1091,8 @@ class ModulesManager:
                         await module.client_ready(self._app)
                     else:
                         await module.client_ready()
+                
+                module._client_ready_called = True
         except Exception as error:
             logging.exception(f"Error in client_ready for {module.name}: {error}")
 
