@@ -14,7 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-from .utils import (
+from shizu.utils import (
     answer,
     get_args,
     get_args_raw,

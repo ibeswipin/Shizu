@@ -39,9 +39,9 @@ from subprocess import check_output
 
 from pyrogram import Client, types, enums
 
-from .. import loader, utils
-from ..web import core
-from ..version import __version__, branch
+from shizu import loader, utils
+from shizu.web import core
+from shizu.version import __version__, branch
 
 
 @loader.module(name="ShizuUpdater", author="shizu")

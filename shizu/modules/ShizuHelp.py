@@ -14,7 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from .. import loader, utils
+from shizu import loader, utils
 
 
 @loader.module(name="ShizuHelp", author="shizu")

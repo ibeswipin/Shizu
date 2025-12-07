@@ -39,7 +39,7 @@ import inspect
 from aiogram.types import CallbackQuery
 from pyrogram import Client, types
 
-from .. import loader, utils
+from shizu import loader, utils
 
 
 @loader.module("ShizuModulesHelper", "hikamoru")

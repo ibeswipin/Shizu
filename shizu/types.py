@@ -22,7 +22,7 @@ from logging import getLogger
 
 from pyrogram import Client, types
 
-from . import database
+from shizu import database
 
 logger = getLogger(__name__)
 

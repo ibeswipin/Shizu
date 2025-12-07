@@ -21,8 +21,8 @@ import git
 from aiogram.types import CallbackQuery
 from pyrogram import Client, types
 
-from .. import loader, utils
-from ..version import branch
+from shizu import loader, utils
+from shizu.version import branch
 
 
 @loader.module("ShizuUpdateNotifier", "hikamoru")

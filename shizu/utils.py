@@ -62,7 +62,7 @@ from pyrogram.raw.types.message_entity_spoiler import MessageEntitySpoiler
 from pyrogram.raw.types.message_entity_custom_emoji import MessageEntityCustomEmoji
 
 
-from . import database
+from shizu import database
 
 
 FormattingEntity = Union[

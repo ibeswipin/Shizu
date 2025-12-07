@@ -1,4 +1,4 @@
 __all__ = ["BotManager", "TokenManager"]
 
-from .core import BotManager
-from .token_manager import TokenManager
+from shizu.bot.core import BotManager
+from shizu.bot.token_manager import TokenManager

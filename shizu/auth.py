@@ -33,7 +33,7 @@ from pyrogram.raw.functions.auth.export_login_token import ExportLoginToken
 from telethon import TelegramClient
 
 from qrcode.main import QRCode
-from . import utils
+from shizu import utils
 
 try:
     from .web import core

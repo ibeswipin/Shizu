@@ -17,7 +17,7 @@ import sys
 from meval import meval
 from pyrogram import Client, types
 
-from .. import loader, utils, logger
+from shizu import loader, utils, logger
 
 
 @loader.module(name="ShizuEval", author="hikamoru")

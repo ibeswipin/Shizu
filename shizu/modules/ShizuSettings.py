@@ -19,7 +19,7 @@ import os
 import sys
 
 from loguru import logger
-from .. import loader, utils
+from shizu import loader, utils
 from pyrogram import Client, types
 
 from telethon import TelegramClient

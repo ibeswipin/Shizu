@@ -16,7 +16,7 @@
 
 import shutil
 import os
-from .. import loader, utils, translator
+from shizu import loader, utils, translator
 
 
 @loader.module("ShizuLanguages", "hikamoru", 1.0)

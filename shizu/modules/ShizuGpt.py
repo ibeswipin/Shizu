@@ -17,7 +17,7 @@ import re
 import requests
 
 from pyrogram import types, Client
-from .. import loader, utils
+from shizu import loader, utils
 
 # https://raw.githubusercontent.com/MoriSummerz/ftg-mods/main/chatgpt.py
 

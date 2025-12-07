@@ -22,8 +22,8 @@ from pyrogram.raw import functions, types as typ
 
 from aiogram.utils.exceptions import ChatNotFound
 
-from .. import loader, utils
-from ..version import __version__, branch
+from shizu import loader, utils
+from shizu.version import __version__, branch
 
 
 @loader.module(name="ShizuOnload", author="hikamoru")

@@ -23,7 +23,7 @@
 
 
 from pyrogram import Client
-from .. import loader, utils
+from shizu import loader, utils
 
 
 @loader.module("ShizuStart", "hikamoru")

@@ -15,7 +15,7 @@
 
 import logging
 
-from .. import loader, utils
+from shizu import loader, utils
 
 logger = logging.getLogger(__name__)
 

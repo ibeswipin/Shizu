@@ -21,7 +21,7 @@ import time
 from datetime import datetime
 from pyrogram import Client, types, enums
 
-from .. import loader, utils
+from shizu import loader, utils
 
 
 LOADED_MODULES_DIR = os.path.join(os.getcwd(), "shizu/modules")

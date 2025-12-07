@@ -30,7 +30,7 @@ from typing import Union
 from pyrogram.types import Message
 from aiogram.types import CallbackQuery
 
-from .. import loader, utils
+from shizu import loader, utils
 
 logger = logging.getLogger(__name__)
 

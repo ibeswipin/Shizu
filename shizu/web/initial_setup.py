@@ -46,7 +46,7 @@ from aiohttp import web
 
 from pyrogram import errors
 
-from .. import utils
+from shizu import utils
 
 BASE_DIR =  os.path.dirname(utils.get_base_dir())
 

@@ -32,10 +32,10 @@ from typing import Any, Dict, List, Union
 import requests
 from pyrogram import Client, filters, types
 
-from . import bot, database, dispatcher, utils, logger as logger_, extrapatchs
-from .types import InfiniteLoop
-from .translator import Strings, Translator
-from .inter import inter
+from shizu import bot, database, dispatcher, utils, logger as logger_, extrapatchs
+from shizu.types import InfiniteLoop
+from shizu.translator import Strings, Translator
+from shizu.inter import inter
 
 VALID_URL = r"[-[\]_.~:/?#@!$&'()*+,;%<=>a-zA-Z0-9]+"
 VALID_PIP_PACKAGES = re.compile(

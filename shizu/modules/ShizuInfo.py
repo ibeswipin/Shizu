@@ -22,7 +22,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from pyrogram import Client, types
-from .. import loader, utils, version
+from shizu import loader, utils, version
 
 
 @loader.module("ShizuInfo", "hikamoru")

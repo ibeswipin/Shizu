@@ -16,7 +16,7 @@
 import asyncio
 from pyrogram import Client, types
 
-from .. import loader, utils
+from shizu import loader, utils
 
 
 @loader.module(name="ShizuTerminal", author="shizu")

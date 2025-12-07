@@ -26,7 +26,7 @@ from types import FunctionType
 from pyrogram import Client, filters, types, raw
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
-from . import loader, utils, database, logger as lo
+from shizu import loader, utils, database, logger as lo
 
 logger = logging.getLogger(__name__)
 

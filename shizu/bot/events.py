@@ -64,9 +64,9 @@ from aiogram.types import (
 )
 from typing import Union, List, Any, Optional
 
-from .. import utils, logger as lo
-from .types import Item
-from .. import database
+from shizu import utils, logger as lo
+from shizu.bot.types import Item
+from shizu import database
 
 logger = logging.getLogger(__name__)
 

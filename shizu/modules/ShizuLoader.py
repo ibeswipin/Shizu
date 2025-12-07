@@ -42,7 +42,7 @@ from typing import List
 import requests
 from pyrogram import Client, enums, types
 
-from .. import loader, utils
+from shizu import loader, utils
 
 VALID_URL = r"[-[\]_.~:/?#@!$&'()*+,;%<=>a-zA-Z0-9]+"
 

@@ -41,7 +41,7 @@ import logging
 
 from pyrogram import Client, types
 
-from .. import loader, utils, logger
+from shizu import loader, utils, logger
 
 
 @loader.module(name="ShizuTester", author="shizu")
