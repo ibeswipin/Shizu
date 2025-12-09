@@ -85,14 +85,14 @@ class ShizuConfig(loader.Module):
                 validator = config_value.validator
                 info = []
                 validator_type = type(validator).__name__
-                
+
                 if hasattr(validator, "minimum") and validator.minimum is not None:
                     info.append(f"Min: {validator.minimum}")
                 if hasattr(validator, "maximum") and validator.maximum is not None:
                     info.append(f"Max: {validator.maximum}")
                 if hasattr(validator, "pattern"):
                     info.append(f"Pattern: {validator.pattern.pattern}")
-                
+
                 if info:
                     return config_value, " | ".join(info)
                 else:
@@ -122,10 +122,23 @@ class ShizuConfig(loader.Module):
                             query = config_value.validator.validate(query)
                         except ValueError as e:
                             validation_error = str(e)
-                            await call.answer(
-                                f"Validation error: {validation_error}", show_alert=True
+                            return await call.edit(
+                                f"Validation error: {validation_error}",
+                                reply_markup=[
+                                    [
+                                        {
+                                            "text": self.strings("back"),
+                                            "callback": self.inline__configure_option,
+                                            "args": (mod, option),
+                                        },
+                                        {
+                                            "text": self.strings("close"),
+                                            "callback": self.inline__close,
+                                        },
+                                    ]
+                                ],
+                                inline_message_id=inline_message_id,
                             )
-                            return
 
                     self.db.setdefault(module.name, {}).setdefault("__config__", {})[
                         option
@@ -173,10 +186,23 @@ class ShizuConfig(loader.Module):
                     try:
                         query = config_value.validator.validate(query)
                     except ValueError as e:
-                        await call.answer(
-                            f"Validation error: {str(e)}", show_alert=True
+                        return await call.edit(
+                            f"Validation error: {str(e)}",
+                            reply_markup=[
+                                [
+                                    {
+                                        "text": self.strings("back"),
+                                        "callback": self.inline__add_delete,
+                                        "args": (mod, option),
+                                    },
+                                    {
+                                        "text": self.strings("close"),
+                                        "callback": self.inline__close,
+                                    },
+                                ]
+                            ],
+                            inline_message_id=inline_message_id,
                         )
-                        return
 
                 try:
                     self.db.setdefault(module.name, {}).setdefault("__config__", {})[
@@ -523,7 +549,7 @@ class ShizuConfig(loader.Module):
                     module, config_opt
                 )
                 current_value = module.config[config_opt]
-                
+
                 is_numeric = isinstance(current_value, (int, float))
                 if not is_numeric and current_value is not None:
                     try:
@@ -531,9 +557,11 @@ class ShizuConfig(loader.Module):
                         is_numeric = True
                     except (ValueError, TypeError):
                         pass
-                
-                has_validator = config_value is not None and config_value.validator is not None
-                
+
+                has_validator = (
+                    config_value is not None and config_value.validator is not None
+                )
+
                 is_float_or_int_validator = False
                 if has_validator:
                     validator = config_value.validator
@@ -673,14 +701,16 @@ class ShizuConfig(loader.Module):
     async def resetcfgcmd(self, app, message: Message) -> None:
         """Reset all configs to defaults (or specific module if provided)"""
         args = utils.get_args_raw(message)
-        
+
         if args:
             # Reset specific module
             module = self.all_modules.get_module(args)
             if not module or not hasattr(module, "config"):
-                await utils.answer(message, f"❌ Module '{args}' not found or has no config")
+                await utils.answer(
+                    message, f"❌ Module '{args}' not found or has no config"
+                )
                 return
-            
+
             module_configs = self.db.get(module.name, "__config__", {})
             if module_configs:
                 del self.db.get(module.name, {})["__config__"]
@@ -700,7 +730,7 @@ class ShizuConfig(loader.Module):
                             del self.db.get(module.name, {})["__config__"]
                             self.reconfmod(module, self.db)
                             reset_count += 1
-            
+
             self.db.save()
             await utils.answer(
                 message,
@@ -713,7 +743,7 @@ class ShizuConfig(loader.Module):
         total_options = 0
         modified_configs = 0
         total_modified_options = 0
-        
+
         for module in self.all_modules.modules:
             if hasattr(module, "config"):
                 modules_with_configs += 1
@@ -722,7 +752,7 @@ class ShizuConfig(loader.Module):
                 if module_configs:
                     modified_configs += 1
                     total_modified_options += len(module_configs)
-        
+
         stats_text = (
             f"📊 <b>Config Statistics</b>\n\n"
             f"• Modules with configs: <b>{modules_with_configs}</b>\n"
@@ -731,14 +761,17 @@ class ShizuConfig(loader.Module):
             f"• Modified options: <b>{total_modified_options}</b>\n"
             f"• Default options: <b>{total_options - total_modified_options}</b>"
         )
-        
+
         await utils.answer(message, stats_text)
 
     async def cfgfindvalcmd(self, app, message: Message) -> None:
         """Find configs by value (search in values)"""
         query = utils.get_args_raw(message)
         if not query:
-            await utils.answer(message, "❌ Please provide a search query\nUsage: <code>.cfgfindval &lt;value&gt;</code>")
+            await utils.answer(
+                message,
+                "❌ Please provide a search query\nUsage: <code>.cfgfindval &lt;value&gt;</code>",
+            )
             return
 
         query_lower = str(query).lower()
@@ -754,10 +787,14 @@ class ShizuConfig(loader.Module):
                         )
 
         if not results:
-            await utils.answer(message, f"❌ No configs found with value matching '{query}'")
+            await utils.answer(
+                message, f"❌ No configs found with value matching '{query}'"
+            )
             return
 
-        result_text = f"🔍 <b>Configs with value '{query}':</b>\n\n" + "\n".join(results[:30])
+        result_text = f"🔍 <b>Configs with value '{query}':</b>\n\n" + "\n".join(
+            results[:30]
+        )
         if len(results) > 30:
             result_text += f"\n\n... and {len(results) - 30} more results"
 
@@ -770,13 +807,15 @@ class ShizuConfig(loader.Module):
             await utils.answer(
                 message,
                 "❌ Usage: <code>.cfgcopy &lt;source_module&gt; &lt;option&gt; &lt;target_module&gt;</code>\n"
-                "Example: <code>.cfgcopy Module1 option_name Module2</code>"
+                "Example: <code>.cfgcopy Module1 option_name Module2</code>",
             )
             return
 
         parts = args.split(None, 2)
         if len(parts) < 3:
-            await utils.answer(message, "❌ Invalid format. Need: source_module option target_module")
+            await utils.answer(
+                message, "❌ Invalid format. Need: source_module option target_module"
+            )
             return
 
         source_module_name, option_name, target_module_name = parts
@@ -785,25 +824,38 @@ class ShizuConfig(loader.Module):
         target_module = self.all_modules.get_module(target_module_name)
 
         if not source_module or not hasattr(source_module, "config"):
-            await utils.answer(message, f"❌ Source module '{source_module_name}' not found")
+            await utils.answer(
+                message, f"❌ Source module '{source_module_name}' not found"
+            )
             return
 
         if not target_module or not hasattr(target_module, "config"):
-            await utils.answer(message, f"❌ Target module '{target_module_name}' not found")
+            await utils.answer(
+                message, f"❌ Target module '{target_module_name}' not found"
+            )
             return
 
         if option_name not in source_module.config:
-            await utils.answer(message, f"❌ Option '{option_name}' not found in '{source_module_name}'")
+            await utils.answer(
+                message,
+                f"❌ Option '{option_name}' not found in '{source_module_name}'",
+            )
             return
 
         if option_name not in target_module.config:
-            await utils.answer(message, f"❌ Option '{option_name}' not found in '{target_module_name}'")
+            await utils.answer(
+                message,
+                f"❌ Option '{option_name}' not found in '{target_module_name}'",
+            )
             return
 
         value = source_module.config[option_name]
-        
+
         # Validate value if validator exists
-        if hasattr(target_module.config, "_config_values") and option_name in target_module.config._config_values:
+        if (
+            hasattr(target_module.config, "_config_values")
+            and option_name in target_module.config._config_values
+        ):
             config_value = target_module.config._config_values[option_name]
             if config_value.validator:
                 try:
@@ -812,7 +864,9 @@ class ShizuConfig(loader.Module):
                     await utils.answer(message, f"❌ Validation error: {e}")
                     return
 
-        self.db.setdefault(target_module.name, {}).setdefault("__config__", {})[option_name] = value
+        self.db.setdefault(target_module.name, {}).setdefault("__config__", {})[
+            option_name
+        ] = value
         target_module.config[option_name] = value
         self.reconfmod(target_module, self.db)
         self.db.save()
@@ -820,7 +874,7 @@ class ShizuConfig(loader.Module):
         await utils.answer(
             message,
             f"✅ Copied <code>{option_name}</code> from <b>{source_module_name}</b> to <b>{target_module_name}</b>\n"
-            f"Value: <code>{utils.escape_html(str(value))}</code>"
+            f"Value: <code>{utils.escape_html(str(value))}</code>",
         )
 
     async def cfgvalidatecmd(self, app, message: Message) -> None:
@@ -835,11 +889,16 @@ class ShizuConfig(loader.Module):
                 for option in module.config:
                     if option in module_configs:
                         value = module_configs[option]
-                        if hasattr(module.config, "_config_values") and option in module.config._config_values:
+                        if (
+                            hasattr(module.config, "_config_values")
+                            and option in module.config._config_values
+                        ):
                             config_value = module.config._config_values[option]
                             if config_value.validator:
                                 try:
-                                    validated_value = config_value.validator.validate(value)
+                                    validated_value = config_value.validator.validate(
+                                        value
+                                    )
                                     if validated_value != value:
                                         # Value was corrected
                                         module_configs[option] = validated_value
@@ -862,16 +921,22 @@ class ShizuConfig(loader.Module):
                         self.db.set(module.name, "__config__", module_configs)
             self.db.save()
 
-        result_text = f"✅ <b>Config Validation</b>\n\nValidated: <b>{validated}</b> options\n\n"
-        
+        result_text = (
+            f"✅ <b>Config Validation</b>\n\nValidated: <b>{validated}</b> options\n\n"
+        )
+
         if warnings:
-            result_text += f"⚠️ <b>Corrected ({len(warnings)}):</b>\n" + "\n".join(warnings[:10])
+            result_text += f"⚠️ <b>Corrected ({len(warnings)}):</b>\n" + "\n".join(
+                warnings[:10]
+            )
             if len(warnings) > 10:
                 result_text += f"\n... and {len(warnings) - 10} more"
             result_text += "\n\n"
-        
+
         if errors:
-            result_text += f"❌ <b>Errors ({len(errors)}):</b>\n" + "\n".join(errors[:10])
+            result_text += f"❌ <b>Errors ({len(errors)}):</b>\n" + "\n".join(
+                errors[:10]
+            )
             if len(errors) > 10:
                 result_text += f"\n... and {len(errors) - 10} more"
         elif not warnings:
@@ -882,7 +947,7 @@ class ShizuConfig(loader.Module):
     async def cfgmodifiedcmd(self, app, message: Message) -> None:
         """Show all modified (non-default) configs"""
         modified = []
-        
+
         for module in self.all_modules.modules:
             if hasattr(module, "config"):
                 module_configs = self.db.get(module.name, "__config__", {})
@@ -897,10 +962,16 @@ class ShizuConfig(loader.Module):
                             )
 
         if not modified:
-            await utils.answer(message, "ℹ️ No modified configs found. All configs are using default values.")
+            await utils.answer(
+                message,
+                "ℹ️ No modified configs found. All configs are using default values.",
+            )
             return
 
-        result_text = f"📝 <b>Modified Configs ({len(modified)}):</b>\n\n" + "\n\n".join(modified[:20])
+        result_text = (
+            f"📝 <b>Modified Configs ({len(modified)}):</b>\n\n"
+            + "\n\n".join(modified[:20])
+        )
         if len(modified) > 20:
             result_text += f"\n\n... and {len(modified) - 20} more modified configs"
 
@@ -913,7 +984,7 @@ class ShizuConfig(loader.Module):
             await utils.answer(
                 message,
                 "❌ Usage: <code>.cfgsetall &lt;option&gt; &lt;value&gt; [module1] [module2] ...</code>\n"
-                "If no modules specified, applies to all modules with this option"
+                "If no modules specified, applies to all modules with this option",
             )
             return
 
@@ -947,7 +1018,11 @@ class ShizuConfig(loader.Module):
         if module_names:
             for name in module_names:
                 module = self.all_modules.get_module(name)
-                if module and hasattr(module, "config") and option_name in module.config:
+                if (
+                    module
+                    and hasattr(module, "config")
+                    and option_name in module.config
+                ):
                     modules_to_update.append(module)
         else:
             # Apply to all modules with this option
@@ -956,13 +1031,18 @@ class ShizuConfig(loader.Module):
                     modules_to_update.append(module)
 
         if not modules_to_update:
-            await utils.answer(message, f"❌ No modules found with option '{option_name}'")
+            await utils.answer(
+                message, f"❌ No modules found with option '{option_name}'"
+            )
             return
 
         for module in modules_to_update:
             try:
                 # Validate if validator exists
-                if hasattr(module.config, "_config_values") and option_name in module.config._config_values:
+                if (
+                    hasattr(module.config, "_config_values")
+                    and option_name in module.config._config_values
+                ):
                     config_value = module.config._config_values[option_name]
                     if config_value.validator:
                         validated_value = config_value.validator.validate(value)
@@ -971,7 +1051,9 @@ class ShizuConfig(loader.Module):
                 else:
                     validated_value = value
 
-                self.db.setdefault(module.name, {}).setdefault("__config__", {})[option_name] = validated_value
+                self.db.setdefault(module.name, {}).setdefault("__config__", {})[
+                    option_name
+                ] = validated_value
                 module.config[option_name] = validated_value
                 self.reconfmod(module, self.db)
                 updated += 1
@@ -980,9 +1062,11 @@ class ShizuConfig(loader.Module):
 
         self.db.save()
 
-        result_text = f"✅ Updated <code>{option_name}</code> in <b>{updated}</b> module(s)\n"
+        result_text = (
+            f"✅ Updated <code>{option_name}</code> in <b>{updated}</b> module(s)\n"
+        )
         result_text += f"Value: <code>{utils.escape_html(str(value))}</code>"
-        
+
         if errors:
             result_text += f"\n\n❌ Errors:\n" + "\n".join(errors[:5])
             if len(errors) > 5:

@@ -19,6 +19,7 @@ import logging
 
 from pyrogram import Client
 from pyrogram.raw import functions, types as typ
+from pyrogram.errors import MessageIdInvalid, BadRequest
 
 from aiogram.utils.exceptions import ChatNotFound
 
@@ -101,7 +102,21 @@ class ShizuOnload(loader.Module):
                     round(time.time()) - int(restart["start"])
                 )
 
-            await app.edit_message_text(restart["chat"], restart["id"], restarted_text)
+            try:
+                await app.edit_message_text(restart["chat"], restart["id"], restarted_text)
+            except (MessageIdInvalid, BadRequest) as e:
+                logging.warning(f"Failed to edit restart message (message may be deleted or invalid): {e}")
+                # Try to send a new message instead
+                try:
+                    await app.send_message(
+                        restart["chat"],
+                        restarted_text,
+                        parse_mode="HTML",
+                    )
+                except Exception as send_error:
+                    logging.warning(f"Failed to send restart message as well: {send_error}")
+            except Exception as e:
+                logging.warning(f"Unexpected error editing restart message: {e}")
 
             self.db.pop("shizu.updater", "restart")
 

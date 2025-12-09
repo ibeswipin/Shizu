@@ -189,12 +189,14 @@ async def answer(
     return True
 
 
-class InlineCall:
+class InlineCall(CallbackQuery):
     def __init__(self):
+        super().__init__()
         self.delete = None
         self.unload = None
-        self.edit = None
-        super().__init__()
+        self.edit = functools.partial(edit, self=self)
+        self.delete = functools.partial(delete, self=self)
+    
 
 
 class Events(Item):
@@ -296,7 +298,7 @@ class Events(Item):
                                 caption=self._forms[query].get("text", None),
                                 photo_url=self._forms[query].get("photo", None),
                                 thumb_url=self._forms[query].get("photo", None),
-                                reply_markup=self._generate_markup(query),
+                                reply_markup=self._generate_markup(query, for_inline_query=True),
                             )
                         ],
                         cache_time=60,
@@ -311,7 +313,7 @@ class Events(Item):
                                 caption=self._forms[query].get("text", None),
                                 video_url=self._forms[query].get("video", None),
                                 thumb_url=self._forms[query].get("video", None),
-                                reply_markup=self._generate_markup(query),
+                                reply_markup=self._generate_markup(query, for_inline_query=True),
                                 mime_type="video/mp4",
                             )
                         ],
@@ -326,7 +328,7 @@ class Events(Item):
                                 caption=self._forms[query].get("text", None),
                                 gif_url=self._forms[query].get("gif", None),
                                 thumb_url=self._forms[query].get("gif", None),
-                                reply_markup=self._generate_markup(query),
+                                reply_markup=self._generate_markup(query, for_inline_query=True),
                             )
                         ],
                         cache_time=60,
@@ -339,7 +341,7 @@ class Events(Item):
                                 title="Shizu",
                                 caption=self._forms[query].get("text", None),
                                 audio_url=self._forms[query].get("audio", None),
-                                reply_markup=self._generate_markup(query),
+                                reply_markup=self._generate_markup(query, for_inline_query=True),
                             )
                         ],
                         cache_time=60,
@@ -355,7 +357,7 @@ class Events(Item):
                                 "HTML",
                                 disable_web_page_preview=True,
                             ),
-                            reply_markup=self._generate_markup(query),
+                            reply_markup=self._generate_markup(query, for_inline_query=True),
                         )
                     ],
                     cache_time=60,
@@ -374,7 +376,7 @@ class Events(Item):
                                 "HTML",
                                 disable_web_page_preview=True,
                             ),
-                            reply_markup=self._generate_markup(query),
+                            reply_markup=self._generate_markup(query, for_inline_query=True),
                         )
                     ],
                     cache_time=60,
@@ -390,7 +392,7 @@ class Events(Item):
                                 "HTML",
                                 disable_web_page_preview=True,
                             ),
-                            reply_markup=self._generate_markup(query),
+                            reply_markup=self._generate_markup(query, for_inline_query=True),
                         )
                     ],
                     cache_time=60,
@@ -426,8 +428,13 @@ class Events(Item):
 
                         return
 
-    def _generate_markup(self, form_uid: Union[str, list]) -> InlineKeyboardMarkup:
-        """Generate markup for form"""
+    def _generate_markup(self, form_uid: Union[str, list], for_inline_query: bool = False) -> InlineKeyboardMarkup:
+        """Generate markup for form
+        
+        Args:
+            form_uid: Form ID or list of buttons
+            for_inline_query: If True, filters out buttons that are not allowed in inline query results
+        """
         if isinstance(form_uid, str) and isinstance(
             self._forms[form_uid]["buttons"], InlineKeyboardMarkup
         ):
@@ -512,6 +519,11 @@ class Events(Item):
                                 button["text"], callback_data=button["data"]
                             )
                         ]
+                    elif for_inline_query:
+                        logger.warning(
+                            f"Button skipped in inline query result (not allowed): {button}"
+                        )
+                        continue
                     else:
                         logger.warning(
                             "Button have not been added to "
@@ -526,7 +538,8 @@ class Events(Item):
                     )
                     return
 
-            markup.row(*line)
+            if line:
+                markup.row(*line)
 
         return markup
 
@@ -639,6 +652,7 @@ class Events(Item):
                     query = query.split(maxsplit=1)[1] if len(query.split()) > 1 else ""
 
                     call = InlineCall()
+                    call.inline_message_id = chosen_inline_query.inline_message_id
 
                     call.edit = functools.partial(
                         edit,

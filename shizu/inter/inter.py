@@ -13,6 +13,9 @@ def transform(code: str) -> str:
         transformed_lines.append(line)
 
     code = "\n".join(transformed_lines)
+    code = re.sub(r"from\s+hikkatl(\s+import|\s*\.)", r"from telethon\1", code)
+    code = re.sub(r"import\s+hikkatl(\s+as\s+\w+)?", r"import telethon\1", code)
+    code = re.sub(r"\bhikkatl\b", "telethon", code)
 
     code = re.sub(r"@loader\.tds", "@loader.module()", code)
 

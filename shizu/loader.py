@@ -23,6 +23,7 @@ import string
 import subprocess
 import sys
 import typing
+from urllib.parse import urlparse
 from importlib.abc import SourceLoader
 from importlib.machinery import ModuleSpec
 from importlib.util import module_from_spec, spec_from_file_location
@@ -193,16 +194,54 @@ def get_command_handlers(instance: Module) -> Dict[str, FunctionType]:
     }
 
 
+def watcher(
+    only_messages: bool = True,
+    no_commands: bool = False,
+    no_stickers: bool = False,
+    no_docs: bool = False,
+    no_audios: bool = False,
+    no_videos: bool = False,
+    no_photos: bool = False,
+    no_forwards: bool = False,
+    **kwargs: Any
+) -> FunctionType:
+    """Watcher decorator with filtering options
+    
+    Parameters:
+    only_messages (`bool`): Only process text messages (default: True)
+    no_commands (`bool`): Skip messages that are commands (default: False)
+    no_stickers (`bool`): Skip sticker messages (default: False)
+    no_docs (`bool`): Skip document messages (default: False)
+    no_audios (`bool`): Skip audio messages (default: False)
+    no_videos (`bool`): Skip video messages (default: False)
+    no_photos (`bool`): Skip photo messages (default: False)
+    no_forwards (`bool`): Skip forwarded messages (default: False)
+    """
+    def decorator(func):
+        func.is_watcher = True
+        func.watcher_only_messages = only_messages
+        func.watcher_no_commands = no_commands
+        func.watcher_no_stickers = no_stickers
+        func.watcher_no_docs = no_docs
+        func.watcher_no_audios = no_audios
+        func.watcher_no_videos = no_videos
+        func.watcher_no_photos = no_photos
+        func.watcher_no_forwards = no_forwards
+        return func
+    return decorator
+
+
 def get_watcher_handlers(instance: Module) -> List[FunctionType]:
     """Returns a list of watchers"""
-    return [
-        getattr(instance, method_name)
-        for method_name in dir(instance)
+    watchers = []
+    for method_name in dir(instance):
+        method = getattr(instance, method_name)
         if (
-            callable(getattr(instance, method_name))
-            and method_name.startswith("watcher")
-        )
-    ]
+            callable(method)
+            and (method_name.startswith("watcher") or hasattr(method, "is_watcher"))
+        ):
+            watchers.append(method)
+    return watchers
 
 
 def get_message_handlers(instance: Module) -> Dict[str, FunctionType]:
@@ -421,6 +460,37 @@ class Validators:
     class String:
         def validate(self, value):
             return str(value)
+
+    class Link:
+        def validate(self, value):
+            value = str(value).strip()
+            if not value:
+                raise ValueError("Link cannot be empty")
+            
+            
+            original_value = value
+            if not value.startswith(('http://', 'https://')):
+                value = 'https://' + value
+            
+            parsed = urlparse(value)
+            
+            if parsed.scheme not in ('http', 'https'):
+                raise ValueError(f"Invalid link scheme. Only http:// and https:// are allowed: {original_value}")
+            
+            if not parsed.netloc:
+                raise ValueError(f"Invalid link format. Missing domain: {original_value}")
+            
+            netloc = parsed.netloc.split(':')[0]
+            is_valid_domain = (
+                '.' in netloc or
+                netloc.lower() == 'localhost' or
+                re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', netloc)
+            )
+            
+            if not is_valid_domain:
+                raise ValueError(f"Invalid link format. Invalid domain: {original_value}")
+            
+            return value
 
     class Float:
         def __init__(self, minimum=None, maximum=None):
@@ -680,8 +750,10 @@ class ModulesManager:
             value.bot = self.bot_manager
             value._bot = self.bot_manager.bot
             value.inline_bot = self.bot_manager.bot
+            value.inline = self.bot_manager
             value.me = self.me
             value.tg_id = self.me.id
+            value._tg_id = self.me.id
             value.app = self._app
             value._app = self._app
             value.strings = Strings(value, Translator(self._app, self._db), self._db)
@@ -708,6 +780,7 @@ class ModulesManager:
             instance.reconfmod = self.config_reconfigure
             instance.shizu = True
             instance.hidden = self.hidden
+            instance.inline = self.bot_manager
 
             if (
                 utils.is_tl_enabled()
@@ -1175,3 +1248,4 @@ current_module = sys.modules[__name__]
 setattr(current_module, "tds", tds)
 setattr(current_module, "ConfigValue", ConfigValue)
 setattr(current_module, "validators", validators)
+setattr(current_module, "watcher", watcher)

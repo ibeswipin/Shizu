@@ -129,9 +129,9 @@ class DispatcherManager:
     async def _handle_watchers(
         self, app: Client, message: types.Message
     ) -> types.Message:
-        if isinstance(raw.types, raw.types.UpdatesTooLong):
-            return
-
+        if not self.modules.watcher_handlers:
+            return message
+            
         for watcher_item in self.modules.watcher_handlers:
             if isinstance(watcher_item, tuple):
                 watcher, is_telethon = watcher_item
@@ -140,23 +140,71 @@ class DispatcherManager:
             else:
                 watcher = watcher_item
             
+            # Check watcher filters
+            if hasattr(watcher, "is_watcher"):
+                # Check only_messages
+                if getattr(watcher, "watcher_only_messages", True):
+                    if not message.text and not message.caption:
+                        continue
+                
+                # Check no_commands
+                if getattr(watcher, "watcher_no_commands", False):
+                    prefixes = self.modules._db.get("shizu.loader", "prefixes", ["."])
+                    if message.text and message.text.startswith(tuple(prefixes)):
+                        continue
+                
+                # Check no_stickers
+                if getattr(watcher, "watcher_no_stickers", False):
+                    if message.sticker:
+                        continue
+                
+                # Check no_docs
+                if getattr(watcher, "watcher_no_docs", False):
+                    if message.document:
+                        continue
+                
+                # Check no_audios
+                if getattr(watcher, "watcher_no_audios", False):
+                    if message.audio:
+                        continue
+                
+                # Check no_videos
+                if getattr(watcher, "watcher_no_videos", False):
+                    if message.video:
+                        continue
+                
+                # Check no_photos
+                if getattr(watcher, "watcher_no_photos", False):
+                    if message.photo:
+                        continue
+                
+                # Check no_forwards
+                if getattr(watcher, "watcher_no_forwards", False):
+                    if message.forward_from or message.forward_from_chat:
+                        continue
+            
             try:
                 sig = inspect.signature(watcher)
                 params = list(sig.parameters.keys())
+                # Skip Telethon watchers (they have only 'message' parameter)
+                if len(params) == 1 and 'message' in params:
+                    continue
+                # Skip if has 'message' but no 'app' (Telethon style)
                 if len(params) == 2 and 'message' in params and 'app' not in params:
                     continue
             except (ValueError, TypeError):
                 pass
             
             try:
+                # Try calling with (app, message) for Pyrogram watchers
                 await watcher(app, message)
             except TypeError as error:
                 error_msg = str(error)
                 if "takes" in error_msg and "positional arguments" in error_msg:
-                    logging.debug(f"Skipping Telethon watcher: {error_msg}")
+                    logging.debug(f"Skipping watcher due to signature mismatch: {error_msg}")
                     continue
-                logging.exception(error)
+                logging.exception(f"Error in watcher {watcher.__name__}: {error}")
             except Exception as error:
-                logging.exception(error)
+                logging.exception(f"Error in watcher {watcher.__name__}: {error}")
 
         return message
