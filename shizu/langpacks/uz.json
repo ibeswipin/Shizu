@@ -135,6 +135,8 @@
   "shizu.modules.ShizuSettings.are_sure_to_stop": "🤔 <b>Siz botni to'xtatishga ishonchingiz komilmi? Keyingi safar uni ozingiz yoqishingiz kerak bo'ladi</b>",
   "shizu.modules.ShizuSettings.shutted_down": "🩹 <b>Bot o'chirildi</b>",
   "shizu.modules.ShizuSettings.enter_2fa": "🔐 <b>2FA kodingizni kiriting</b>",
+  "shizu.modules.ShizuSettings.from_where": "❔ <b>Tozalashni boshlash uchun xabarga javob bering</b>",
+  "shizu.modules.ShizuSettings.no_message_to_delete": "❌ <b>O'chirish uchun xabar yo'q</b>",
   "shizu.modules.ShizuTester.ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Telegramga javob tezligi:</b> <code>{}</code> <b>ms</b>",
   "shizu.modules.ShizuTester.no_logs_": "❕ <b>Shu xil xatolik mavjud emas</b> ({})",
   "shizu.modules.ShizuTester.invalid_verb": "Bunday xil xatolik yoq",

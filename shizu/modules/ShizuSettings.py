@@ -146,7 +146,7 @@ class ShizuSettings(loader.Module):
                 app_version="11.12.0",
                 system_version="14.0",
                 lang_code="en",
-                system_lang_code="en-US"
+                system_lang_code="en-US",
             )
             await client.connect()
 
@@ -181,7 +181,7 @@ class ShizuSettings(loader.Module):
                 app_version="11.12.0",
                 system_version="14.0",
                 lang_code="en",
-                system_lang_code="en-US"
+                system_lang_code="en-US",
             )
 
             await _client.connect()
@@ -258,4 +258,85 @@ class ShizuSettings(loader.Module):
         await message.answer(
             self.strings["are_sure_to_stop"],
             reply_markup=self.markup_("stopshizu"),
+        )
+
+    @loader.command()
+    async def purgecmd(self, app: Client, message: types.Message):
+        """[user(-s)] - Clean message history starting from replied one"""
+        if not message.reply_to_message:
+            await utils.answer(message, self.strings("from_where"))
+            return
+
+        from_users = set()
+        args = utils.get_args(message)
+
+        for arg in args:
+            try:
+                user = await app.get_users(arg)
+                if isinstance(user, types.User):
+                    from_users.add(user.id)
+            except (ValueError, Exception):
+                pass
+
+        messages = []
+        reply_id = message.reply_to_message.id
+        current_id = message.id
+
+        messages.append(current_id)
+
+        async for msg in app.get_chat_history(
+            chat_id=message.chat.id,
+            limit=None,
+            offset_id=current_id,
+        ):
+            if msg.id < reply_id:
+                break
+
+            if from_users:
+                if not msg.from_user or msg.from_user.id not in from_users:
+                    continue
+
+            if hasattr(message.reply_to_message, "reply_to_top_id"):
+                reply_top_id = getattr(
+                    message.reply_to_message, "reply_to_top_id", None
+                )
+                if reply_top_id:
+                    msg_top_id = (
+                        getattr(msg.reply_to, "reply_to_top_id", None)
+                        if msg.reply_to
+                        else None
+                    )
+                    if msg_top_id != reply_top_id:
+                        continue
+
+            messages.append(msg.id)
+            if len(messages) >= 99:
+                await app.delete_messages(message.chat.id, messages)
+                messages.clear()
+
+        if messages:
+            await app.delete_messages(message.chat.id, messages)
+
+    @loader.command()
+    async def delcmd(self, app: Client, message: types.Message):
+        """Delete the replied message"""
+        if message.reply_to_message:
+            msg_to_delete = message.reply_to_message
+        else:
+            msg_to_delete = None
+            async for msg in app.get_chat_history(
+                message.chat.id, limit=1, offset_id=message.id
+            ):
+                msg_to_delete = msg
+                break
+
+            if not msg_to_delete:
+                await utils.answer(
+                    message, self.strings("no_message_to_delete")
+                )
+                return
+
+        await app.delete_messages(
+            message.chat.id,
+            [msg_to_delete.id, message.id],
         )

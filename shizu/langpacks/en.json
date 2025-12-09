@@ -141,6 +141,8 @@
   "shizu.modules.ShizuSettings.are_sure_to_stop": "🤔 <b>Are you sure you want to stop the bot? Next time you will need to start it manually</b>",
   "shizu.modules.ShizuSettings.shutted_down": "🩹 <b>Bot has been shutted down</b>",
   "shizu.modules.ShizuSettings.enter_2fa": "🔐 <b>Enter your 2FA code</b>",
+  "shizu.modules.ShizuSettings.from_where": "❔ <b>Reply to a message to purge from</b>",
+  "shizu.modules.ShizuSettings.no_message_to_delete": "❌ <b>No message to delete</b>",
   "shizu.modules.ShizuTester.ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Telegram Response Rate:</b> <code>{}</code> <b>ms</b>",
   "shizu.modules.ShizuTester.no_logs_": "❕ You don't have any logs at verbosity  {} ({})",
   "shizu.modules.ShizuTester.invalid_verb": "Invalid verbosity level",

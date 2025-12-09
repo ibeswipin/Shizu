@@ -138,6 +138,8 @@
   "shizu.modules.ShizuSettings.are_sure_to_stop": "🤔 <b>Вы уверены, что хотите остановить бота? В следующий раз вам придется запустить его вручную</b>",
   "shizu.modules.ShizuSettings.shutted_down": "🩹 <b>Бот был выключен</b>",
   "shizu.modules.ShizuSettings.enter_2fa": "🔐 <b>Введите ваш 2FA код</b>",
+  "shizu.modules.ShizuSettings.from_where": "❔ <b>Ответьте на сообщение, с которого начать очистку</b>",
+  "shizu.modules.ShizuSettings.no_message_to_delete": "❌ <b>Нет сообщения для удаления</b>",
   "shizu.modules.ShizuTester.ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Скорость ответа Telegram:</b> <code>{}</code> <b>мс</b>",
   "shizu.modules.ShizuTester.no_logs_": "❕ У вас нет логов с уровнем {} ({})",
   "shizu.modules.ShizuTester.invalid_verb": "Недопустимый уровень вывода",
