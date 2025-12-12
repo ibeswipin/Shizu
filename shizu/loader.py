@@ -15,7 +15,6 @@
 
 import contextlib
 import inspect
-import logging
 import os
 import random
 import re
@@ -232,15 +231,38 @@ def watcher(
 
 
 def get_watcher_handlers(instance: Module) -> List[FunctionType]:
-    """Returns a list of watchers"""
+    """Returns a list of watchers bound to the instance"""
     watchers = []
     for method_name in dir(instance):
-        method = getattr(instance, method_name)
-        if (
-            callable(method)
-            and (method_name.startswith("watcher") or hasattr(method, "is_watcher"))
-        ):
-            watchers.append(method)
+        try:
+            if method_name.startswith("_"):
+                continue
+                
+            method = getattr(instance, method_name)
+            if not callable(method):
+                continue
+                
+            if not (method_name.startswith("watcher") or hasattr(method, "is_watcher")):
+                continue
+            
+            if hasattr(method, "__self__"):
+                if method.__self__ is instance:
+                    watchers.append(method)
+                else:
+                    import types
+                    if inspect.isfunction(method.__func__):
+                        bound_method = types.MethodType(method.__func__, instance)
+                        watchers.append(bound_method)
+            elif inspect.ismethod(method):
+                watchers.append(method)
+            elif inspect.isfunction(method):
+                import types
+                bound_method = types.MethodType(method, instance)
+                watchers.append(bound_method)
+            else:
+                watchers.append(method)
+        except (AttributeError, TypeError):
+            continue
     return watchers
 
 
@@ -406,8 +428,11 @@ class Validators:
             return value
 
     class Series:
-        def __init__(self, *args):
-            self.validators = args
+        def __init__(self, *args, validator=None):
+            if validator is not None:
+                self.validators = (validator,)
+            else:
+                self.validators = args
 
         def validate(self, value):
             if not isinstance(value, (list, tuple)):
@@ -419,16 +444,12 @@ class Validators:
                         if not isinstance(value, list):
                             value = [value]
                     except (json.JSONDecodeError, ValueError):
-
                         value = [v.strip() for v in value.split(",") if v.strip()]
                 else:
                     value = [str(value)] if value is not None else []
             
             if isinstance(value, tuple):
                 value = list(value)
-            
-      
-            value = [str(v) for v in value]
             
             if self.validators:
                 validated_list = []
@@ -440,6 +461,8 @@ class Validators:
                     except (ValueError, TypeError):
                         validated_list.append(str(v))
                 value = validated_list
+            else:
+                value = [str(v) for v in value]
             
             return value
 
@@ -508,6 +531,27 @@ class Validators:
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid float value: {e}")
 
+    class Union:
+        def __init__(self, *validators, validator=None):
+            if validator is not None:
+                self.validators = (validator,)
+            else:
+                self.validators = validators
+
+        def validate(self, value):
+            if not self.validators:
+                return value
+            
+            errors = []
+            for validator in self.validators:
+                try:
+                    return validator.validate(value)
+                except ValueError as e:
+                    errors.append(str(e))
+                    continue
+            
+            raise ValueError(f"Value does not match any of the validators: {', '.join(errors)}")
+
 
 validators = Validators()
 
@@ -552,8 +596,7 @@ class ModuleConfig(dict):
         if callable(ret):
             try:
                 ret = ret(message)
-            except TypeError:  # Invalid number of params
-                logging.debug("%s using legacy doc trnsl", key)
+            except TypeError:
                 ret = ret()
 
         return ret or "No description"
@@ -638,8 +681,8 @@ class ModulesManager:
         try:
             app.inline_bot = self.bot_manager.bot
             app.bot = self.bot_manager.bot
-        except Exception as error:
-            logging.exception(f"Error loading bot: {error}")
+        except Exception:
+            pass
 
         for local_module in filter(
             lambda file_name: file_name.endswith(".py")
@@ -658,9 +701,6 @@ class ModulesManager:
 
                 if is_telethon:
                     if not utils.is_tl_enabled():
-                        logging.warning(
-                            f"Module {module_name} is a Telethon module, but Telethon mode is not enabled. Skipping..."
-                        )
                         continue
 
                     transformed_code = inter.transform(source_code)
@@ -691,8 +731,8 @@ class ModulesManager:
                                 instance.tl = self._app.tl
                             await self.send_on_load(instance, Translator(self._app, self._db))
                             self.config_reconfigure(instance, self._db)
-                        except Exception as error:
-                            logging.exception(f"Error in send_on_load for {instance.name}: {error}")
+                        except Exception:
+                            pass
 
                     try:
                         os.remove(temp_file)
@@ -701,8 +741,8 @@ class ModulesManager:
                 else:
                     self.register_instance(module_name, file_path)
 
-            except Exception as error:
-                logging.exception(f"Error loading local module {module_name}: {error}")
+            except Exception:
+                pass
 
         await self.send_on_loads()
 
@@ -710,13 +750,9 @@ class ModulesManager:
             try:
                 r = await utils.run_sync(requests.get, custom_module)
                 await self.load_module(r.text, r.url)
-            except requests.exceptions.RequestException as error:
-                logging.exception(
-                    f"Error while downloading custom module {custom_module}: {error}"
-                )
+            except requests.exceptions.RequestException:
+                pass
 
-        logging.info("Dialogs loaded")
-        logging.info("Modules loaded")
         return True
 
     def register_instance(
@@ -798,9 +834,13 @@ class ModulesManager:
             instance.callback_handlers = get_callback_handlers(instance)
             instance.inline_handlers = get_inline_handlers(instance)
 
+            explicitly_pyrogram = hasattr(instance, "m__telethon") and instance.m__telethon is False
+            
             if instance.name in self.cmodules:
                 instance.m__telethon = False
-            elif not hasattr(instance, "m__telethon") or not instance.m__telethon:
+            elif explicitly_pyrogram:
+                instance.m__telethon = False
+            elif not hasattr(instance, "m__telethon") or instance.m__telethon is not False:
                 for handler in instance.command_handlers.values():
                     try:
                         sig = inspect.signature(handler)
@@ -845,7 +885,7 @@ class ModulesManager:
                         del self.command_handlers[cmd_name]
 
         if not instance:
-            logging.warning(f"Module {module_name} not found")
+            pass
 
         for name, func in instance.command_handlers.copy().items():
             if getattr(func, "is_hidden", ""):
@@ -865,7 +905,6 @@ class ModulesManager:
         try:
             from telethon import events
         except ImportError:
-            logging.error("Telethon is not installed")
             return
 
         client = self._app.tl
@@ -880,10 +919,8 @@ class ModulesManager:
                 async def telethon_command_handler(event, h=handler_func):
                     try:
                         await h(event.message)
-                    except Exception as error:
-                        logging.exception(
-                            f"Error in Telethon command handler {cmd}: {error}"
-                        )
+                    except Exception:
+                        pass
 
             make_command_handler(cmd_name, handler)
 
@@ -895,24 +932,19 @@ class ModulesManager:
                     try:
                         await w(event.message)
                     except TypeError as error:
-                     
                         error_msg = str(error)
                         if "not iterable" in error_msg or "argument of type" in error_msg:
-                          
                             try:
                                 module_instance = getattr(w, "__self__", None)
                                 if module_instance and hasattr(module_instance, "config"):
-                                  
                                     self.config_reconfigure(module_instance, self._db)
                                     self._db.save() 
                                     await w(event.message)
-                                    logging.info(f"Fixed config error for {module_instance.name} and retried watcher")
                                     return
-                            except Exception as retry_error:
-                                logging.exception(f"Failed to fix config error: {retry_error}")
-                        logging.exception(f"Error in Telethon watcher handler: {error}")
-                    except Exception as error:
-                        logging.exception(f"Error in Telethon watcher handler: {error}")
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
 
             make_watcher_handler(watcher)
 
@@ -936,9 +968,6 @@ class ModulesManager:
 
         if is_telethon:
             if not utils.is_tl_enabled():
-                logging.error(
-                    f"Module {origin} is a Telethon module, but Telethon mode is not enabled. Skipping..."
-                )
                 return "OTL"
             module_source = inter.transform(original_source)
         else:
@@ -950,22 +979,14 @@ class ModulesManager:
         if match := pattern.search(module_source):
             module_name = f"shizu.modules.{match[2]}"
         else:
-            return logging.error("Module class not found")
+            return False
 
         if match := re.search(r"# ?only: ?(.+)", module_source):
             allowed_accounts = match[1].split(",") if match else []
             if str((await self._app.get_me()).id) not in allowed_accounts:
-                logging.error(
-                    "Module %s is forbidden, because it is not for this account",
-                    module_name,
-                )
                 return "NFA"
 
         if re.search(r"# ?tl-only", module_source) and not utils.is_tl_enabled():
-            logging.error(
-                "You have not enabled telethon, so you can't use module %s",
-                module_name,
-            )
             return "OTL"
         try:
             spec = ModuleSpec(
@@ -977,7 +998,6 @@ class ModulesManager:
             )
 
             if instance and is_telethon:
-              
                 if (
                     utils.is_tl_enabled()
                     and hasattr(self._app, "tl")
@@ -985,8 +1005,8 @@ class ModulesManager:
                 ):
                     self._register_telethon_handlers(instance)
 
-        except ImportError as error:
-            logging.error(error)
+        except ImportError:
+            pass
 
             if did_requirements:
                 return True
@@ -1000,9 +1020,9 @@ class ModulesManager:
                     if x and x[0] not in ("-", "_", ".")
                 ]
             except TypeError:
-                return logging.warn("No packages are specified for installation")
+                return False
 
-            logging.warning(f"Installing Packages: {', '.join(requirements)}...")
+            pass
 
             await self.bot_manager.bot.send_message(
                 self._db.get("shizu.chat", "logs", None),
@@ -1021,8 +1041,8 @@ class ModulesManager:
                     ],
                     check=True,
                 )
-            except subprocess.CalledProcessError as error:
-                logging.exception(f"Ошибка при установке пакетов: {error}")
+            except subprocess.CalledProcessError:
+                pass
 
             return await self.load_module(module_source, origin, True)
         except Exception as error:
@@ -1038,7 +1058,7 @@ class ModulesManager:
             await self.bot_manager.bot.send_message(
                 self._db.get("shizu.chat", "logs", None), exc, parse_mode="html"
             )
-            return logging.error(f"Error loading the module {origin}: {error}")
+            return False
 
         if not instance:
             return False
@@ -1047,8 +1067,8 @@ class ModulesManager:
             await self.send_on_load(instance, Translator(self._app, self._db))
             self.config_reconfigure(instance, self._db)
 
-        except Exception as error:
-            return logging.error(error)
+        except Exception:
+            return False
 
         return instance.name
 
@@ -1076,10 +1096,7 @@ class ModulesManager:
                                 value = config_value.validator.validate(value)
                                 modcfg[conf] = value
                                 db.set(module.name, "__config__", modcfg)
-                            except (ValueError, TypeError) as e:
-                                logging.warning(
-                                    f"Invalid config value for {module.name}.{conf}: {e}, using default"
-                                )
+                            except (ValueError, TypeError):
                                 value = config_value.default
                               
                                 modcfg[conf] = value
@@ -1126,8 +1143,8 @@ class ModulesManager:
 
         try:
             await module.on_load(self._app)
-        except Exception as error:
-            logging.exception(error)
+        except Exception:
+            pass
 
         try:
             if hasattr(module, "client_ready") and callable(module.client_ready):
@@ -1166,8 +1183,8 @@ class ModulesManager:
                         await module.client_ready()
                 
                 module._client_ready_called = True
-        except Exception as error:
-            logging.exception(f"Error in client_ready for {module.name}: {error}")
+        except Exception:
+            pass
 
         return True
 
@@ -1183,8 +1200,6 @@ class ModulesManager:
 
             with contextlib.suppress(TypeError):
                 path = inspect.getfile(module.__class__)
-
-                logging.info(f"Removing {path}")
 
                 if os.path.exists(path):
                     os.remove(path)
@@ -1203,12 +1218,14 @@ class ModulesManager:
                     del self.command_handlers[command]
 
         self.modules.remove(module)
-        self.command_handlers = dict(
-            set(self.command_handlers.items()) ^ set(module.command_handlers.items())
-        )
-        self.watcher_handlers = list(
-            set(self.watcher_handlers) ^ set(module.watcher_handlers)
-        )
+        for cmd in module.command_handlers:
+            if cmd in self.command_handlers:
+                del self.command_handlers[cmd]
+        
+        self.watcher_handlers = [
+            w for w in self.watcher_handlers 
+            if not (hasattr(w, "__self__") and w.__self__ is module)
+        ]
 
         self.inline_handlers = dict(
             set(self.inline_handlers.items()) ^ set(module.inline_handlers.items())
@@ -1216,6 +1233,12 @@ class ModulesManager:
         self.callback_handlers = dict(
             set(self.callback_handlers.items()) ^ set(module.callback_handlers.items())
         )
+
+        module_module = inspect.getmodule(module)
+        if module_module and hasattr(module_module, '__name__'):
+            module_name = module_module.__name__
+            if module_name in sys.modules:
+                del sys.modules[module_name]
 
         return module.name
 
