@@ -1078,7 +1078,6 @@ class ShizuConfig(loader.Module):
         only_messages=True,
     )
     async def cfg_watcher(self, app, message: Message) -> None:
-        print("cfg_watcher")
         with contextlib.suppress(Exception):
             if (
                 not getattr(message, "via_bot", False)

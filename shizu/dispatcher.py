@@ -32,6 +32,7 @@ async def check_filters(
     func: FunctionType,
     app: Client,
     message: types.Message,
+    command_name: str = None,
 ) -> bool:
     db = database.db
     if custom_filters := getattr(func, "_filters", None):
@@ -46,12 +47,23 @@ async def check_filters(
     if message.from_user.is_self:
         return True
 
+    user_id = message.sender_chat.id if message.from_user is None else message.from_user.id
+    
     if (
-        message.sender_chat.id if message.from_user is None else message.from_user.id
-    ) in db.get("shizu.me", "owners", []) and db.get("shizu.owner", "status", False):
+        user_id in db.get("shizu.me", "owners", []) and db.get("shizu.owner", "status", False)
+    ):
         return True
 
-    return bool(message.outgoing)
+    if message.outgoing:
+        return True
+
+    if command_name:
+        perms = db.get("shizu.permissions", "users", {})
+        user_id_str = str(user_id)
+        if user_id_str in perms and command_name in perms[user_id_str]:
+            return True
+
+    return False
 
 
 class DispatcherManager:
@@ -82,10 +94,16 @@ class DispatcherManager:
             return
 
         command = self.modules.aliases.get(command, command)
-        func = self.modules.command_handlers.get(command.lower())
+        command_lower = command.lower()
+        func = self.modules.command_handlers.get(command_lower)
 
         if not func:
             return
+
+        if hasattr(func, "__self__"):
+            module = func.__self__
+            if hasattr(module, "m__telethon") and getattr(module, "m__telethon", False):
+                return
 
         try:
             sig = inspect.signature(func)
@@ -95,7 +113,7 @@ class DispatcherManager:
         except (ValueError, TypeError):
             pass
 
-        if not await check_filters(func, app, message):
+        if not await check_filters(func, app, message, command_lower):
             return
 
         try:

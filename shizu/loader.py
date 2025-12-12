@@ -653,6 +653,7 @@ class ModulesManager:
             "ShizuOwner",
             "ShizuOnload",
             "ShizuUpdateNotifier",
+            "ShizuPermissions",
         ]
         self.hidden = []
         app.db = db
@@ -923,9 +924,7 @@ class ModulesManager:
                 self.callback_handlers.update(instance.callback_handlers)
                 self.inline_handlers.update(instance.inline_handlers)
             else:
-                for cmd_name in list(instance.command_handlers.keys()):
-                    if cmd_name in self.command_handlers:
-                        del self.command_handlers[cmd_name]
+                self.command_handlers.update(instance.command_handlers)
 
         if not instance:
             pass
@@ -965,7 +964,49 @@ class ModulesManager:
             pattern = re.compile(rf"^{re.escape(prefix)}{re.escape(cmd)}(?:\s|$)")
             async def telethon_command_handler(event):
                 try:
-                    await handler_func(event.message)
+                    message = event.message
+                    if not message:
+                        return
+                    
+                    if message.out:
+                        await handler_func(message)
+                        return
+                    
+                    user_id = None
+                    if hasattr(message, 'from_id') and message.from_id:
+                        if hasattr(message.from_id, 'user_id'):
+                            user_id = message.from_id.user_id
+                        else:
+                            user_id = message.from_id
+                    elif hasattr(message, 'sender_id'):
+                        sender_id = message.sender_id
+                        if sender_id:
+                            if hasattr(sender_id, 'user_id'):
+                                user_id = sender_id.user_id
+                            else:
+                                user_id = sender_id
+                    
+                    if not user_id:
+                        return
+                    
+                    db = self._db
+                    
+                    me_id = db.get("shizu.me", "me", None)
+                    if user_id == me_id:
+                        await handler_func(message)
+                        return
+                    
+                    owners = db.get("shizu.me", "owners", [])
+                    owner_status = db.get("shizu.owner", "status", False)
+                    if user_id in owners and owner_status:
+                        await handler_func(message)
+                        return
+                    
+                    perms = db.get("shizu.permissions", "users", {})
+                    user_id_str = str(user_id)
+                    if user_id_str in perms and cmd in perms[user_id_str]:
+                        await handler_func(message)
+                        return
                 except Exception:
                     pass
             return telethon_command_handler, pattern
@@ -974,7 +1015,7 @@ class ModulesManager:
             handler_func, pattern = make_command_handler(cmd_name, handler)
             handler_ref = client.add_event_handler(
                 handler_func,
-                events.NewMessage(outgoing=True, pattern=pattern)
+                events.NewMessage(pattern=pattern)
             )
             module._telethon_handlers.append(handler_ref)
 
