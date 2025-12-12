@@ -233,36 +233,39 @@ def watcher(
 def get_watcher_handlers(instance: Module) -> List[FunctionType]:
     """Returns a list of watchers bound to the instance"""
     watchers = []
-    for method_name in dir(instance):
+    
+    for attr_name in dir(instance):
+        module_name = getattr(instance, "name", "unknown")
+        if attr_name.startswith("_"):
+            continue
+        
         try:
-            if method_name.startswith("_"):
-                continue
-                
-            method = getattr(instance, method_name)
-            if not callable(method):
-                continue
-                
-            if not (method_name.startswith("watcher") or hasattr(method, "is_watcher")):
+            attr = getattr(instance, attr_name, None)
+            if not attr or not callable(attr):
                 continue
             
-            if hasattr(method, "__self__"):
-                if method.__self__ is instance:
-                    watchers.append(method)
-                else:
+            is_watcher_by_name = "watcher" in attr_name.lower()
+            
+            func_for_check = attr
+            if inspect.ismethod(attr):
+                func_for_check = getattr(attr, "__func__", attr)
+            elif hasattr(attr, "__call__") and not inspect.isfunction(attr):
+                func_for_check = getattr(attr, "__func__", attr)
+            
+            is_watcher_decorated = getattr(func_for_check, "is_watcher", False)
+            
+            if is_watcher_by_name or is_watcher_decorated:
+                if inspect.ismethod(attr):
+                    watchers.append(attr)
+                elif inspect.isfunction(attr):
                     import types
-                    if inspect.isfunction(method.__func__):
-                        bound_method = types.MethodType(method.__func__, instance)
-                        watchers.append(bound_method)
-            elif inspect.ismethod(method):
-                watchers.append(method)
-            elif inspect.isfunction(method):
-                import types
-                bound_method = types.MethodType(method, instance)
-                watchers.append(bound_method)
-            else:
-                watchers.append(method)
-        except (AttributeError, TypeError):
+                    bound_method = types.MethodType(attr, instance)
+                    watchers.append(bound_method)
+                elif hasattr(attr, "__call__"):
+                    watchers.append(attr)
+        except Exception:
             continue
+    
     return watchers
 
 
@@ -630,6 +633,7 @@ class ModulesManager:
 
         self.dp: dispatcher.DispatcherManager = None
         self.bot_manager: bot.BotManager = None
+        self.telethon_dp = None
 
         self.root_module: Module = None
         self.cmodules = [
@@ -661,6 +665,9 @@ class ModulesManager:
             r"from \.\.inline\b",
             r'"telethon"',
             r"'telethon'",
+            r"from telethon\.tl\.patched",
+            r"from telethon\.tl\.types import Message",
+            r"from telethon\.tl\.types import.*Message",
         ]
 
         return any(
@@ -677,6 +684,12 @@ class ModulesManager:
         await self.bot_manager.load()
 
         extrapatchs.MessageMagic(types.Message, app)
+        
+        if utils.is_tl_enabled() and hasattr(app, "tl") and app.tl != "Not enabled":
+            from shizu.telethon_dispatcher import TelethonDispatcherManager
+            await app.tl.connect() if not app.tl.is_connected() else None
+            self.telethon_dp = TelethonDispatcherManager(app.tl, self)
+            await self.telethon_dp.load()
 
         try:
             app.inline_bot = self.bot_manager.bot
@@ -684,11 +697,13 @@ class ModulesManager:
         except Exception:
             pass
 
-        for local_module in filter(
+        modules_list = sorted(filter(
             lambda file_name: file_name.endswith(".py")
             and not file_name.startswith("_"),
             os.listdir(self._local_modules_path),
-        ):
+        ))
+        
+        for local_module in modules_list:
             module_name = f"shizu.modules.{local_module[:-3]}"
             file_path = os.path.join(
                 os.path.abspath("."), self._local_modules_path, local_module
@@ -722,7 +737,7 @@ class ModulesManager:
                             and hasattr(self._app, "tl")
                             and self._app.tl != "Not enabled"
                         ):
-                            self._register_telethon_handlers(instance)
+                            await self._register_telethon_handlers(instance)
                         
                         try:
                             if not hasattr(instance, "_client") or instance._client is None:
@@ -739,7 +754,10 @@ class ModulesManager:
                     except:
                         pass
                 else:
-                    self.register_instance(module_name, file_path)
+                    instance = self.register_instance(module_name, file_path)
+                    if instance and hasattr(instance, "m__telethon") and instance.m__telethon:
+                        if utils.is_tl_enabled() and hasattr(self._app, "tl") and self._app.tl != "Not enabled":
+                            await self._register_telethon_handlers(instance)
 
             except Exception:
                 pass
@@ -752,6 +770,9 @@ class ModulesManager:
                 await self.load_module(r.text, r.url)
             except requests.exceptions.RequestException:
                 pass
+
+        if self.telethon_dp:
+            await self.telethon_dp.load()
 
         return True
 
@@ -829,7 +850,6 @@ class ModulesManager:
 
             instance.command_handlers = get_command_handlers(instance)
             instance.watcher_handlers = get_watcher_handlers(instance)
-
             instance.message_handlers = get_message_handlers(instance)
             instance.callback_handlers = get_callback_handlers(instance)
             instance.inline_handlers = get_inline_handlers(instance)
@@ -841,41 +861,64 @@ class ModulesManager:
             elif explicitly_pyrogram:
                 instance.m__telethon = False
             elif not hasattr(instance, "m__telethon") or instance.m__telethon is not False:
+                is_telethon_detected = False
                 for handler in instance.command_handlers.values():
                     try:
-                        sig = inspect.signature(handler)
-                        params = list(sig.parameters.keys())
-                        if (
-                            len(params) == 2
-                            and "message" in params
-                            and "app" not in params
-                        ):
-                            instance.m__telethon = True
+                        if hasattr(handler, "__func__"):
+                            sig = inspect.signature(handler.__func__)
+                            params = list(sig.parameters.keys())[1:]
+                        else:
+                            sig = inspect.signature(handler)
+                            params = list(sig.parameters.keys())
+                        if "message" in params and "app" not in params:
+                            is_telethon_detected = True
                             break
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError, AttributeError):
                         continue
                 
-                if not getattr(instance, "m__telethon", False):
+                if not is_telethon_detected:
                     for watcher in instance.watcher_handlers:
                         try:
-                            sig = inspect.signature(watcher)
-                            params = list(sig.parameters.keys())
-                            if (
-                                len(params) == 2
-                                and "message" in params
-                                and "app" not in params
-                            ):
-                                instance.m__telethon = True
-                                break
-                        except (ValueError, TypeError):
+                            if hasattr(watcher, "__func__"):
+                                sig = inspect.signature(watcher.__func__)
+                                params = list(sig.parameters.keys())[1:]
+                                param_annotations = {
+                                    name: sig.parameters[name].annotation 
+                                    for name in params 
+                                    if sig.parameters[name].annotation != inspect.Parameter.empty
+                                }
+                            else:
+                                sig = inspect.signature(watcher)
+                                params = list(sig.parameters.keys())
+                                param_annotations = {
+                                    name: sig.parameters[name].annotation 
+                                    for name in params 
+                                    if sig.parameters[name].annotation != inspect.Parameter.empty
+                                }
+                            
+                            if len(params) >= 1 and "message" in params and "app" not in params:
+                                if "message" in param_annotations:
+                                    annotation = param_annotations["message"]
+                                    annotation_str = str(annotation)
+                                    if "patched" in annotation_str or "telethon.tl" in annotation_str:
+                                        is_telethon_detected = True
+                                        break
+                                else:
+                                    is_telethon_detected = True
+                                    break
+                        except (ValueError, TypeError, AttributeError):
                             continue
+                
+                if is_telethon_detected:
+                    instance.m__telethon = True
 
             self.modules.append(instance)
 
             is_telethon_module = getattr(instance, "m__telethon", False)
             if not is_telethon_module:
                 self.command_handlers.update(instance.command_handlers)
-                self.watcher_handlers.extend(instance.watcher_handlers)
+                if instance.watcher_handlers:
+                    self.watcher_handlers.extend(instance.watcher_handlers)
                 self.message_handlers.update(instance.message_handlers)
                 self.callback_handlers.update(instance.callback_handlers)
                 self.inline_handlers.update(instance.inline_handlers)
@@ -893,8 +936,7 @@ class ModulesManager:
 
         return instance
 
-    def _register_telethon_handlers(self, module: Module):
-        """Register Telethon event handlers for Telethon modules"""
+    async def _register_telethon_handlers(self, module: Module):
         if (
             not utils.is_tl_enabled()
             or not hasattr(self._app, "tl")
@@ -908,45 +950,54 @@ class ModulesManager:
             return
 
         client = self._app.tl
+        
+        if hasattr(client, "is_connected"):
+            if not client.is_connected():
+                try:
+                    await client.connect()
+                except Exception:
+                    pass
+        
         prefix = self._db.get("shizu.loader", "prefixes", ["."])[0]
+        module._telethon_handlers = []
+
+        def make_command_handler(cmd, handler_func):
+            pattern = re.compile(rf"^{re.escape(prefix)}{re.escape(cmd)}(?:\s|$)")
+            async def telethon_command_handler(event):
+                try:
+                    await handler_func(event.message)
+                except Exception:
+                    pass
+            return telethon_command_handler, pattern
 
         for cmd_name, handler in module.command_handlers.items():
+            handler_func, pattern = make_command_handler(cmd_name, handler)
+            handler_ref = client.add_event_handler(
+                handler_func,
+                events.NewMessage(outgoing=True, pattern=pattern)
+            )
+            module._telethon_handlers.append(handler_ref)
 
-            def make_command_handler(cmd, handler_func):
-                pattern = re.compile(rf"^{re.escape(prefix)}{re.escape(cmd)}(?:\s|$)")
+    def _unregister_telethon_handlers(self, module: Module):
+        if (
+            not utils.is_tl_enabled()
+            or not hasattr(self._app, "tl")
+            or self._app.tl == "Not enabled"
+        ):
+            return
 
-                @client.on(events.NewMessage(outgoing=True, pattern=pattern))
-                async def telethon_command_handler(event, h=handler_func):
-                    try:
-                        await h(event.message)
-                    except Exception:
-                        pass
+        if not hasattr(module, "_telethon_handlers"):
+            return
 
-            make_command_handler(cmd_name, handler)
-
-        for watcher in module.watcher_handlers:
-
-            def make_watcher_handler(watcher_func):
-                @client.on(events.NewMessage())
-                async def telethon_watcher_handler(event, w=watcher_func):
-                    try:
-                        await w(event.message)
-                    except TypeError as error:
-                        error_msg = str(error)
-                        if "not iterable" in error_msg or "argument of type" in error_msg:
-                            try:
-                                module_instance = getattr(w, "__self__", None)
-                                if module_instance and hasattr(module_instance, "config"):
-                                    self.config_reconfigure(module_instance, self._db)
-                                    self._db.save() 
-                                    await w(event.message)
-                                    return
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-
-            make_watcher_handler(watcher)
+        client = self._app.tl
+        
+        for handler in module._telethon_handlers:
+            try:
+                client.remove_event_handler(handler)
+            except Exception:
+                pass
+        
+        module._telethon_handlers = []
 
     def _lookup(self, modname: str):
         return next(
@@ -1003,7 +1054,7 @@ class ModulesManager:
                     and hasattr(self._app, "tl")
                     and self._app.tl != "Not enabled"
                 ):
-                    self._register_telethon_handlers(instance)
+                    await self._register_telethon_handlers(instance)
 
         except ImportError:
             pass
@@ -1217,6 +1268,13 @@ class ModulesManager:
                     del self.aliases[alias]
                     del self.command_handlers[command]
 
+        is_telethon_module = getattr(module, "m__telethon", False)
+        
+        if is_telethon_module:
+            self._unregister_telethon_handlers(module)
+
+        unload_module_name = getattr(module, "name", None)
+        
         self.modules.remove(module)
         for cmd in module.command_handlers:
             if cmd in self.command_handlers:
@@ -1224,7 +1282,12 @@ class ModulesManager:
         
         self.watcher_handlers = [
             w for w in self.watcher_handlers 
-            if not (hasattr(w, "__self__") and w.__self__ is module)
+            if not (
+                hasattr(w, "__self__") and (
+                    w.__self__ is module or 
+                    (hasattr(w.__self__, "name") and getattr(w.__self__, "name", None) == unload_module_name)
+                )
+            )
         ]
 
         self.inline_handlers = dict(
@@ -1236,9 +1299,9 @@ class ModulesManager:
 
         module_module = inspect.getmodule(module)
         if module_module and hasattr(module_module, '__name__'):
-            module_name = module_module.__name__
-            if module_name in sys.modules:
-                del sys.modules[module_name]
+            sys_module_name = module_module.__name__
+            if sys_module_name in sys.modules:
+                del sys.modules[sys_module_name]
 
         return module.name
 

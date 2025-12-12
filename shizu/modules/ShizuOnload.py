@@ -103,20 +103,25 @@ class ShizuOnload(loader.Module):
                 )
 
             try:
-                await app.edit_message_text(restart["chat"], restart["id"], restarted_text)
-            except (MessageIdInvalid, BadRequest) as e:
-                logging.warning(f"Failed to edit restart message (message may be deleted or invalid): {e}")
-                # Try to send a new message instead
+                try:
+                    await app.edit_message_caption(
+                        restart["chat"], restart["id"], caption=restarted_text, parse_mode="html"
+                    )
+                except (BadRequest, MessageIdInvalid):
+                    await app.edit_message_text(
+                        restart["chat"], restart["id"], restarted_text, parse_mode="html"
+                    )
+            except (MessageIdInvalid, BadRequest):
                 try:
                     await app.send_message(
                         restart["chat"],
                         restarted_text,
-                        parse_mode="HTML",
+                        parse_mode="html",
                     )
-                except Exception as send_error:
-                    logging.warning(f"Failed to send restart message as well: {send_error}")
-            except Exception as e:
-                logging.warning(f"Unexpected error editing restart message: {e}")
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
             self.db.pop("shizu.updater", "restart")
 
@@ -129,7 +134,7 @@ class ShizuOnload(loader.Module):
                 chat_id=self.db.get("shizu.chat", "logs", None),
                 photo=open("assets/Shizu.jpg", "rb"),
                 caption=started_text,
-                parse_mode="HTML",
+                parse_mode="html",
             )
         except ChatNotFound:
             await utils.invite_bot(app, self.db.get("shizu.chat", "logs", None))
@@ -137,7 +142,7 @@ class ShizuOnload(loader.Module):
                 chat_id=self.db.get("shizu.chat", "logs", None),
                 photo=open("assets/Shizu.jpg", "rb"),
                 caption=started_text,
-                parse_mode="HTML",
+                parse_mode="html",
             )
         except Exception:
             pass

@@ -752,6 +752,40 @@ def is_tl_enabled() -> bool:
     return any(("shizu-tl.session") in i for i in os.listdir())
 
 
+def get_chat_id(message: typing.Union[Message, Any]) -> int:
+    """
+    Get the chat ID, but without -100 if its a channel
+    :param message: Message to get chat ID from
+    :return: Chat ID
+    """
+    chat_id = getattr(message, "chat_id", None)
+
+    if chat_id is None:
+        chat = getattr(message, "chat", None)
+        if chat is not None:
+            chat_id = getattr(chat, "id", None)
+
+    if chat_id is None:
+        raise ValueError("Could not extract chat_id from message")
+
+    if isinstance(chat_id, str):
+        try:
+            chat_id = int(chat_id)
+        except ValueError:
+            raise ValueError(f"Invalid chat_id format: {chat_id}")
+
+    try:
+        import telethon
+
+        resolved = telethon.utils.resolve_id(chat_id)
+        return resolved[0] if resolved else chat_id
+    except (ImportError, AttributeError):
+        chat_id_str = str(chat_id)
+        if chat_id_str.startswith("-100"):
+            return int(chat_id_str[4:])
+        return chat_id
+
+
 def available_branches() -> List[str]:
     """Returns a list of available branches"""
     return [head.name.split("/")[-1] for head in git.Repo().heads]
