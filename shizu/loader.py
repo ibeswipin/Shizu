@@ -1007,6 +1007,14 @@ class ModulesManager:
                     if user_id_str in perms and cmd in perms[user_id_str]:
                         await handler_func(message)
                         return
+                    
+                    user_groups = db.get("shizu.commandgroups", "user_groups", {})
+                    if user_id_str in user_groups:
+                        groups = db.get("shizu.commandgroups", "groups", {})
+                        for group_name in user_groups[user_id_str]:
+                            if group_name in groups and cmd in groups[group_name]:
+                                await handler_func(message)
+                                return
                 except Exception:
                     pass
             return telethon_command_handler, pattern

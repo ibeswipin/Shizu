@@ -62,6 +62,13 @@ async def check_filters(
         user_id_str = str(user_id)
         if user_id_str in perms and command_name in perms[user_id_str]:
             return True
+        
+        user_groups = db.get("shizu.commandgroups", "user_groups", {})
+        if user_id_str in user_groups:
+            groups = db.get("shizu.commandgroups", "groups", {})
+            for group_name in user_groups[user_id_str]:
+                if group_name in groups and command_name in groups[group_name]:
+                    return True
 
     return False
 
