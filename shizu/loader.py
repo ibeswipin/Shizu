@@ -1304,7 +1304,8 @@ class ModulesManager:
                 if os.path.exists(path):
                     os.remove(path)
 
-            if (get_module := inspect.getmodule(module)).__spec__.origin != "<string>":
+            get_module = inspect.getmodule(module)
+            if get_module and hasattr(get_module, "__spec__") and get_module.__spec__ and get_module.__spec__.origin != "<string>":
                 set_modules = set(self._db.get(__name__, "modules", []))
                 self._db.set(
                     "shizu.loader",

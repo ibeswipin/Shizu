@@ -73,7 +73,7 @@ class UpdateMod(loader.Module):
                         else message.chat.id
                     ),
                     "id": message.id,
-                    "start": str(round(time.time())),
+                    "start": time.time(),
                     "type": "update",
                 },
             )

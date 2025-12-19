@@ -92,36 +92,43 @@ class ShizuOnload(loader.Module):
             utils.restart()
 
         if restart := self.db.get("shizu.updater", "restart"):
+            restarted_text = None
+            
             if restart["type"] == "restart":
-                restarted_text = self.strings("start_r").format(
-                    round(time.time()) - int(restart["start"])
-                )
+                start_time = restart.get("start")
+                if isinstance(start_time, str):
+                    start_time = float(start_time)
+                elapsed = round(time.time() - start_time)
+                restarted_text = self.strings("start_r").format(elapsed)
 
-            if restart["type"] == "update":
-                restarted_text = self.strings("start_u").format(
-                    round(time.time()) - int(restart["start"])
-                )
+            elif restart["type"] == "update":
+                start_time = restart.get("start")
+                if isinstance(start_time, str):
+                    start_time = float(start_time)
+                elapsed = round(time.time() - start_time)
+                restarted_text = self.strings("start_u").format(elapsed)
 
-            try:
+            if restarted_text:
                 try:
-                    await app.edit_message_caption(
-                        restart["chat"], restart["id"], caption=restarted_text, parse_mode="html"
-                    )
-                except (BadRequest, MessageIdInvalid):
-                    await app.edit_message_text(
-                        restart["chat"], restart["id"], restarted_text, parse_mode="html"
-                    )
-            except (MessageIdInvalid, BadRequest):
-                try:
-                    await app.send_message(
-                        restart["chat"],
-                        restarted_text,
-                        parse_mode="html",
-                    )
+                    try:
+                        await app.edit_message_caption(
+                            restart["chat"], restart["id"], caption=restarted_text, parse_mode="html"
+                        )
+                    except (BadRequest, MessageIdInvalid):
+                        await app.edit_message_text(
+                            restart["chat"], restart["id"], restarted_text, parse_mode="html"
+                        )
+                except (MessageIdInvalid, BadRequest):
+                    try:
+                        await app.send_message(
+                            restart["chat"],
+                            restarted_text,
+                            parse_mode="html",
+                        )
+                    except Exception:
+                        pass
                 except Exception:
                     pass
-            except Exception:
-                pass
 
             self.db.pop("shizu.updater", "restart")
 
