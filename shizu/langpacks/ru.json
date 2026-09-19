@@ -248,5 +248,8 @@
   "shizu.modules.wakatime.name": "Wakatime",
   "shizu.modules.wakatime.set_waka": "Укажите свой токен Wakatime",
   "shizu.modules.wakatime.no_token": "🚫 <b>У вас нет токена</b>",
-  "shizu.modules.birthdaywish.name": "BirthdayWish"
+  "shizu.modules.birthdaywish.name": "BirthdayWish",
+  "shizu.bot.inline_no_commands": "🚫 Инлайн-команды не найдены",
+  "shizu.bot.inline_no_description": "Нет описания",
+  "shizu.bot.inline_run": "▶️ Запустить"
 }

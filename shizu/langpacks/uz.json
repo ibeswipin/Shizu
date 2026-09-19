@@ -247,5 +247,8 @@
   "shizu.modules.ShizuPermissions.button_close": "❌ Yopish",
   "shizu.modules.ShizuPermissions.button_back": "🔙 Orqaga",
   "shizu.modules.ShizuPermissions.button_enter_user": "📝 Foydalanuvchi kiritish",
-  "shizu.modules.ShizuPermissions.button_enter_command": "📝 Buyruq kiritish"
+  "shizu.modules.ShizuPermissions.button_enter_command": "📝 Buyruq kiritish",
+  "shizu.bot.inline_no_commands": "🚫 Inline buyruqlar topilmadi",
+  "shizu.bot.inline_no_description": "Tavsif yo'q",
+  "shizu.bot.inline_run": "▶️ Ishga tushirish"
 }

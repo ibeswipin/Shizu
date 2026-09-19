@@ -37,6 +37,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import html
+import re
 import time
 import sys
 import inspect
@@ -67,6 +69,7 @@ from typing import Union, List, Any, Optional
 from shizu import utils, logger as lo
 from shizu.bot.types import Item
 from shizu import database
+from shizu.translator import Translator
 
 logger = logging.getLogger(__name__)
 
@@ -239,38 +242,8 @@ class Events(Item):
                 ],
                 cache_time=0,
             )
-        if not (query := inline_query.query):
-            commands = ""
-            for command, func in self._all_modules.inline_handlers.items():
-                if await self._check_filters(func, func.__self__, inline_query):
-                    commands += (
-                        f"\n💬 <code>@{(await self.bot.me).username} {command}</code>"
-                    )
-
-            message = InputTextMessageContent(
-                f"👇 <b>Available commands</b>\n" f"{commands}" if commands else "\xad"
-            )
-
-            return await inline_query.answer(
-                [
-                    InlineQueryResultArticle(
-                        id=utils.random_id(),
-                        title="Available commands",
-                        description=(
-                            "👇 Available commands"
-                            if commands
-                            else "🚫 There is no inline commands"
-                        ),
-                        input_message_content=message,
-                        thumb_url=(
-                            "https://cdn-icons-png.flaticon.com/512/5278/5278692.png"
-                            if commands
-                            else "https://cdn-icons-png.flaticon.com/512/2190/2190577.png"
-                        ),
-                    )
-                ],
-                cache_time=0,
-            )
+        if not (query := inline_query.query.strip()):
+            return await self._answer_inline_commands(inline_query)
 
         query_ = query.split()
 
@@ -285,6 +258,8 @@ class Events(Item):
                 await func(self._app, inline_query, args)
             else:
                 await func(self._app, inline_query)
+
+            return
 
         try:
             if self._forms[query].get("type", None) == "form":
@@ -427,6 +402,57 @@ class Events(Item):
                         )
 
                         return
+
+            return await self._answer_inline_commands(inline_query, cmd)
+
+    async def _answer_inline_commands(
+        self, inline_query: InlineQuery, prefix: str = ""
+    ) -> None:
+        """Answers with inline commands starting with prefix"""
+        tr = Translator(self._app, self._db).gettext
+        username = (await self.bot.me).username
+        results = []
+
+        for command, func in self._all_modules.inline_handlers.items():
+            if not command.startswith(prefix.lower()) or not await self._check_filters(
+                func, func.__self__, inline_query
+            ):
+                continue
+
+            doc = html.unescape(re.sub(r"<[^>]+>", "", func.__doc__ or "")).strip()
+            results.append(
+                InlineQueryResultArticle(
+                    id=utils.random_id(),
+                    title=command,
+                    description=doc or tr("shizu.bot.inline_no_description"),
+                    input_message_content=InputTextMessageContent(
+                        f"💬 <code>@{username} {command}</code>\n{utils.escape_html(doc)}",
+                        "HTML",
+                    ),
+                    reply_markup=InlineKeyboardMarkup().add(
+                        InlineKeyboardButton(
+                            tr("shizu.bot.inline_run"),
+                            switch_inline_query_current_chat=f"{command} ",
+                        )
+                    ),
+                    thumb_url="https://cdn-icons-png.flaticon.com/512/5278/5278692.png",
+                )
+            )
+
+        if not results:
+            results.append(
+                InlineQueryResultArticle(
+                    id=utils.random_id(),
+                    title=tr("shizu.bot.inline_no_commands"),
+                    input_message_content=InputTextMessageContent(
+                        tr("shizu.bot.inline_no_commands")
+                    ),
+                    thumb_url="https://cdn-icons-png.flaticon.com/512/2190/2190577.png",
+                )
+            )
+
+        # Telegram accepts at most 50 results
+        await inline_query.answer(results[:50], cache_time=0)
 
     def _generate_markup(self, form_uid: Union[str, list], for_inline_query: bool = False) -> InlineKeyboardMarkup:
         """Generate markup for form
