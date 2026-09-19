@@ -243,6 +243,8 @@
   "shizu.modules.ShizuModulesHelper.module_": "<emoji id=5870528606328852614>📁</emoji> <b><a href=\"{}\">{}</a></b>\n\n<emoji id=5787544344906959608>ℹ️</emoji> <i>{}</i>\n\n<b>📟 Команды:</b> {}\n\n<b>🔗 Ссылка:</b> <code>{}</code>",
   "shizu.modules.ShizuTerminal.no_args": "<emoji id=5190748314026385859>🤷‍♂️</emoji> <b>Команда не указана</b>",
   "shizu.modules.ShizuTerminal.wait": "⌨️ <b>Выполняю команду...</b>",
+  "shizu.modules.ShizuTerminal.running": "⏳ <i>Выполняется... Ответьте на это сообщение, чтобы отправить ввод, <code>^C</code> — прервать</i>",
+  "shizu.modules.ShizuTerminal.done": "✅ <b>Код выхода:</b> <code>{}</code>",
   "shizu.modules.ShizuEval.name": "ShizuEval",
   "shizu.modules.ShizuLoader.loaded": "<emoji id=5267468588985363056>✔️</emoji> Модуль <b>{}</b> загружен\n<emoji id=5787544344906959608>ℹ️</emoji>  {} \n\n",
   "shizu.modules.wakatime.name": "Wakatime",

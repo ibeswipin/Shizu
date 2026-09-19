@@ -162,6 +162,8 @@
   "shizu.modules.ShizuModulesHelper.module_": "<emoji id=5870528606328852614>📁</emoji> <b><a href=\"{}\">{}</a></b>\n\n<emoji id=5787544344906959608>ℹ️</emoji> <i>{}</i>\n\n<b>📟 Buyruqlar:</b> {}\n\n<b>🔗 Havola:</b> <code>{}</code>",
   "shizu.modules.ShizuTerminal.no_args": "<emoji id=5190748314026385859>🤷‍♂️</emoji> <b>Buyruq ko'rsatilmagan</b>",
   "shizu.modules.ShizuTerminal.wait": "⌨️ <b>Buyruq bajarilmoqda...</b>",
+  "shizu.modules.ShizuTerminal.running": "⏳ <i>Bajarilmoqda... Kiritish uchun ushbu xabarga javob bering, <code>^C</code> — to'xtatish</i>",
+  "shizu.modules.ShizuTerminal.done": "✅ <b>Chiqish kodi:</b> <code>{}</code>",
   "shizu.modules.ShizuEval.name": "ShizuEval",
   "shizu.modules.ShizuStart.cfg_doc_enable_start_text": "Bot ishga tushirilganda start matnini yoqish yoki o'chirish",
   "shizu.modules.ShizuStart.cfg_doc_start_text": "Bot ishga tushirilganda ko'rsatiladigan start matni",
