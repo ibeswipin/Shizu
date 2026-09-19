@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import asyncio
 import logging
 import os
 from datetime import datetime
@@ -41,7 +42,7 @@ class ShizuUpdateNotifier(loader.Module):
             300,
             lambda m: self.strings("cfg_doc_check_interval"),
             "repo_owner",
-            "AmoreForever",
+            "ibeswipin",
             lambda m: self.strings("cfg_doc_repo_owner"),
             "repo_name",
             "Shizu",
@@ -54,7 +55,7 @@ class ShizuUpdateNotifier(loader.Module):
         env = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": ""}
         try:
             with git_repo.git.custom_environment(**env):
-                git_repo.remotes.origin.fetch(branch_name)
+                git_repo.remotes.origin.fetch(branch_name, kill_after_timeout=30)
         except Exception as e:
             logging.warning("Fetch failed, using local refs: %s", e)
 
@@ -62,7 +63,7 @@ class ShizuUpdateNotifier(loader.Module):
         """Get the latest commit from git repository"""
         try:
             git_repo = git.Repo()
-            self._fetch(git_repo, branch_name)
+            await asyncio.to_thread(self._fetch, git_repo, branch_name)
 
             try:
                 latest_commit = next(
@@ -87,7 +88,6 @@ class ShizuUpdateNotifier(loader.Module):
         """Get all commits since a specific SHA"""
         try:
             git_repo = git.Repo()
-            self._fetch(git_repo, branch_name)
 
             try:
                 commits = list(
