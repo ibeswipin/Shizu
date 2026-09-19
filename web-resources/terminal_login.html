@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Shizu Terminal</title>
+<style>
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    background: #0d1117;
+    color: #e6edf3;
+    font: 16px system-ui, sans-serif;
+  }
+  form {
+    display: grid;
+    gap: 12px;
+    width: min(320px, calc(100vw - 32px));
+  }
+  h2 {
+    margin: 0 0 4px;
+  }
+  input, button {
+    padding: 12px;
+    min-height: 48px;
+    box-sizing: border-box;
+    border-radius: 8px;
+    border: 1px solid #30363d;
+    background: #161b22;
+    color: inherit;
+    font: inherit;
+  }
+  input:focus-visible, button:focus-visible {
+    outline: 2px solid #58a6ff;
+    outline-offset: 2px;
+  }
+  button {
+    background: #238636;
+    border: 0;
+    cursor: pointer;
+  }
+  p {
+    color: #f85149;
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+<form method="post" action="/login">
+  <h2>🐙 Shizu Terminal</h2>
+  {error}
+  <input type="password" name="password" placeholder="Password" aria-label="Password" autocomplete="off" autofocus required>
+  <button>Login</button>
+</form>
+</body>
+</html>
