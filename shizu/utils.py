@@ -34,7 +34,7 @@ from types import FunctionType
 from typing import Any, List, Literal, Tuple, Union, AsyncIterator
 
 from pyrogram.types import Chat, Message, User
-from pyrogram import Client, enums, types
+from pyrogram import Client, enums, raw, types
 
 from pyrogram.raw.types.message_entity_unknown import MessageEntityUnknown
 from pyrogram.raw.types.message_entity_mention import MessageEntityMention
@@ -791,3 +791,57 @@ def get_chat_id(message: typing.Union[Message, Any]) -> int:
 def available_branches() -> List[str]:
     """Returns a list of available branches"""
     return [head.name.split("/")[-1] for head in git.Repo().heads]
+
+
+def render_table(rows, header=None) -> str:
+    grid = [[str(c) for c in row] for row in rows]
+    if header is not None:
+        grid.insert(0, [str(c) for c in header])
+
+    if not grid:
+        return "<pre></pre>"
+
+    ncols = max(len(row) for row in grid)
+    grid = [row + [""] * (ncols - len(row)) for row in grid]
+    widths = [max(len(row[i]) for row in grid) for i in range(ncols)]
+
+    lines = [
+        "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip()
+        for row in grid
+    ]
+    if header is not None:
+        lines.insert(1, "  ".join("-" * widths[i] for i in range(ncols)))
+
+    return f"<pre>{escape_html(chr(10).join(lines))}</pre>"
+
+
+async def is_premium(app) -> bool:
+    me = getattr(app, "me", None)
+    if me is None or getattr(me, "is_premium", None) is None:
+        with contextlib.suppress(Exception):
+            me = await app.get_me()
+    return bool(getattr(me, "is_premium", False))
+
+
+async def _rich_table(message, rows, header, title):
+    table = getattr(raw.types, "RichBlockTable", None)
+    cell = getattr(raw.types, "RichBlockTableCell", None)
+    rich = getattr(raw.types, "InputRichMessage", None)
+    if not (table and cell and rich):
+        raise NotImplementedError("rich messages not supported by this pyrogram build")
+
+    raise NotImplementedError("rich table builder pending raw class confirmation")
+
+
+async def send_table(message, rows, header=None, title=None):
+    text = render_table(rows, header)
+    if title:
+        text = f"<b>{escape_html(title)}</b>\n{text}"
+
+    if await is_premium(message._client):
+        try:
+            return await _rich_table(message, rows, header, title)
+        except Exception:
+            pass
+
+    return await answer(message, text)

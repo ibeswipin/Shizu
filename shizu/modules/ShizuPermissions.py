@@ -1454,26 +1454,25 @@ class ShizuPermissions(loader.Module):
             )
             return
 
-        result_lines = []
+        rows = []
         for user_id_str, commands in perms.items():
             try:
                 user_id = int(user_id_str)
                 user_obj = await self._app.get_users(user_id)
-                user_mention = (
+                name = (
                     f"@{user_obj.username}"
-                    if hasattr(user_obj, "username") and user_obj.username
-                    else f"<code>{utils.escape_html(str(user_id))}</code>"
+                    if getattr(user_obj, "username", None)
+                    else str(user_id)
                 )
             except Exception:
-                user_mention = self.strings("user_id_format").format(user_id_str)
+                name = str(user_id_str)
 
-            commands_list = ", ".join([f"<code>{cmd}</code>" for cmd in commands])
-            result_lines.append(
-                self.strings("user_perms_line").format(user_mention, commands_list)
-            )
+            rows.append((name, ", ".join(commands)))
 
         await call.edit(
-            self.strings("all_perms").format("\n".join(result_lines)),
+            self.strings("all_perms").format(
+                utils.render_table(rows, header=["User", "Commands"])
+            ),
             reply_markup=[
                 [
                     {

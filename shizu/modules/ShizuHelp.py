@@ -14,6 +14,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import re
+
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 
 from shizu import loader, utils
@@ -152,24 +154,21 @@ class Help(loader.Module):
                 "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
             )
 
-        dop_help = "<emoji id=5100652175172830068>🔸</emoji>"
-        command_descriptions = "\n".join(
-            f"{dop_help} <code>{prefix + command}</code> - {module.command_handlers[command].__doc__ or 'No description'}"
-            for command in module.command_handlers
-        )
-        inline_descriptions = "\n".join(
-            f"{dop_help} <code>@{bot_username} {command}</code> - {module.inline_handlers[command].__doc__ or 'No description'}"
-            for command in module.inline_handlers
-        )
-        modname = module.name
-        header = (
-            f"<emoji id=6334457642064283339>🐙</emoji> <b>{modname}</b>\n"
-            f"<emoji id=5787544344906959608>ℹ️</emoji>"
-            f" {module.__doc__ or 'No description'}\n\n"
-        )
+        def short(doc):
+            return re.sub(r"<[^>]+>", "", doc or "No description").split("\n")[0][:40]
 
-        return await send_response(
-            header + command_descriptions + "\n" + inline_descriptions
+        rows = [
+            (prefix + command, short(module.command_handlers[command].__doc__))
+            for command in module.command_handlers
+        ]
+        rows += [
+            (f"@{bot_username} {command}", short(module.inline_handlers[command].__doc__))
+            for command in module.inline_handlers
+        ]
+
+        title = f"{module.name} — {short(module.__doc__)}".strip(" —")
+        return await utils.send_table(
+            message, rows, header=["Command", "Description"], title=title
         )
 
     async def help_inline_handler(self, app, inline_query, args):
