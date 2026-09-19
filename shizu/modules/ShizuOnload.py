@@ -14,6 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import contextlib
+import re
 import time
 import logging
 
@@ -134,7 +135,17 @@ class ShizuOnload(loader.Module):
                 elapsed = round(time.time() - start_time)
                 restarted_text = self.strings("start_u").format(elapsed)
 
-            if restarted_text:
+            if restarted_text and restart.get("bot"):
+                try:
+                    await self._bot.edit_message_text(
+                        re.sub(r"</?emoji[^>]*>", "", restarted_text),
+                        chat_id=restart["chat"],
+                        message_id=restart["id"],
+                        parse_mode="html",
+                    )
+                except Exception:
+                    logging.exception("Could not edit update message in bot chat")
+            elif restarted_text:
                 try:
                     try:
                         await app.edit_message_caption(

@@ -14,6 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import asyncio
+import contextlib
 import logging
 import os
 from datetime import datetime
@@ -247,17 +248,22 @@ class ShizuUpdateNotifier(loader.Module):
             if "Already up to date." in output:
                 await call.message.edit_caption(self.strings("already_updated"))
             else:
+                with contextlib.suppress(Exception):
+                    await call.message.delete()
+                msg = await self.bot.bot.send_message(
+                    call.message.chat.id, self.strings("update_complete")
+                )
                 self.db.set(
                     "shizu.updater",
                     "restart",
                     {
-                        "chat": call.message.chat.id,
-                        "id": call.message.message_id,
+                        "chat": msg.chat.id,
+                        "id": msg.message_id,
                         "start": str(round(datetime.now().timestamp())),
                         "type": "update",
+                        "bot": True,
                     },
                 )
-                await call.message.edit_caption(self.strings("update_complete"))
                 utils.restart()
         except Exception as e:
             logging.exception("Error updating: %s", e)
