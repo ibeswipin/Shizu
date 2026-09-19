@@ -19,7 +19,13 @@ import logging
 
 from pyrogram import Client, enums
 from pyrogram.raw import functions, types as typ
-from pyrogram.errors import MessageIdInvalid, BadRequest
+from pyrogram.errors import (
+    MessageIdInvalid,
+    BadRequest,
+    ChannelInvalid,
+    ChannelPrivate,
+    PeerIdInvalid,
+)
 
 from aiogram.utils.exceptions import ChatNotFound
 
@@ -37,6 +43,16 @@ class ShizuOnload(loader.Module):
         with contextlib.suppress(Exception):
             async for _ in app.get_dialogs():
                 pass
+
+        for key in ("logs", "backup"):
+            chat_id = self.db.get("shizu.chat", key)
+            if not chat_id:
+                continue
+            try:
+                await app.resolve_peer(chat_id)
+            except (ChannelInvalid, ChannelPrivate, PeerIdInvalid):
+                logging.warning("Service chat %s (%s) is gone, recreating", key, chat_id)
+                self.db.pop("shizu.chat", key)
 
         logs_id = self.db.get("shizu.chat", "logs")
         backup_id = self.db.get("shizu.chat", "backup")
