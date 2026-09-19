@@ -451,7 +451,6 @@ class Events(Item):
                 )
             )
 
-        # Telegram accepts at most 50 results
         await inline_query.answer(results[:50], cache_time=0)
 
     def _generate_markup(self, form_uid: Union[str, list], for_inline_query: bool = False) -> InlineKeyboardMarkup:
