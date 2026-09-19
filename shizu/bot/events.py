@@ -38,6 +38,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import html
+import json
 import re
 import time
 import sys
@@ -263,6 +264,45 @@ class Events(Item):
 
         try:
             if self._forms[query].get("type", None) == "form":
+                if self._forms[query].get("rich_message"):
+                    result = {
+                        "type": "article",
+                        "id": utils.random_id(),
+                        "title": "Shizu",
+                        "input_message_content": {
+                            "rich_message": self._forms[query]["rich_message"]
+                        },
+                    }
+                    try:
+                        return await self.bot.request(
+                            "answerInlineQuery",
+                            {
+                                "inline_query_id": inline_query.id,
+                                "results": json.dumps([result]),
+                                "cache_time": 0,
+                                "is_personal": True,
+                            },
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Could not answer inline query with a rich message",
+                            exc_info=True,
+                        )
+                        return await inline_query.answer(
+                            [
+                                InlineQueryResultArticle(
+                                    id=utils.random_id(),
+                                    title="Shizu",
+                                    input_message_content=InputTextMessageContent(
+                                        self._forms[query]["text"],
+                                        "HTML",
+                                        disable_web_page_preview=True,
+                                    ),
+                                )
+                            ],
+                            cache_time=0,
+                            is_personal=True,
+                        )
                 if self._forms[query].get("photo", None):
                     return await inline_query.answer(
                         [
@@ -714,6 +754,7 @@ class Events(Item):
         video: str = None,
         gif: str = None,
         audio: str = None,
+        rich_message: dict = None,
         **kwargs,
     ) -> Union[str, bool]:
         """Creates inline form with callback
@@ -736,6 +777,9 @@ class Events(Item):
                         Users, that are allowed to press buttons in addition to previous rules
                 reply_to_message_id
                         Message to reply to
+
+                rich_message
+                        Raw InputRichMessage payload for Telegram Bot API 10.2+
         """
 
         if reply_markup is None:
@@ -805,6 +849,7 @@ class Events(Item):
             **({"video": video} if video else {}),
             **({"gif": gif} if gif else {}),
             **({"audio": audio} if audio else {}),
+            **({"rich_message": rich_message} if rich_message else {}),
         }
 
         if isinstance(message, pyrogram.types.Message) and prev:
