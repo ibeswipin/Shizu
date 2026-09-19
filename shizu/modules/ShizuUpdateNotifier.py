@@ -56,7 +56,7 @@ class ShizuUpdateNotifier(loader.Module):
         env = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": ""}
         try:
             with git_repo.git.custom_environment(**env):
-                git_repo.remotes.origin.fetch(branch_name, kill_after_timeout=30)
+                git_repo.remotes.origin.fetch(branch_name)
         except Exception as e:
             logging.warning("Fetch failed, using local refs: %s", e)
 
