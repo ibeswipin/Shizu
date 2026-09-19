@@ -39,63 +39,16 @@ from subprocess import check_output
 
 from pyrogram import Client, types, enums
 
-from .. import loader, utils
-from ..web import core
-from ..version import __version__, branch
+from shizu import loader, utils
+from shizu.web import core
+from shizu.version import __version__, branch
 
 
 @loader.module(name="ShizuUpdater", author="shizu")
 class UpdateMod(loader.Module):
     """Updates itself"""
 
-    strings = {
-        "last_": "<emoji id=5188420746694633417>🌗</emoji> <b>You have the latest version installed</b>.",
-        "update_": "<emoji id=5978846612087114958>🔁</emoji> Update...",
-        "reboot_": "<b><emoji id=5328274090262275771>🔁</emoji> Rebooting...</b>",
-        "attempt_": "<emoji id=5017470156276761427>🔁</emoji> Update attempt...",
-    }
-
-    strings_ru = {
-        "last_": "<emoji id=5188420746694633417>🌗</emoji> <b>У вас установлена последняя версия</b>.",
-        "update_": "<emoji id=5978846612087114958>🔁</emoji> Обновление...",
-        "reboot_": "<b><emoji id=5328274090262275771>🔁</emoji> Перезагрузка...</b>",
-        "attempt_": "<emoji id=5017470156276761427>🔁</emoji> Попытка обновления...",
-    }
-
-    strings_uz = {
-        "last_": "<emoji id=5188420746694633417>🌗</emoji> <b>Shizu botningizning yangi versiyasi</b>.",
-        "update_": "<emoji id=5978846612087114958>🔁</emoji> Yangilash...",
-        "reboot_": "<b><emoji id=5328274090262275771>🔁</emoji> Qayta yuklash...</b>",
-        "attempt_": "<emoji id=5017470156276761427>🔁</emoji> Yangilash urinishi...",
-    }
-
-    strings_jp = {
-        "last_": "<emoji id=5188420746694633417>🌗</emoji> <b>最新バージョンがインストールされています</b>.",
-        "update_": "<emoji id=5978846612087114958>🔁</emoji> 更新...",
-        "reboot_": "<b><emoji id=5328274090262275771>🔁</emoji> 再起動...</b>",
-        "attempt_": "<emoji id=5017470156276761427>🔁</emoji> 更新試行...",
-    }
-
-    strings_ua = {
-        "last_": "<emoji id=5188420746694633417>🌗</emoji> <b>У вас встановлена остання версія</b>.",
-        "update_": "<emoji id=5978846612087114958>🔁</emoji> Оновлення...",
-        "reboot_": "<b><emoji id=5328274090262275771>🔁</emoji> Перезавантаження...</b>",
-        "attempt_": "<emoji id=5017470156276761427>🔁</emoji> Спроба оновлення...",
-    }
-
-    strings_kz = {
-        "last_": "<emoji id=5188420746694633417>🌗</emoji> <b>Сізде соңғы нұсқа орнатылған</b>.",
-        "update_": "<emoji id=5978846612087114958>🔁</emoji> Жаңарту...",
-        "reboot_": "<b><emoji id=5328274090262275771>🔁</emoji> Қайта іске қосу...</b>",
-        "attempt_": "<emoji id=5017470156276761427>🔁</emoji> Жаңарту тырысы...",
-    }
-
-    strings_kr = {
-        "last_": "<emoji id=5188420746694633417>🌗</emoji> <b>최신 버전이 설치되어 있습니다</b>.",
-        "update_": "<emoji id=5978846612087114958>🔁</emoji> 업데이트...",
-        "reboot_": "<b><emoji id=5328274090262275771>🔁</emoji> 재부팅...</b>",
-        "attempt_": "<emoji id=5017470156276761427>🔁</emoji> 업데이트 시도...",
-    }
+    strings = {}
 
     @loader.command()
     async def update(self, app: Client, message: types.Message):
@@ -120,7 +73,7 @@ class UpdateMod(loader.Module):
                         else message.chat.id
                     ),
                     "id": message.id,
-                    "start": str(round(time.time())),
+                    "start": time.time(),
                     "type": "update",
                 },
             )
@@ -140,7 +93,11 @@ class UpdateMod(loader.Module):
             "shizu.updater",
             "restart",
             {
-                "chat": message.chat.id,
+                "chat": (
+                    message.chat.username
+                    if message.chat.type == enums.ChatType.BOT
+                    else message.chat.id
+                ),
                 "id": ms.id,
                 "start": time.time(),
                 "type": "restart",

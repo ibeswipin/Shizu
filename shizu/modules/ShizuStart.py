@@ -23,7 +23,7 @@
 
 
 from pyrogram import Client
-from .. import loader, utils
+from shizu import loader, utils
 
 
 @loader.module("ShizuStart", "hikamoru")
@@ -59,21 +59,7 @@ class ShizuStart(loader.Module):
         "😎 Diverging from conventional Telegram bots, <b>userbots operate within the confines of a user's account</b> rather than within a dedicated bot account. This particular distinction empowers userbots with enhanced accessibility to a broader spectrum of functionalities and a heightened degree of flexibility in executing actions.\n\n"
     )
 
-    strings = {
-        "cfg_doc_enable_start_text": "Enable or disable start text when smb starts bot",
-        "cfg_doc_start_text": "Start text when smb starts bot",
-    }
-
-    strings_ru = {
-        "cfg_doc_enable_start_text": "Включить или отключить стартовый текст при запуске бота",
-        "cfg_doc_start_text": "Стартовый текст при запуске бота",
-    }
-
-    strings_kr = {
-        "cfg_doc_enable_start_text": "봇 시작시 시작 텍스트를 활성화 또는 비활성화합니다.",
-        "cfg_doc_start_text": "봇 시작시 시작 텍스트",
-    }
-
+    strings = {}
     def __init__(self):
         self.config = loader.ModuleConfig(
             "status",

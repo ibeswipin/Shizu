@@ -38,8 +38,8 @@ from logging.handlers import RotatingFileHandler
 
 from aiogram.types import ParseMode
 
-from .database import db
-from . import utils
+from shizu.database import db
+from shizu import utils
 
 FORMAT_FOR_FILES = "[{level}] {name}: {message}"
 

@@ -20,7 +20,7 @@ from typing import Union
 from aiogram.types import CallbackQuery, InlineQuery, Message
 from pyrogram import Client
 
-from .. import database, types
+from shizu import database, types
 
 
 class Item:

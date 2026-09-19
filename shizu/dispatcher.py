@@ -15,7 +15,6 @@
 
 import random
 import contextlib
-import logging
 import sys
 import traceback
 
@@ -23,18 +22,17 @@ import inspect
 
 from types import FunctionType
 
-from pyrogram import Client, filters, types, raw
+from pyrogram import Client, filters, types
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
-from . import loader, utils, database, logger as lo
-
-logger = logging.getLogger(__name__)
+from shizu import loader, utils, database, logger as lo
 
 
 async def check_filters(
     func: FunctionType,
     app: Client,
     message: types.Message,
+    command_name: str = None,
 ) -> bool:
     db = database.db
     if custom_filters := getattr(func, "_filters", None):
@@ -49,12 +47,30 @@ async def check_filters(
     if message.from_user.is_self:
         return True
 
+    user_id = message.sender_chat.id if message.from_user is None else message.from_user.id
+    
     if (
-        message.sender_chat.id if message.from_user is None else message.from_user.id
-    ) in db.get("shizu.me", "owners", []) and db.get("shizu.owner", "status", False):
+        user_id in db.get("shizu.me", "owners", []) and db.get("shizu.owner", "status", False)
+    ):
         return True
 
-    return bool(message.outgoing)
+    if message.outgoing:
+        return True
+
+    if command_name:
+        perms = db.get("shizu.permissions", "users", {})
+        user_id_str = str(user_id)
+        if user_id_str in perms and command_name in perms[user_id_str]:
+            return True
+        
+        user_groups = db.get("shizu.commandgroups", "user_groups", {})
+        if user_id_str in user_groups:
+            groups = db.get("shizu.commandgroups", "groups", {})
+            for group_name in user_groups[user_id_str]:
+                if group_name in groups and command_name in groups[group_name]:
+                    return True
+
+    return False
 
 
 class DispatcherManager:
@@ -85,12 +101,26 @@ class DispatcherManager:
             return
 
         command = self.modules.aliases.get(command, command)
-        func = self.modules.command_handlers.get(command.lower())
+        command_lower = command.lower()
+        func = self.modules.command_handlers.get(command_lower)
 
         if not func:
             return
 
-        if not await check_filters(func, app, message):
+        if hasattr(func, "__self__"):
+            module = func.__self__
+            if hasattr(module, "m__telethon") and getattr(module, "m__telethon", False):
+                return
+
+        try:
+            sig = inspect.signature(func)
+            params = list(sig.parameters.keys())
+            if len(params) == 2 and 'message' in params and 'app' not in params:
+                return
+        except (ValueError, TypeError):
+            pass
+
+        if not await check_filters(func, app, message, command_lower):
             return
 
         try:
@@ -98,7 +128,6 @@ class DispatcherManager:
             await app.read_chat_history(message.chat.id)
 
         except Exception:
-            logging.exception("Error while executing command %s", command)
             item = lo.CustomException.from_exc_info(*sys.exc_info())
             exc = item.message + "\n\n" + item.full_stack
             trace = traceback.format_exc().replace(
@@ -121,13 +150,72 @@ class DispatcherManager:
     async def _handle_watchers(
         self, app: Client, message: types.Message
     ) -> types.Message:
-        if isinstance(raw.types, raw.types.UpdatesTooLong):
-            return
-
-        for watcher in self.modules.watcher_handlers:
+        if not self.modules or not hasattr(self.modules, "watcher_handlers"):
+            return message
+        
+        watchers = self.modules.watcher_handlers
+        if not watchers:
+            return message
+        
+        for watcher in watchers:
+            if not watcher:
+                continue
+            
+            if isinstance(watcher, tuple):
+                watcher, is_telethon = watcher
+                if is_telethon:
+                    continue
+            
             try:
-                await watcher(app, message)
-            except Exception as error:
-                logging.exception(error)
-
+                if hasattr(watcher, "__self__"):
+                    module = watcher.__self__
+                    if not hasattr(module, "name"):
+                        continue
+                    is_telethon_module = getattr(module, "m__telethon", False)
+                    if is_telethon_module:
+                        continue
+                    func = getattr(watcher, "__func__", watcher)
+                else:
+                    func = watcher
+                
+                watcher_only_messages = getattr(func, "watcher_only_messages", getattr(watcher, "watcher_only_messages", None))
+                if watcher_only_messages is not None and watcher_only_messages:
+                    if not message.text and not message.caption:
+                        continue
+                
+                
+                watcher_no_commands = getattr(func, "watcher_no_commands", getattr(watcher, "watcher_no_commands", False))
+                if watcher_no_commands:
+                    prefixes = self.modules._db.get("shizu.loader", "prefixes", ["."])
+                    text = message.text or ""
+                    if text and any(text.startswith(p) for p in prefixes):
+                        continue
+                
+                if getattr(func, "watcher_no_stickers", getattr(watcher, "watcher_no_stickers", False)) and message.sticker:
+                    continue
+                if getattr(func, "watcher_no_docs", getattr(watcher, "watcher_no_docs", False)) and message.document:
+                    continue
+                if getattr(func, "watcher_no_audios", getattr(watcher, "watcher_no_audios", False)) and message.audio:
+                    continue
+                if getattr(func, "watcher_no_videos", getattr(watcher, "watcher_no_videos", False)) and message.video:
+                    continue
+                if getattr(func, "watcher_no_photos", getattr(watcher, "watcher_no_photos", False)) and message.photo:
+                    continue
+                if getattr(func, "watcher_no_forwards", getattr(watcher, "watcher_no_forwards", False)) and (message.forward_from or message.forward_from_chat):
+                    continue
+                
+                try:
+                    await watcher(app, message)
+                except TypeError as e:
+                    error_msg = str(e)
+                    if "takes" in error_msg and "positional arguments" in error_msg:
+                        try:
+                            await watcher(message)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            except Exception:
+                continue
+        
         return message

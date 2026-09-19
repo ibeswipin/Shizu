@@ -21,8 +21,8 @@ from typing import Tuple
 
 from pyrogram import errors
 
-from .. import fsm, utils
-from .types import Item
+from shizu import fsm, utils
+from shizu.bot.types import Item
 
 FIND = True
 

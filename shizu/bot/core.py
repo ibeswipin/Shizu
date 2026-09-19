@@ -23,10 +23,10 @@ from pyrogram import Client
 
 from typing import Union, NoReturn
 
-from .events import Events
-from .token_manager import TokenManager
+from shizu.bot.events import Events
+from shizu.bot.token_manager import TokenManager
 
-from .. import database, types
+from shizu import database, types
 
 with contextlib.suppress(Exception):
     bot = Bot(token=database.db.get("shizu.bot", "token", None), parse_mode="html")

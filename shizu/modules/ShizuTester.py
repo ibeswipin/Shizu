@@ -41,68 +41,14 @@ import logging
 
 from pyrogram import Client, types
 
-from .. import loader, utils, logger
+from shizu import loader, utils, logger
 
 
 @loader.module(name="ShizuTester", author="shizu")
 class TesterMod(loader.Module):
     """Execute activities based on userbot self-testing"""
 
-    strings = {
-        "ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Telegram Response Rate:</b> <code>{}</code> <b>ms</b>",
-        "no_logs_": "❕ You don't have any logs at verbosity  {} ({})",
-        "invalid_verb": "Invalid verbosity level",
-        "suspend": "<emoji id=5452023368054216810>🥶</emoji> <b>Shizu has been suspended for {} seconds</b>",
-        "suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>Invalid time to suspend</b>",
-    }
-
-    strings_ru = {
-        "ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Скорость ответа Telegram:</b> <code>{}</code> <b>мс</b>",
-        "no_logs_": "❕ У вас нет логов с уровнем {} ({})",
-        "invalid_verb": "Недопустимый уровень вывода",
-        "suspend": "<emoji id=5452023368054216810>🥶</emoji> <b>Shizu был приостановлен на {} секунд</b>",
-        "suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>Недопустимое время приостановки</b>",
-    }
-
-    strings_uz = {
-        "ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Telegramga javob tezligi:</b> <code>{}</code> <b>ms</b>",
-        "no_logs_": "❕ <b>Shu xil xatolik mavjud emas</b> ({})",
-        "invalid_verb": "Bunday xil xatolik yoq",
-        "suspend": "<emoji id=5452023368054216810>🥶</emoji> <b>Shizu {} soniya uchun to'xtatildi</b>",
-        "suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>To'xtatish uchun noto'g'ri vaqt</b>",
-    }
-
-    strings_jp = {
-        "ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Telegramの応答速度:</b> <code>{}</code> <b>ms</b>",
-        "no_logs_": "❕ あなたは {} ({}) レベルのログを持っていません",
-        "invalid_verb": "このようなエラーはありません",
-        "suspend": "<emoji id=5452023368054216810>🥶</emoji> <b>Shizu は {} 秒間停止されました</b>",
-        "suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>無効な一時停止時間</b>",
-    }
-
-    strings_ua = {
-        "ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Швидкість відповіді Telegram:</b> <code>{}</code> <b>мс</b>",
-        "no_logs_": "❕ У вас немає логів з рівнем {} ({})",
-        "invalid_verb": "Недопустимий рівень виводу",
-        "suspend": "<emoji id=5452023368054216810>🥶</emoji> <b>Shizu був призупинений на {} секунд</b>",
-        "suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>Недопустимий час призупинення</b>",
-    }
-
-    strings_kz = {
-        "ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Telegramға жауап беру тездігі:</b> <code>{}</code> <b>мс</b>",
-        "no_logs_": "❕ <b>Сізде бұл деңгейдегі журналдар жоқ</b> {} ({})",
-        "invalid_verb": "Бұлдай қате жоқ",
-        "suspend": "<emoji id=5452023368054216810>🥶</emoji> <b>Shizu {} секунд үшін тоқтатылды</b>",
-        "suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>Тоқтату уақыты жарамсыз</b>",
-    }
-
-    strings_kr = {
-        "ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Telegram 응답 속도:</b> <code>{}</code> <b>ms</b>",
-        "no_logs_": "❕ {} ({}) 레벨의 로그가 없습니다",
-        "invalid_verb": "이런 오류는 없습니다",
-        "suspend": "<emoji id=5452023368054216810>🥶</emoji> <b>Shizu는 {} 초 동안 중지되었습니다</b>",
-        "suspend_invalid_time": "<emoji id=5807626765874499116>🚫</emoji> <b>잘못된 일시 중지 시간</b>",
-    }
+    strings = {}
 
     @loader.command()
     async def logs(self, app: Client, message: types.Message):

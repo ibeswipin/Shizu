@@ -41,7 +41,7 @@ import aiohttp_jinja2
 import jinja2
 from aiohttp import web
 
-from . import initial_setup
+from shizu.web import initial_setup
 
 
 class TunnelManager:

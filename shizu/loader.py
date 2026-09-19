@@ -1,21 +1,3 @@
-#    Sh1t-UB (telegram userbot by sh1tn3t)
-#    Copyright (C) 2021-2022 Sh1tN3t
-
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# -----------------------------------------------------------------------------
-
 # Shizu Copyright (C) 2023-2024  AmoreForever
 
 # This program is free software: you can redistribute it and/or modify
@@ -41,6 +23,7 @@ import string
 import subprocess
 import sys
 import typing
+from urllib.parse import urlparse
 from importlib.abc import SourceLoader
 from importlib.machinery import ModuleSpec
 from importlib.util import module_from_spec, spec_from_file_location
@@ -50,10 +33,10 @@ from typing import Any, Dict, List, Union
 import requests
 from pyrogram import Client, filters, types
 
-from . import bot, database, dispatcher, utils, logger as logger_, extrapatchs
-from .types import InfiniteLoop
-from .translator import Strings, Translator
-from .inter import inter
+from shizu import bot, database, dispatcher, utils, logger as logger_, extrapatchs
+from shizu.types import InfiniteLoop
+from shizu.translator import Strings, Translator
+from shizu.inter import inter
 
 VALID_URL = r"[-[\]_.~:/?#@!$&'()*+,;%<=>a-zA-Z0-9]+"
 VALID_PIP_PACKAGES = re.compile(
@@ -103,6 +86,82 @@ class Module:
     async def on_load(self, app: Client) -> Any:
         """Called when loading the module"""
 
+    async def client_ready(self, client=None) -> Any:
+        """Called when client is ready (Telethon compatibility)
+        For Telethon modules, client is Telethon client
+        For Pyrogram modules, client is Pyrogram client
+        """
+
+    def pointer(self, key: str, default: Any = None):
+        """Get a pointer to a database value (Telethon compatibility)
+        Returns a list-like object that can be modified and automatically saves to DB
+        """
+        if not hasattr(self, "db"):
+            return default if default is not None else []
+
+        class PointerList(list):
+            """List-like object that automatically saves to database"""
+
+            def __init__(self, module, key, default):
+                super().__init__()
+                self._module = module
+                self._key = key
+                self._db_key = f"{module.name}.{key}"
+                db = getattr(module, "db", None)
+                if db is not None:
+                    value = db.get(module.name, key, default)
+                    if isinstance(value, list):
+                        self.extend(value)
+                    elif value is not None:
+                        self.append(value)
+
+            def _save(self):
+                """Save current state to database"""
+                db = getattr(self._module, "db", None)
+                if db is not None:
+                    db.set(self._module.name, self._key, list(self))
+
+            def append(self, item):
+                super().append(item)
+                self._save()
+
+            def extend(self, iterable):
+                super().extend(iterable)
+                self._save()
+
+            def clear(self):
+                super().clear()
+                self._save()
+
+            def remove(self, item):
+                super().remove(item)
+                self._save()
+
+            def pop(self, index=-1):
+                result = super().pop(index)
+                self._save()
+                return result
+
+            def insert(self, index, item):
+                super().insert(index, item)
+                self._save()
+
+        return PointerList(self, key, default)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a value from database (Telethon compatibility)"""
+        db = getattr(self, "db", None)
+        if db is None:
+            return default
+        return db.get(self.name, key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        """Set a value in database (Telethon compatibility)"""
+        db = getattr(self, "db", None)
+        if db is None:
+            return
+        db.set(self.name, key, value)
+
 
 class StringLoader(SourceLoader):
     """Loads the module from the line"""
@@ -135,16 +194,80 @@ def get_command_handlers(instance: Module) -> Dict[str, FunctionType]:
     }
 
 
+def watcher(
+    only_messages: bool = True,
+    no_commands: bool = False,
+    no_stickers: bool = False,
+    no_docs: bool = False,
+    no_audios: bool = False,
+    no_videos: bool = False,
+    no_photos: bool = False,
+    no_forwards: bool = False,
+    **kwargs: Any
+) -> FunctionType:
+    """Watcher decorator with filtering options
+    
+    Parameters:
+    only_messages (`bool`): Only process text messages (default: True)
+    no_commands (`bool`): Skip messages that are commands (default: False)
+    no_stickers (`bool`): Skip sticker messages (default: False)
+    no_docs (`bool`): Skip document messages (default: False)
+    no_audios (`bool`): Skip audio messages (default: False)
+    no_videos (`bool`): Skip video messages (default: False)
+    no_photos (`bool`): Skip photo messages (default: False)
+    no_forwards (`bool`): Skip forwarded messages (default: False)
+    """
+    def decorator(func):
+        func.is_watcher = True
+        func.watcher_only_messages = only_messages
+        func.watcher_no_commands = no_commands
+        func.watcher_no_stickers = no_stickers
+        func.watcher_no_docs = no_docs
+        func.watcher_no_audios = no_audios
+        func.watcher_no_videos = no_videos
+        func.watcher_no_photos = no_photos
+        func.watcher_no_forwards = no_forwards
+        return func
+    return decorator
+
+
 def get_watcher_handlers(instance: Module) -> List[FunctionType]:
-    """Returns a list of watchers"""
-    return [
-        getattr(instance, method_name)
-        for method_name in dir(instance)
-        if (
-            callable(getattr(instance, method_name))
-            and method_name.startswith("watcher")
-        )
-    ]
+    """Returns a list of watchers bound to the instance"""
+    watchers = []
+    
+    for attr_name in dir(instance):
+        module_name = getattr(instance, "name", "unknown")
+        if attr_name.startswith("_"):
+            continue
+        
+        try:
+            attr = getattr(instance, attr_name, None)
+            if not attr or not callable(attr):
+                continue
+            
+            is_watcher_by_name = "watcher" in attr_name.lower()
+            
+            func_for_check = attr
+            if inspect.ismethod(attr):
+                func_for_check = getattr(attr, "__func__", attr)
+            elif hasattr(attr, "__call__") and not inspect.isfunction(attr):
+                func_for_check = getattr(attr, "__func__", attr)
+            
+            is_watcher_decorated = getattr(func_for_check, "is_watcher", False)
+            
+            if is_watcher_by_name or is_watcher_decorated:
+                if inspect.ismethod(attr):
+                    watchers.append(attr)
+                elif inspect.isfunction(attr):
+                    import types
+                    bound_method = types.MethodType(attr, instance)
+                    watchers.append(bound_method)
+                elif hasattr(attr, "__call__"):
+                    watchers.append(attr)
+        except Exception:
+            continue
+    
+    return watchers
 
 
 def get_message_handlers(instance: Module) -> Dict[str, FunctionType]:
@@ -232,7 +355,9 @@ def iter_attrs(obj: typing.Any, /) -> typing.List[typing.Tuple[str, typing.Any]]
     return ((attr, getattr(obj, attr)) for attr in dir(obj))
 
 
-def command(aliases: list = None, hidden: bool = False):
+def command(aliases: list = None, hidden: bool = False, **kwargs: Any) -> FunctionType:
+    """Command decorator with support for documentation parameters"""
+
     def decorator(func):
         if hidden:
             func.is_hidden = True
@@ -245,6 +370,10 @@ def command(aliases: list = None, hidden: bool = False):
 
             database.db.set(__name__, "aliases", list_)
 
+        for key, value in kwargs.items():
+            if key.endswith("_doc"):
+                setattr(func, key, value)
+
         func.is_command = True
         return func
 
@@ -256,6 +385,181 @@ def on_bot(custom_filters):
     return lambda func: setattr(func, "_filters", custom_filters) or func
 
 
+class ConfigValue:
+    """Config value descriptor for ModuleConfig compatibility"""
+
+    def __init__(self, key, default, doc=None, validator=None):
+        self.key = key
+        self.default = default
+        self.doc = doc
+        self.validator = validator
+
+    def validate(self, value):
+        """Validate value using validator if present"""
+        if self.validator:
+            return self.validator.validate(value)
+        return value
+
+
+class Validators:
+    """Validators for ConfigValue"""
+
+    class Integer:
+        def __init__(self, minimum=None, maximum=None):
+            self.minimum = minimum
+            self.maximum = maximum
+
+        def validate(self, value):
+            try:
+                value = int(value)
+                if self.minimum is not None and value < self.minimum:
+                    raise ValueError(f"Value must be >= {self.minimum}")
+                if self.maximum is not None and value > self.maximum:
+                    raise ValueError(f"Value must be <= {self.maximum}")
+                return value
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid integer value: {e}")
+
+    class RegExp:
+        def __init__(self, pattern):
+            self.pattern = re.compile(pattern)
+
+        def validate(self, value):
+            if not self.pattern.match(str(value)):
+                raise ValueError(
+                    f"Value does not match pattern: {self.pattern.pattern}"
+                )
+            return value
+
+    class Series:
+        def __init__(self, *args, validator=None):
+            if validator is not None:
+                self.validators = (validator,)
+            else:
+                self.validators = args
+
+        def validate(self, value):
+            if not isinstance(value, (list, tuple)):
+                if isinstance(value, str):
+                    try:
+                        import json
+                        value = json.loads(value)
+
+                        if not isinstance(value, list):
+                            value = [value]
+                    except (json.JSONDecodeError, ValueError):
+                        value = [v.strip() for v in value.split(",") if v.strip()]
+                else:
+                    value = [str(value)] if value is not None else []
+            
+            if isinstance(value, tuple):
+                value = list(value)
+            
+            if self.validators:
+                validated_list = []
+                for v in value:
+                    try:
+                        for validator in self.validators:
+                            v = validator.validate(v)
+                        validated_list.append(str(v))
+                    except (ValueError, TypeError):
+                        validated_list.append(str(v))
+                value = validated_list
+            else:
+                value = [str(v) for v in value]
+            
+            return value
+
+    class Boolean:
+        def validate(self, value):
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() in ("true", "1", "yes", "on")
+            return bool(value)
+
+    class NoneType:
+        def validate(self, value):
+            if value is None:
+                return None
+            raise ValueError("Value must be None")
+
+    class String:
+        def validate(self, value):
+            return str(value)
+
+    class Link:
+        def validate(self, value):
+            value = str(value).strip()
+            if not value:
+                raise ValueError("Link cannot be empty")
+            
+            
+            original_value = value
+            if not value.startswith(('http://', 'https://')):
+                value = 'https://' + value
+            
+            parsed = urlparse(value)
+            
+            if parsed.scheme not in ('http', 'https'):
+                raise ValueError(f"Invalid link scheme. Only http:// and https:// are allowed: {original_value}")
+            
+            if not parsed.netloc:
+                raise ValueError(f"Invalid link format. Missing domain: {original_value}")
+            
+            netloc = parsed.netloc.split(':')[0]
+            is_valid_domain = (
+                '.' in netloc or
+                netloc.lower() == 'localhost' or
+                re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', netloc)
+            )
+            
+            if not is_valid_domain:
+                raise ValueError(f"Invalid link format. Invalid domain: {original_value}")
+            
+            return value
+
+    class Float:
+        def __init__(self, minimum=None, maximum=None):
+            self.minimum = minimum
+            self.maximum = maximum
+
+        def validate(self, value):
+            try:
+                value = float(value)
+                if self.minimum is not None and value < self.minimum:
+                    raise ValueError(f"Value must be >= {self.minimum}")
+                if self.maximum is not None and value > self.maximum:
+                    raise ValueError(f"Value must be <= {self.maximum}")
+                return value
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid float value: {e}")
+
+    class Union:
+        def __init__(self, *validators, validator=None):
+            if validator is not None:
+                self.validators = (validator,)
+            else:
+                self.validators = validators
+
+        def validate(self, value):
+            if not self.validators:
+                return value
+            
+            errors = []
+            for validator in self.validators:
+                try:
+                    return validator.validate(value)
+                except ValueError as e:
+                    errors.append(str(e))
+                    continue
+            
+            raise ValueError(f"Value does not match any of the validators: {', '.join(errors)}")
+
+
+validators = Validators()
+
+
 class ModuleConfig(dict):
     """Like a dict but contains doc for each key"""
 
@@ -264,34 +568,46 @@ class ModuleConfig(dict):
         values = []
         defaults = []
         docstrings = []
-        for i, entry in enumerate(entries):
-            if i % 3 == 0:
-                keys.append(entry)
-            elif i % 3 == 1:
-                values.append(entry)
-                defaults.append(entry)
-            else:
-                docstrings.append(entry)
+        self._config_values = {}
 
-        super().__init__(zip(keys, values))
-        self._docstrings = dict(zip(keys, docstrings))
-        self._defaults = dict(zip(keys, defaults))
+        if entries and isinstance(entries[0], ConfigValue):
+            for entry in entries:
+                if isinstance(entry, ConfigValue):
+                    keys.append(entry.key)
+                    defaults.append(entry.default)
+                    values.append(entry.default)
+                    docstrings.append(entry.doc)
+                    self._config_values[entry.key] = entry
+        else:
+            for i, entry in enumerate(entries):
+                if i % 3 == 0:
+                    keys.append(entry)
+                elif i % 3 == 1:
+                    values.append(entry)
+                    defaults.append(entry)
+                else:
+                    docstrings.append(entry)
+
+        super().__init__(zip(keys, values) if keys else {})
+        self._docstrings = dict(zip(keys, docstrings)) if keys else {}
+        self._defaults = dict(zip(keys, defaults)) if keys else {}
 
     def getdoc(self, key, message=None):
         """Get the documentation by key"""
-        ret = self._docstrings[key]
+        ret = self._docstrings.get(key)
+        if ret is None:
+            return "No description"
         if callable(ret):
             try:
                 ret = ret(message)
-            except TypeError:  # Invalid number of params
-                logging.debug("%s using legacy doc trnsl", key)
+            except TypeError:
                 ret = ret()
 
         return ret or "No description"
 
     def getdef(self, key):
         """Get the default value by key"""
-        return self._defaults[key]
+        return self._defaults.get(key)
 
 
 class ModulesManager:
@@ -318,6 +634,7 @@ class ModulesManager:
 
         self.dp: dispatcher.DispatcherManager = None
         self.bot_manager: bot.BotManager = None
+        self.telethon_dp = None
 
         self.root_module: Module = None
         self.cmodules = [
@@ -336,6 +653,8 @@ class ModulesManager:
             "ShizuSettings",
             "ShizuOwner",
             "ShizuOnload",
+            "ShizuUpdateNotifier",
+            "ShizuPermissions",
         ]
         self.hidden = []
         app.db = db
@@ -348,6 +667,9 @@ class ModulesManager:
             r"from \.\.inline\b",
             r'"telethon"',
             r"'telethon'",
+            r"from telethon\.tl\.patched",
+            r"from telethon\.tl\.types import Message",
+            r"from telethon\.tl\.types import.*Message",
         ]
 
         return any(
@@ -364,18 +686,26 @@ class ModulesManager:
         await self.bot_manager.load()
 
         extrapatchs.MessageMagic(types.Message, app)
+        
+        if utils.is_tl_enabled() and hasattr(app, "tl") and app.tl != "Not enabled":
+            from shizu.telethon_dispatcher import TelethonDispatcherManager
+            await app.tl.connect() if not app.tl.is_connected() else None
+            self.telethon_dp = TelethonDispatcherManager(app.tl, self)
+            await self.telethon_dp.load()
 
         try:
             app.inline_bot = self.bot_manager.bot
             app.bot = self.bot_manager.bot
-        except Exception as error:
-            logging.exception(f"Error loading bot: {error}")
+        except Exception:
+            pass
 
-        for local_module in filter(
+        modules_list = sorted(filter(
             lambda file_name: file_name.endswith(".py")
             and not file_name.startswith("_"),
             os.listdir(self._local_modules_path),
-        ):
+        ))
+        
+        for local_module in modules_list:
             module_name = f"shizu.modules.{local_module[:-3]}"
             file_path = os.path.join(
                 os.path.abspath("."), self._local_modules_path, local_module
@@ -387,6 +717,9 @@ class ModulesManager:
                 is_telethon = self._is_telethon_module(source_code)
 
                 if is_telethon:
+                    if not utils.is_tl_enabled():
+                        continue
+
                     transformed_code = inter.transform(source_code)
 
                     temp_dir = os.path.join(os.path.dirname(file_path), "__temp__")
@@ -396,20 +729,40 @@ class ModulesManager:
                     with open(temp_file, "w", encoding="utf-8") as f:
                         f.write(transformed_code)
 
-                    instance = self.register_instance(module_name, temp_file)
+                    instance = self.register_instance(
+                        module_name, temp_file, is_telethon=True
+                    )
 
-                    if instance and is_telethon:
-                        instance.m__telethon = True
+                    if instance:
+                        if (
+                            utils.is_tl_enabled()
+                            and hasattr(self._app, "tl")
+                            and self._app.tl != "Not enabled"
+                        ):
+                            await self._register_telethon_handlers(instance)
+                        
+                        try:
+                            if not hasattr(instance, "_client") or instance._client is None:
+                                instance._client = self._app.tl
+                                instance.client = self._app.tl
+                                instance.tl = self._app.tl
+                            await self.send_on_load(instance, Translator(self._app, self._db))
+                            self.config_reconfigure(instance, self._db)
+                        except Exception:
+                            pass
 
                     try:
                         os.remove(temp_file)
                     except:
                         pass
                 else:
-                    self.register_instance(module_name, file_path)
+                    instance = self.register_instance(module_name, file_path)
+                    if instance and hasattr(instance, "m__telethon") and instance.m__telethon:
+                        if utils.is_tl_enabled() and hasattr(self._app, "tl") and self._app.tl != "Not enabled":
+                            await self._register_telethon_handlers(instance)
 
-            except Exception as error:
-                logging.exception(f"Error loading local module {module_name}: {error}")
+            except Exception:
+                pass
 
         await self.send_on_loads()
 
@@ -417,17 +770,20 @@ class ModulesManager:
             try:
                 r = await utils.run_sync(requests.get, custom_module)
                 await self.load_module(r.text, r.url)
-            except requests.exceptions.RequestException as error:
-                logging.exception(
-                    f"Error while downloading custom module {custom_module}: {error}"
-                )
+            except requests.exceptions.RequestException:
+                pass
 
-        logging.info("Dialogs loaded")
-        logging.info("Modules loaded")
+        if self.telethon_dp:
+            await self.telethon_dp.load()
+
         return True
 
     def register_instance(
-        self, module_name: str, file_path: str = "", spec: ModuleSpec = None
+        self,
+        module_name: str,
+        file_path: str = "",
+        spec: ModuleSpec = None,
+        is_telethon: bool = False,
     ) -> Module:
         """Registers the module"""
         spec = spec or spec_from_file_location(module_name, file_path)
@@ -451,48 +807,247 @@ class ModulesManager:
             value.db = self._db
             value.all_modules = self
             value.bot = self.bot_manager
-
             value._bot = self.bot_manager.bot
             value.inline_bot = self.bot_manager.bot
+            value.inline = self.bot_manager
             value.me = self.me
             value.tg_id = self.me.id
+            value._tg_id = self.me.id
             value.app = self._app
             value._app = self._app
+            value.strings = Strings(value, Translator(self._app, self._db), self._db)
             value.userbot = "Shizu"
             value.cmodules = self.cmodules
             value.get_mod = self.get_module
             value.prefix = self._db.get("shizu.loader", "prefixes", ["."])
             value.lookup = self._lookup
 
+            if (
+                utils.is_tl_enabled()
+                and hasattr(self._app, "tl")
+                and self._app.tl != "Not enabled"
+            ):
+                value.client = self._app.tl
+                value._client = self._app.tl
+                value.tl = self._app.tl
+
             instance = value()
+
+            if is_telethon:
+                instance.m__telethon = True
 
             instance.reconfmod = self.config_reconfigure
             instance.shizu = True
             instance.hidden = self.hidden
+            instance.inline = self.bot_manager
+
+            if (
+                utils.is_tl_enabled()
+                and hasattr(self._app, "tl")
+                and self._app.tl != "Not enabled"
+            ):
+                instance.client = self._app.tl
+                instance._client = self._app.tl
+                instance.tl = self._app.tl
 
             instance.command_handlers = get_command_handlers(instance)
             instance.watcher_handlers = get_watcher_handlers(instance)
-
             instance.message_handlers = get_message_handlers(instance)
             instance.callback_handlers = get_callback_handlers(instance)
             instance.inline_handlers = get_inline_handlers(instance)
 
-            self.modules.append(instance)
-            self.command_handlers.update(instance.command_handlers)
-            self.watcher_handlers.extend(instance.watcher_handlers)
+            explicitly_pyrogram = hasattr(instance, "m__telethon") and instance.m__telethon is False
+            
+            if instance.name in self.cmodules:
+                instance.m__telethon = False
+            elif explicitly_pyrogram:
+                instance.m__telethon = False
+            elif not hasattr(instance, "m__telethon") or instance.m__telethon is not False:
+                is_telethon_detected = False
+                for handler in instance.command_handlers.values():
+                    try:
+                        if hasattr(handler, "__func__"):
+                            sig = inspect.signature(handler.__func__)
+                            params = list(sig.parameters.keys())[1:]
+                        else:
+                            sig = inspect.signature(handler)
+                            params = list(sig.parameters.keys())
+                        if "message" in params and "app" not in params:
+                            is_telethon_detected = True
+                            break
+                    except (ValueError, TypeError, AttributeError):
+                        continue
+                
+                if not is_telethon_detected:
+                    for watcher in instance.watcher_handlers:
+                        try:
+                            if hasattr(watcher, "__func__"):
+                                sig = inspect.signature(watcher.__func__)
+                                params = list(sig.parameters.keys())[1:]
+                                param_annotations = {
+                                    name: sig.parameters[name].annotation 
+                                    for name in params 
+                                    if sig.parameters[name].annotation != inspect.Parameter.empty
+                                }
+                            else:
+                                sig = inspect.signature(watcher)
+                                params = list(sig.parameters.keys())
+                                param_annotations = {
+                                    name: sig.parameters[name].annotation 
+                                    for name in params 
+                                    if sig.parameters[name].annotation != inspect.Parameter.empty
+                                }
+                            
+                            if len(params) >= 1 and "message" in params and "app" not in params:
+                                if "message" in param_annotations:
+                                    annotation = param_annotations["message"]
+                                    annotation_str = str(annotation)
+                                    if "patched" in annotation_str or "telethon.tl" in annotation_str:
+                                        is_telethon_detected = True
+                                        break
+                                else:
+                                    is_telethon_detected = True
+                                    break
+                        except (ValueError, TypeError, AttributeError):
+                            continue
+                
+                if is_telethon_detected:
+                    instance.m__telethon = True
 
-            self.message_handlers.update(instance.message_handlers)
-            self.callback_handlers.update(instance.callback_handlers)
-            self.inline_handlers.update(instance.inline_handlers)
+            self.modules.append(instance)
+
+            is_telethon_module = getattr(instance, "m__telethon", False)
+            if not is_telethon_module:
+                self.command_handlers.update(instance.command_handlers)
+                if instance.watcher_handlers:
+                    self.watcher_handlers.extend(instance.watcher_handlers)
+                self.message_handlers.update(instance.message_handlers)
+                self.callback_handlers.update(instance.callback_handlers)
+                self.inline_handlers.update(instance.inline_handlers)
+            else:
+                self.command_handlers.update(instance.command_handlers)
 
         if not instance:
-            logging.warning(f"Module {module_name} not found")
+            pass
 
         for name, func in instance.command_handlers.copy().items():
             if getattr(func, "is_hidden", ""):
                 self.hidden.append(name)
 
         return instance
+
+    async def _register_telethon_handlers(self, module: Module):
+        if (
+            not utils.is_tl_enabled()
+            or not hasattr(self._app, "tl")
+            or self._app.tl == "Not enabled"
+        ):
+            return
+
+        try:
+            from telethon import events
+        except ImportError:
+            return
+
+        client = self._app.tl
+        
+        if hasattr(client, "is_connected"):
+            if not client.is_connected():
+                try:
+                    await client.connect()
+                except Exception:
+                    pass
+        
+        prefix = self._db.get("shizu.loader", "prefixes", ["."])[0]
+        module._telethon_handlers = []
+
+        def make_command_handler(cmd, handler_func):
+            pattern = re.compile(rf"^{re.escape(prefix)}{re.escape(cmd)}(?:\s|$)")
+            async def telethon_command_handler(event):
+                try:
+                    message = event.message
+                    if not message:
+                        return
+                    
+                    if message.out:
+                        await handler_func(message)
+                        return
+                    
+                    user_id = None
+                    if hasattr(message, 'from_id') and message.from_id:
+                        if hasattr(message.from_id, 'user_id'):
+                            user_id = message.from_id.user_id
+                        else:
+                            user_id = message.from_id
+                    elif hasattr(message, 'sender_id'):
+                        sender_id = message.sender_id
+                        if sender_id:
+                            if hasattr(sender_id, 'user_id'):
+                                user_id = sender_id.user_id
+                            else:
+                                user_id = sender_id
+                    
+                    if not user_id:
+                        return
+                    
+                    db = self._db
+                    
+                    me_id = db.get("shizu.me", "me", None)
+                    if user_id == me_id:
+                        await handler_func(message)
+                        return
+                    
+                    owners = db.get("shizu.me", "owners", [])
+                    owner_status = db.get("shizu.owner", "status", False)
+                    if user_id in owners and owner_status:
+                        await handler_func(message)
+                        return
+                    
+                    perms = db.get("shizu.permissions", "users", {})
+                    user_id_str = str(user_id)
+                    if user_id_str in perms and cmd in perms[user_id_str]:
+                        await handler_func(message)
+                        return
+                    
+                    user_groups = db.get("shizu.commandgroups", "user_groups", {})
+                    if user_id_str in user_groups:
+                        groups = db.get("shizu.commandgroups", "groups", {})
+                        for group_name in user_groups[user_id_str]:
+                            if group_name in groups and cmd in groups[group_name]:
+                                await handler_func(message)
+                                return
+                except Exception:
+                    pass
+            return telethon_command_handler, pattern
+
+        for cmd_name, handler in module.command_handlers.items():
+            handler_func, pattern = make_command_handler(cmd_name, handler)
+            handler_ref = client.add_event_handler(
+                handler_func,
+                events.NewMessage(pattern=pattern)
+            )
+            module._telethon_handlers.append(handler_ref)
+
+    def _unregister_telethon_handlers(self, module: Module):
+        if (
+            not utils.is_tl_enabled()
+            or not hasattr(self._app, "tl")
+            or self._app.tl == "Not enabled"
+        ):
+            return
+
+        if not hasattr(module, "_telethon_handlers"):
+            return
+
+        client = self._app.tl
+        
+        for handler in module._telethon_handlers:
+            try:
+                client.remove_event_handler(handler)
+            except Exception:
+                pass
+        
+        module._telethon_handlers = []
 
     def _lookup(self, modname: str):
         return next(
@@ -513,6 +1068,8 @@ class ModulesManager:
         is_telethon = self._is_telethon_module(original_source)
 
         if is_telethon:
+            if not utils.is_tl_enabled():
+                return "OTL"
             module_source = inter.transform(original_source)
         else:
             module_source = original_source
@@ -523,35 +1080,34 @@ class ModulesManager:
         if match := pattern.search(module_source):
             module_name = f"shizu.modules.{match[2]}"
         else:
-            return logging.error("Module class not found")
+            return False
 
         if match := re.search(r"# ?only: ?(.+)", module_source):
             allowed_accounts = match[1].split(",") if match else []
             if str((await self._app.get_me()).id) not in allowed_accounts:
-                logging.error(
-                    "Module %s is forbidden, because it is not for this account",
-                    module_name,
-                )
                 return "NFA"
 
         if re.search(r"# ?tl-only", module_source) and not utils.is_tl_enabled():
-            logging.error(
-                "You have not enabled telethon, so you can't use module %s",
-                module_name,
-            )
             return "OTL"
         try:
             spec = ModuleSpec(
                 module_name, StringLoader(module_source, origin), origin=origin
             )
 
-            instance = self.register_instance(module_name, spec=spec)
+            instance = self.register_instance(
+                module_name, spec=spec, is_telethon=is_telethon
+            )
 
             if instance and is_telethon:
-                instance.m__telethon = True
+                if (
+                    utils.is_tl_enabled()
+                    and hasattr(self._app, "tl")
+                    and self._app.tl != "Not enabled"
+                ):
+                    await self._register_telethon_handlers(instance)
 
-        except ImportError as error:
-            logging.error(error)
+        except ImportError:
+            pass
 
             if did_requirements:
                 return True
@@ -565,9 +1121,9 @@ class ModulesManager:
                     if x and x[0] not in ("-", "_", ".")
                 ]
             except TypeError:
-                return logging.warn("No packages are specified for installation")
+                return False
 
-            logging.warning(f"Installing Packages: {', '.join(requirements)}...")
+            pass
 
             await self.bot_manager.bot.send_message(
                 self._db.get("shizu.chat", "logs", None),
@@ -586,8 +1142,8 @@ class ModulesManager:
                     ],
                     check=True,
                 )
-            except subprocess.CalledProcessError as error:
-                logging.exception(f"Ошибка при установке пакетов: {error}")
+            except subprocess.CalledProcessError:
+                pass
 
             return await self.load_module(module_source, origin, True)
         except Exception as error:
@@ -603,7 +1159,7 @@ class ModulesManager:
             await self.bot_manager.bot.send_message(
                 self._db.get("shizu.chat", "logs", None), exc, parse_mode="html"
             )
-            return logging.error(f"Error loading the module {origin}: {error}")
+            return False
 
         if not instance:
             return False
@@ -612,8 +1168,8 @@ class ModulesManager:
             await self.send_on_load(instance, Translator(self._app, self._db))
             self.config_reconfigure(instance, self._db)
 
-        except Exception as error:
-            return logging.error(error)
+        except Exception:
+            return False
 
         return instance.name
 
@@ -630,15 +1186,50 @@ class ModulesManager:
             modcfg = db.get(module.name, "__config__", {})
             for conf in module.config.keys():
                 if conf in modcfg.keys():
-                    module.config[conf] = modcfg[conf]
+                    value = modcfg[conf]
+                    if (
+                        hasattr(module.config, "_config_values")
+                        and conf in module.config._config_values
+                    ):
+                        config_value = module.config._config_values[conf]
+                        if config_value.validator:
+                            try:
+                                value = config_value.validator.validate(value)
+                                modcfg[conf] = value
+                                db.set(module.name, "__config__", modcfg)
+                            except (ValueError, TypeError):
+                                value = config_value.default
+                              
+                                modcfg[conf] = value
+                                db.set(module.name, "__config__", modcfg)
+                    module.config[conf] = value
                 else:
                     try:
-                        module.config[conf] = os.environ[f"{module.name}.{conf}"]
+                        value = os.environ[f"{module.name}.{conf}"]
+                        if (
+                            hasattr(module.config, "_config_values")
+                            and conf in module.config._config_values
+                        ):
+                            config_value = module.config._config_values[conf]
+                            if config_value.validator:
+                                try:
+                                    value = config_value.validator.validate(value)
+
+                                    modcfg[conf] = value
+                                    db.set(module.name, "__config__", modcfg)
+                                except ValueError:
+                                    value = config_value.default
+                                    modcfg[conf] = value
+                                    db.set(module.name, "__config__", modcfg)
+                        module.config[conf] = value
                     except KeyError:
                         module.config[conf] = module.config.getdef(conf)
 
     async def send_on_load(self, module: Module, translator: Translator) -> bool:
         """Used to perform the function after loading the module"""
+        if hasattr(module, "_client_ready_called") and module._client_ready_called:
+            return True
+        
         for _, method in iter_attrs(module):
             if hasattr(method, "strings"):
                 method.strings = Strings(method, translator, self._db)
@@ -653,8 +1244,48 @@ class ModulesManager:
 
         try:
             await module.on_load(self._app)
-        except Exception as error:
-            return logging.exception(error)
+        except Exception:
+            logging.exception("on_load failed in module %s", module.name)
+
+        try:
+            if hasattr(module, "client_ready") and callable(module.client_ready):
+                try:
+                    sig = inspect.signature(module.client_ready)
+                    params = list(sig.parameters.keys())
+                    has_client_param = len(params) > 1
+                except (ValueError, TypeError):
+                    has_client_param = False
+
+                if (
+                    getattr(module, "m__telethon", False)
+                    and utils.is_tl_enabled()
+                    and hasattr(self._app, "tl")
+                    and self._app.tl != "Not enabled"
+                ):
+                    if not hasattr(module, "_client") or module._client is None:
+                        module._client = self._app.tl
+                        module.client = self._app.tl
+                        module.tl = self._app.tl
+                    
+                    try:
+                        if hasattr(self._app.tl, "is_connected") and not self._app.tl.is_connected():
+                            await self._app.tl.connect()
+                    except Exception:
+                        pass
+                    
+                    if has_client_param:
+                        await module.client_ready(self._app.tl)
+                    else:
+                        await module.client_ready()
+                else:
+                    if has_client_param:
+                        await module.client_ready(self._app)
+                    else:
+                        await module.client_ready()
+                
+                module._client_ready_called = True
+        except Exception:
+            pass
 
         return True
 
@@ -671,12 +1302,11 @@ class ModulesManager:
             with contextlib.suppress(TypeError):
                 path = inspect.getfile(module.__class__)
 
-                logging.info(f"Removing {path}")
-
                 if os.path.exists(path):
                     os.remove(path)
 
-            if (get_module := inspect.getmodule(module)).__spec__.origin != "<string>":
+            get_module = inspect.getmodule(module)
+            if get_module and hasattr(get_module, "__spec__") and get_module.__spec__ and get_module.__spec__.origin != "<string>":
                 set_modules = set(self._db.get(__name__, "modules", []))
                 self._db.set(
                     "shizu.loader",
@@ -689,13 +1319,27 @@ class ModulesManager:
                     del self.aliases[alias]
                     del self.command_handlers[command]
 
+        is_telethon_module = getattr(module, "m__telethon", False)
+        
+        if is_telethon_module:
+            self._unregister_telethon_handlers(module)
+
+        unload_module_name = getattr(module, "name", None)
+        
         self.modules.remove(module)
-        self.command_handlers = dict(
-            set(self.command_handlers.items()) ^ set(module.command_handlers.items())
-        )
-        self.watcher_handlers = list(
-            set(self.watcher_handlers) ^ set(module.watcher_handlers)
-        )
+        for cmd in module.command_handlers:
+            if cmd in self.command_handlers:
+                del self.command_handlers[cmd]
+        
+        self.watcher_handlers = [
+            w for w in self.watcher_handlers 
+            if not (
+                hasattr(w, "__self__") and (
+                    w.__self__ is module or 
+                    (hasattr(w.__self__, "name") and getattr(w.__self__, "name", None) == unload_module_name)
+                )
+            )
+        ]
 
         self.inline_handlers = dict(
             set(self.inline_handlers.items()) ^ set(module.inline_handlers.items())
@@ -704,40 +1348,41 @@ class ModulesManager:
             set(self.callback_handlers.items()) ^ set(module.callback_handlers.items())
         )
 
+        module_module = inspect.getmodule(module)
+        if module_module and hasattr(module_module, '__name__'):
+            sys_module_name = module_module.__name__
+            if sys_module_name in sys.modules:
+                del sys.modules[sys_module_name]
+
         return module.name
 
     def get_module(
-        self, name: str, by_commands_too: bool = False, advanced=False
+        self, name: str, by_commands_too: bool = False, _=None
     ) -> Union[Module, None]:
         name = name.lower()
-        lowercase_names = {module.name.lower() for module in self.modules}
 
-        if name in lowercase_names:
-            return next(
-                module for module in self.modules if module.name.lower() == name
-            )
+        for module in self.modules:
+            if module.name.lower() == name:
+                return module
 
-        if advanced:
-            if description := next(
-                (module for module in self.modules if name in module.__doc__.lower()),
-                None,
-            ):
-                return description
-            elif name_mathing := next(
-                (module for module in self.modules if name in module.name.lower()), None
-            ):
-                return name_mathing
+        for module in self.modules:
+            if module.__doc__ and name in module.__doc__.lower():
+                return module
+
+        for module in self.modules:
+            if name in module.name.lower():
+                return module
 
         if by_commands_too:
-            if matching_commands := [
-                cmd_name
-                for cmd_name in self.command_handlers
-                if name in cmd_name.lower()
-            ]:
-                return self.command_handlers[matching_commands[0]].__self__
+            for cmd_name, handler in self.command_handlers.items():
+                if name in cmd_name.lower():
+                    return handler.__self__
 
         return None
 
 
 current_module = sys.modules[__name__]
 setattr(current_module, "tds", tds)
+setattr(current_module, "ConfigValue", ConfigValue)
+setattr(current_module, "validators", validators)
+setattr(current_module, "watcher", watcher)

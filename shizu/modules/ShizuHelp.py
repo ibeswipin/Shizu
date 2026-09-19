@@ -14,132 +14,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from pyrogram import Client, types
-from .. import loader, utils
+from shizu import loader, utils
 
 
 @loader.module(name="ShizuHelp", author="shizu")
 class Help(loader.Module):
     """[module] - Show help"""
 
-    strings = {
-        "available": "{} <b>{} modules available</b>\n{}",
-        "support": "🧑‍🔬 <b>If you have any questions, suggestions or bug reports, please let us know in our support chat: @shizu_talks</b>",
-        "button": "🗼 Support chat",
-        "info_ub": (
-            "🐙 <b>Shizu-Userbot\n\n"
-            "• Repository: <a href='https://github.com/AmoreForever/Shizu'>GitHub</a>\n"
-            "• Support: <a href='https://t.me/shizu_talks'>Shizu Talks</a>\n"
-            "• Channel: <a href='https://t.me/shizuhub'>Shizu Hub</a>\n"
-            "• Modules: <a href='https://t.me/shizumods'>Shizu Mods</a>\n"
-            "• Developer: <a href='https://t.me/hikamoru'>Hikamoru</a></b>\n\n"
-            "© <b>Shizu-Userbot is licensed under the <a href='https://www.gnu.org/licenses/agpl-3.0.html'>GNU GPLv3</a></b>"
-        ),
-        "core_modules_emoji": "This emoji for core modules",
-        "custom_module_emoji": "This emoji for custom modules",
-    }
-
-    strings_ru = {
-        "available": "{} <b>{} модулей доступно</b>\n{}",
-        "support": "🧑‍🔬 <b>Если у вас есть вопросы, предложения или сообщения об ошибках, сообщите нам в нашем чате поддержки: @shizu_talks</b>",
-        "button": "🗼 Чат поддержки",
-        "info_ub": (
-            "🐙 <b>Shizu-Userbot\n\n"
-            "• Репозиторий: <a href='https://github.com/AmoreForever/Shizu'>GitHub</a>\n"
-            "• Поддержка: <a href='https://t.me/shizu_talks'>Shizu Talks</a>\n"
-            "• Канал: <a href='https://t.me/shizuhub'>Shizu Hub</a>\n"
-            "• Модули: <a href='https://t.me/shizumods'>Shizu Mods</a>\n"
-            "• Разработчик: <a href='https://t.me/hikamoru'>Hikamoru</a></b>\n\n"
-            "© <b>Shizu-Userbot распространяется под лицензией <a href='https://www.gnu.org/licenses/agpl-3.0.html'>GNU GPLv3</a></b>"
-        ),
-        "core_modules_emoji": "Этот emoji для встроенных модулей",
-        "custom_module_emoji": "Этот emoji для кастом модулей",
-    }
-
-    strings_uz = {
-        "available": "{} <b>{} modullar mavjud</b>\n{}",
-        "support": "🧑‍🔬 <b>Savollaringiz, takliflaringiz yoki xatolaringiz bo'lsa, iltimos, bizga yordam beruvchi chatga xabar bering: @shizu_talks</b>",
-        "button": "🗼 Yordam chati",
-        "info_ub": (
-            "🐙 <b>Shizu-Userbot\n\n"
-            "• Repository: <a href='https://github.com/AmoreForever/Shizu'>GitHub</a>\n"
-            "• Yordam: <a href='https://t.me/shizu_talks'>Shizu Talks</a>\n"
-            "• Kanal: <a href='https://t.me/shizuhub'>Shizu Hub</a>\n"
-            "• Modullar: <a href='https://t.me/shizumods'>Shizu Mods</a>\n"
-            "• Yaratuvchi: <a href='https://t.me/hikamoru'>Hikamoru</a></b>\n\n"
-            "© <b>Shizu-Userbot <a href='https://www.gnu.org/licenses/agpl-3.0.html'>GNU GPLv3</a> litsenziyasi ostida tarqatilgan</b>"
-        ),
-        "core_modules_emoji": "Bu ichki modullar uchun emoji",
-        "custom_module_emoji": "Bu maxsus modullar uchun emoji",
-    }
-
-    strings_jp = {
-        "available": "{} <b>利用可能な {} のモジュールがあります</b>\n{}",
-        "support": "🧑‍🔬 <b>質問、提案、バグ報告がある場合は、サポートチャットでお知らせください: @shizu_talks</b>",
-        "button": "🗼 サポートチャット",
-        "info_ub": (
-            "🐙 <b>Shizu-Userbot\n\n"
-            "• リポジトリ: <a href='https://github.com/AmoreForever/Shizu'>GitHub</a>\n"
-            "• サポート: <a href='https://t.me/shizu_talks'>Shizu Talks</a>\n"
-            "• チャンネル: <a href='https://t.me/shizuhub'>Shizu Hub</a>\n"
-            "• モジュール: <a href='https://t.me/shizumods'>Shizu Mods</a>\n"
-            "• 開発者: <a href='https://t.me/hikamoru'>Hikamoru</a></b>\n\n"
-            "© <b>Shizu-Userbot は <a href='https://www.gnu.org/licenses/agpl-3.0.html'>GNU GPLv3</a> ライセンスの下で配布されています</b>"
-        ),
-        "core_modules_emoji": "この絵文字はコアモジュール用です",
-        "custom_module_emoji": "この絵文字はカスタムモジュール用です",
-    }
-
-    strings_ua = {
-        "available": "{} <b>{} модулів доступно</b>\n{}",
-        "support": "🧑‍🔬 <b>Якщо у вас є питання, пропозиції або повідомлення про помилки, повідомте нам у нашому чаті підтримки: @shizu_talks</b>",
-        "button": "🗼 Чат підтримки",
-        "info_ub": (
-            "🐙 <b>Shizu-Userbot\n\n"
-            "• Репозиторій: <a href='https://github.com/AmoreForever/Shizu'>GitHub</a>\n"
-            "• Підтримка: <a href='https://t.me/shizu_talks'>Shizu Talks</a>\n"
-            "• Канал: <a href='https://t.me/shizuhub'>Shizu Hub</a>\n"
-            "• Модулі: <a href='https://t.me/shizumods'>Shizu Mods</a>\n"
-            "• Розробник: <a href='https://t.me/hikamoru'>Hikamoru</a></b>\n\n"
-            "© <b>Shizu-Userbot поширюється під ліцензією <a href='https://www.gnu.org/licenses/agpl-3.0.html'>GNU GPLv3</a></b>"
-        ),
-        "core_modules_emoji": "Цей емодзі для ядерних модулів",
-        "custom_module_emoji": "Цей емодзі для користувацьких модулів",
-    }
-
-    strings_kz = {
-        "available": "{} <b>{} модуль қолжетімді</b>\n{}",
-        "support": "🧑‍🔬 <b>Сұрақтарыңыз, ұсыныстарыңыз немесе қателер туралы хабарласу үшін, біздің қолдау құрамасында хабарласыңыз: @shizu_talks</b>",
-        "button": "🗼 Қолдау құрамасы",
-        "info_ub": (
-            "🐙 <b>Shizu-Userbot\n\n"
-            "• Repository: <a href='https://github.com/AmoreForever/Shizu'>GitHub</a>\n"
-            "• Қолдау: <a href='https://t.me/shizu_talks'>Shizu Talks</a>\n"
-            "• Канал: <a href='https://t.me/shizuhub'>Shizu Hub</a>\n"
-            "• Модульдер: <a href='https://t.me/shizumods'>Shizu Mods</a>\n"
-            "• Дамытушы: <a href='https://t.me/hikamoru'>Hikamoru</a></b>\n\n"
-            "© <b>Shizu-Userbot <a href='https://www.gnu.org/licenses/agpl-3.0.html'>GNU GPLv3</a> лицензиясы бойынша жарияланады</b>"
-        ),
-        "core_modules_emoji": "Бұл жүйелік модульдер үшін емоджи",
-        "custom_module_emoji": "Бұл қосымша модульдер үшін емоджи",
-    }
-
-    strings_kr = {
-        "available": "{} <b>{} 모듈 사용 가능</b>\n{}",
-        "support": "🧑‍🔬 <b>질문, 제안 또는 버그 보고가 있으면 지원 채팅에서 알려주세요: @shizu_talks</b>",
-        "button": "🗼 지원 채팅",
-        "info_ub": (
-            "🐙 <b>Shizu-Userbot\n\n"
-            "• 저장소: <a href='https://github.com/AmoreForever/Shizu'>GitHub</a>\n"
-            "• 지원: <a href='https://t.me/shizu_talks'>Shizu Talks</a>\n"
-            "• 채널: <a href='https://t.me/shizuhub'>Shizu Hub</a>\n"
-            "• 모듈: <a href='https://t.me/shizumods'>Shizu Mods</a>\n"
-            "• 개발자: <a href='https://t.me/hikamoru'>Hikamoru</a></b>\n\n"
-            "© <b>Shizu-Userbot은 <a href='https://www.gnu.org/licenses/agpl-3.0.html'>GNU GPLv3</a> 라이선스 하에 배포됩니다</b>"
-        ),
-        "core_modules_emoji": "이 이모지는 코어 모듈용입니다",
-        "custom_module_emoji": "이 이모지는 사용자 정의 모듈용입니다",
-    }
+    strings = {}
 
     def __init__(self):
         self.config = loader.ModuleConfig(
@@ -152,12 +34,68 @@ class Help(loader.Module):
         )
 
     @loader.command()
-    async def help(self, app: Client, message: types.Message):
-        """Show help"""
+    async def help(self, app=None, message=None):
+        """Show help - <code>.help [module]</code> or <code>.help search &lt;query&gt;</code>"""
+        if message is None:
+            message = app
+            app = None
 
-        args = message.get_args()
-        dop_help = "<emoji id=5100652175172830068>🔸</emoji>"
+        if hasattr(message, "get_args"):
+            args = message.get_args()
+        elif hasattr(message, "text"):
+            text = message.text or ""
+            parts = text.split(None, 1)
+            args = parts[1] if len(parts) > 1 else ""
+        else:
+            args = ""
+
+        prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
         bot_username = (await self.bot.bot.get_me()).username
+
+        async def send_response(text):
+            return await utils.answer(message, text)
+
+        if args and args.lower().startswith("search "):
+            query = args[7:].strip().lower()
+            if not query:
+                return await send_response(
+                    "❌ <b>Usage:</b> <code>.help search &lt;query&gt;</code>"
+                )
+
+            results = []
+            for module in self.all_modules.modules:
+                if query in module.name.lower():
+                    cmd_count = len(
+                        [c for c in module.command_handlers if c not in self.hidden]
+                    )
+                    if cmd_count > 0:
+                        results.append(
+                            f"• <b>{module.name}</b> <i>({cmd_count} commands)</i>"
+                        )
+
+                for command in module.command_handlers:
+                    if command not in self.hidden and query in command.lower():
+                        doc = (
+                            module.command_handlers[command].__doc__ or "No description"
+                        )
+                        results.append(
+                            f"• <code>{prefix}{command}</code> - <b>{module.name}</b>\n"
+                            f"  └ {doc[:60]}{'...' if len(doc) > 60 else ''}"
+                        )
+
+            if not results:
+                return await send_response(
+                    f"🔍 <b>No results found for:</b> <code>{query}</code>"
+                )
+
+            result_text = (
+                f"🔍 <b>Search Results:</b> <code>{query}</code>\n\n"
+                + "\n".join(results[:15])
+            )
+            if len(results) > 15:
+                result_text += f"\n\n... and {len(results) - 15} more results"
+
+            return await send_response(result_text)
 
         sorted_modules = sorted(
             self.all_modules.modules,
@@ -185,7 +123,7 @@ class Help(loader.Module):
                 )
 
                 if commands or inline:
-                    if hasattr(module, 'm__telethon') and module.m__telethon:
+                    if hasattr(module, "m__telethon") and module.m__telethon:
                         module_emoji = "🪢"
                     elif module.name in self.cmodules:
                         module_emoji = self.config["core_modules"]
@@ -201,18 +139,18 @@ class Help(loader.Module):
 
             help_emoji = "<emoji id=6334457642064283339>🐙</emoji>"
 
-            return await message.answer(
+            return await send_response(
                 self.strings("available").format(
                     help_emoji, len(self.all_modules.modules) - 1, text
                 )
             )
 
         if not (module := self.all_modules.get_module(args.lower(), True, True)):
-            return await message.answer(
+            return await send_response(
                 "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
             )
 
-        prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
+        dop_help = "<emoji id=5100652175172830068>🔸</emoji>"
         command_descriptions = "\n".join(
             f"{dop_help} <code>{prefix + command}</code> - {module.command_handlers[command].__doc__ or 'No description'}"
             for command in module.command_handlers
@@ -228,25 +166,30 @@ class Help(loader.Module):
             f" {module.__doc__ or 'No description'}\n\n"
         )
 
-        return await message.answer(
+        return await send_response(
             header + command_descriptions + "\n" + inline_descriptions
         )
 
     @loader.command()
-    async def support(self, app, message):
+    async def support(self, app=None, message=None):
         """Support"""
-        await message.answer(
+        if message is None:
+            message = app
+        await utils.answer(
+            message,
             self.strings("support"),
             reply_markup=[
                 [{"text": self.strings("button"), "url": "https://t.me/shizu_talks"}]
             ],
-            prev=True,
         )
 
     @loader.command()
-    async def ubinfo(self, app, message):
+    async def ubinfo(self, app=None, message=None):
         """Info about Shizu-Userbot"""
-        await message.answer(
+        if message is None:
+            message = app
+        await utils.answer(
+            message,
             self.strings("info_ub"),
             disable_web_page_preview=True,
         )
