@@ -283,6 +283,11 @@ class Telegramhandler(logging.Handler):
             and self.msgs
             and self.chat
         ):
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return
+
             asyncio.ensure_future(self.send_logs(self.msgs))
 
             self.last_log_time = current_time

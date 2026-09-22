@@ -791,3 +791,95 @@ def get_chat_id(message: typing.Union[Message, Any]) -> int:
 def available_branches() -> List[str]:
     """Returns a list of available branches"""
     return [head.name.split("/")[-1] for head in git.Repo().heads]
+
+
+def render_table(rows, header=None) -> str:
+    grid = [[str(c) for c in row] for row in rows]
+    if header is not None:
+        grid.insert(0, [str(c) for c in header])
+
+    if not grid:
+        return "<pre></pre>"
+
+    ncols = max(len(row) for row in grid)
+    grid = [row + [""] * (ncols - len(row)) for row in grid]
+    widths = [max(len(row[i]) for row in grid) for i in range(ncols)]
+
+    lines = [
+        "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip()
+        for row in grid
+    ]
+    if header is not None:
+        lines.insert(1, "  ".join("-" * widths[i] for i in range(ncols)))
+
+    return f"<pre>{escape_html(chr(10).join(lines))}</pre>"
+
+
+def _rich_table_payload(rows, header=None, title=None) -> dict:
+    """Build an InputRichMessage payload for Telegram Bot API 10.2+."""
+    grid = [[str(cell) for cell in row] for row in rows]
+    if header is not None:
+        grid.insert(0, [str(cell) for cell in header])
+
+    if not grid:
+        raise ValueError("A rich table must contain at least one row")
+
+    column_count = max(len(row) for row in grid)
+    if column_count > 20:
+        raise ValueError("Telegram rich tables support at most 20 columns")
+
+    grid = [row + [""] * (column_count - len(row)) for row in grid]
+    cells = []
+    for row_index, row in enumerate(grid):
+        is_header = header is not None and row_index == 0
+        cells.append(
+            [
+                {
+                    "text": cell,
+                    **({"is_header": True} if is_header else {}),
+                }
+                for cell in row
+            ]
+        )
+
+    blocks = []
+    if title:
+        blocks.append({"type": "heading", "text": str(title), "size": 3})
+    blocks.append(
+        {
+            "type": "table",
+            "cells": cells,
+            "is_bordered": True,
+            "is_striped": True,
+            "is_compact": True,
+        }
+    )
+    return {"blocks": blocks}
+
+
+async def _rich_table(message, rows, header, title, fallback_text):
+    inline = getattr(message._client, "_inline", None)
+    if inline is None or not hasattr(inline, "form"):
+        raise RuntimeError("Inline bot is unavailable")
+
+    result = await inline.form(
+        text=fallback_text,
+        message=message,
+        rich_message=_rich_table_payload(rows, header, title),
+    )
+    if result is False:
+        raise RuntimeError("Could not send a rich table through the inline bot")
+    return result
+
+
+async def send_table(message, rows, header=None, title=None):
+    text = render_table(rows, header)
+    if title:
+        text = f"<b>{escape_html(title)}</b>\n{text}"
+
+    try:
+        return await _rich_table(message, rows, header, title, text)
+    except Exception:
+        logger.debug("Could not send rich table; using preformatted text", exc_info=True)
+
+    return await answer(message, text)
