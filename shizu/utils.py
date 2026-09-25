@@ -523,6 +523,15 @@ async def answer(
         reply = getattr(message, "reply_to_message", None)
         reply_id = reply.id if reply else None
 
+    if "disable_web_page_preview" in kwargs:
+        disabled = kwargs.pop("disable_web_page_preview")
+        if is_telethon:
+            kwargs["link_preview"] = not disabled
+        else:
+            kwargs["link_preview_options"] = types.LinkPreviewOptions(
+                is_disabled=disabled
+            )
+
     if doc:
         if is_telethon:
             messages.append(await message.reply(file=response, **kwargs))
