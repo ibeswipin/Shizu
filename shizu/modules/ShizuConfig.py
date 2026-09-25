@@ -154,7 +154,7 @@ class ShizuConfig(loader.Module):
                 self.db.save()
 
         await call.edit(
-            self.strings("option_saved").format(mod, option, query),
+            self.strings("option_saved").format(option, mod, query),
             reply_markup=[
                 [
                     {
@@ -259,7 +259,7 @@ class ShizuConfig(loader.Module):
                 self.db.save()
 
         await call.edit(
-            self.strings("opeion_removed").format(query),
+            self.strings("option_removed").format(query),
             reply_markup=[
                 [
                     {

@@ -14,12 +14,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import contextlib
+import re
 import time
 import logging
 
-from pyrogram import Client
+from pyrogram import Client, enums
 from pyrogram.raw import functions, types as typ
-from pyrogram.errors import MessageIdInvalid, BadRequest
+from pyrogram.errors import (
+    MessageIdInvalid,
+    BadRequest,
+    ChannelInvalid,
+    ChannelPrivate,
+    PeerIdInvalid,
+)
 
 from aiogram.utils.exceptions import ChatNotFound
 
@@ -38,57 +45,77 @@ class ShizuOnload(loader.Module):
             async for _ in app.get_dialogs():
                 pass
 
-        if not self.db.get("shizu.folder", "folder"):
-            logging.info("Trying to create folder")
+        for key in ("logs", "backup"):
+            chat_id = self.db.get("shizu.chat", key)
+            if not chat_id:
+                continue
+            try:
+                await app.resolve_peer(chat_id)
+            except (ChannelInvalid, ChannelPrivate, PeerIdInvalid):
+                logging.warning("Service chat %s (%s) is gone, recreating", key, chat_id)
+                self.db.pop("shizu.chat", key)
+
+        logs_id = self.db.get("shizu.chat", "logs")
+        backup_id = self.db.get("shizu.chat", "backup")
+
+        if not logs_id or not backup_id:
+            logging.info("Trying to create service chats")
             app.me = await app.get_me()
             folder_id = 250
-            logs_id = (
-                await utils.create_chat(
-                    app,
-                    "Shizu-logs",
-                    "📫 Shizu-logs do not delete this group, otherwise bot will be broken",
-                    True,
-                    True,
-                    True,
-                )
-            ).id
 
-            backup_id = (
-                await utils.create_chat(
-                    app,
-                    "Shizu-backup",
-                    "📫 Backup-logs do not delete this group, otherwise bot will be broken",
-                    True,
-                    True,
-                    True,
-                )
-            ).id
+            if not logs_id:
+                logs_id = (
+                    await utils.create_chat(
+                        app,
+                        "Shizu-logs",
+                        "📫 Shizu-logs do not delete this group, otherwise bot will be broken",
+                        True,
+                        True,
+                        True,
+                    )
+                ).id
+                self.db.set("shizu.chat", "logs", logs_id)
 
-            logs = await app.resolve_peer(logs_id)
-            backup = await app.resolve_peer(backup_id)
-
-            await app.set_chat_photo(chat_id=logs_id, photo="assets/logs.jpg")
-            await app.set_chat_photo(chat_id=backup_id, photo="assets/backups.jpg")
+            if not backup_id:
+                backup_id = (
+                    await utils.create_chat(
+                        app,
+                        "Shizu-backup",
+                        "📫 Backup-logs do not delete this group, otherwise bot will be broken",
+                        True,
+                        True,
+                        True,
+                    )
+                ).id
+                self.db.set("shizu.chat", "backup", backup_id)
 
             with contextlib.suppress(Exception):
-                await app.invoke(
-                    functions.messages.UpdateDialogFilter(
-                        id=folder_id,
-                        filter=typ.DialogFilter(
-                            id=folder_id,
-                            title="Shizu",
-                            include_peers=[logs, backup],
-                            pinned_peers=[],
-                            exclude_peers=[],
-                            emoticon="❤️",
-                        ),
-                    )
-                )
+                await app.set_chat_photo(chat_id=logs_id, photo="assets/logs.jpg")
 
-            logging.info("Folder created")
-            self.db.set("shizu.folder", "folder", True)
-            self.db.set("shizu.chat", "logs", logs_id)
-            self.db.set("shizu.chat", "backup", backup_id)
+            with contextlib.suppress(Exception):
+                await app.set_chat_photo(chat_id=backup_id, photo="assets/backups.jpg")
+
+            if not self.db.get("shizu.folder", "folder"):
+                with contextlib.suppress(Exception):
+                    await app.invoke(
+                        functions.messages.UpdateDialogFilter(
+                            id=folder_id,
+                            filter=typ.DialogFilter(
+                                id=folder_id,
+                                title="Shizu",
+                                include_peers=[
+                                    await app.resolve_peer(logs_id),
+                                    await app.resolve_peer(backup_id),
+                                ],
+                                pinned_peers=[],
+                                exclude_peers=[],
+                                emoticon="❤️",
+                            ),
+                        )
+                    )
+                    self.db.set("shizu.folder", "folder", True)
+
+            logging.info("Service chats created")
             utils.restart()
 
         if restart := self.db.get("shizu.updater", "restart"):
@@ -108,33 +135,48 @@ class ShizuOnload(loader.Module):
                 elapsed = round(time.time() - start_time)
                 restarted_text = self.strings("start_u").format(elapsed)
 
-            if restarted_text:
+            if restarted_text and restart.get("bot"):
+                try:
+                    await self._bot.edit_message_text(
+                        re.sub(r"</?emoji[^>]*>", "", restarted_text),
+                        chat_id=restart["chat"],
+                        message_id=restart["id"],
+                        parse_mode="html",
+                    )
+                except Exception:
+                    logging.exception("Could not edit update message in bot chat")
+            elif restarted_text:
                 try:
                     try:
                         await app.edit_message_caption(
                             restart["chat"],
                             restart["id"],
                             caption=restarted_text,
+<<<<<<< HEAD
                             parse_mode="html",
+=======
+                            parse_mode=enums.ParseMode.HTML,
+>>>>>>> 168008eb615eec518461b641667eeaa4ec5feb03
                         )
                     except (BadRequest, MessageIdInvalid):
                         await app.edit_message_text(
                             restart["chat"],
                             restart["id"],
                             restarted_text,
+<<<<<<< HEAD
                             parse_mode="html",
+=======
+                            parse_mode=enums.ParseMode.HTML,
+>>>>>>> 168008eb615eec518461b641667eeaa4ec5feb03
                         )
-                except (MessageIdInvalid, BadRequest):
-                    try:
+                except Exception:
+                    logging.exception("Could not edit restart message, sending a new one")
+                    with contextlib.suppress(Exception):
                         await app.send_message(
                             restart["chat"],
                             restarted_text,
-                            parse_mode="html",
+                            parse_mode=enums.ParseMode.HTML,
                         )
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
 
             self.db.pop("shizu.updater", "restart")
 

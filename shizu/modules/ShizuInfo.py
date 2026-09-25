@@ -58,14 +58,16 @@ class InformationMod(loader.Module):
                 platform=utils.get_platform(),
             )
 
-        return self.strings("text").format(
-            mention=mention,
-            version=".".join(map(str, version.__version__)),
-            prefix=prefix,
-            branch=version.branch,
-            platform=utils.get_platform(),
-            username=username,
+        stats = utils.render_table(
+            [
+                ["Version", ".".join(map(str, version.__version__))],
+                ["Branch", version.branch],
+                ["Platform", utils.get_platform()],
+                ["Prefix", prefix],
+                ["Bot", f"@{username}"],
+            ]
         )
+        return f"🐙 <b>Shizu</b> — {mention}\n{stats}"
 
     @loader.command()
     async def info(self, app: Client, message: types.Message):

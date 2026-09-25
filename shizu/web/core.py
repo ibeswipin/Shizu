@@ -47,6 +47,7 @@ from shizu.web import initial_setup
 class TunnelManager:
     def __init__(self):
         self.url = None
+        self.process = None
 
     async def open_tunnel(self, port):
         ssh_command = f"ssh -o StrictHostKeyChecking=no -R 80:localhost:{port} nokey@localhost.run"
@@ -56,6 +57,7 @@ class TunnelManager:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        self.process = process
 
         url = await self._extract_tunnel_url(process.stdout)
         self.url = url or f"https://localhost:{port}"

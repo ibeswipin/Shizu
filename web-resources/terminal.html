@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,interactive-widget=resizes-content">
+<meta name="robots" content="noindex">
+<title>Shizu Terminal</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #0d1117;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  #t {
+    flex: 1;
+    min-height: 0;
+    padding: 4px 0 0 4px;
+  }
+  #keys {
+    display: none;
+    gap: 6px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    overflow-x: auto;
+    background: #161b22;
+    border-top: 1px solid #30363d;
+    scrollbar-width: none;
+  }
+  #keys::-webkit-scrollbar {
+    display: none;
+  }
+  #keys button {
+    flex: 0 0 auto;
+    min-width: 44px;
+    height: 40px;
+    padding: 0 10px;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    background: #0d1117;
+    color: #e6edf3;
+    font: 15px ui-monospace, SFMono-Regular, Menlo, monospace;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #keys button[aria-pressed="true"] {
+    background: #238636;
+    border-color: #238636;
+  }
+  @media (pointer: coarse) {
+    #keys {
+      display: flex;
+    }
+  }
+</style>
+</head>
+<body>
+<div id="t"></div>
+<div id="keys" role="toolbar" aria-label="Special keys"></div>
+<script>
+  const term = new Terminal({
+    cursorBlink: true,
+    fontSize: innerWidth < 600 ? 12 : 14,
+    theme: {background: "#0d1117"},
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById("t"));
+
+  const ws = new WebSocket(location.origin.replace(/^http/, "ws") + "/ws");
+  ws.binaryType = "arraybuffer";
+
+  const send = (data) => {
+    if (ws.readyState === 1) ws.send(JSON.stringify({input: data}));
+  };
+
+  const resize = () => {
+    fit.fit();
+    if (ws.readyState === 1) ws.send(JSON.stringify({resize: [term.cols, term.rows]}));
+  };
+
+  const vv = window.visualViewport;
+  const layout = () => {
+    if (vv) {
+      document.body.style.height = vv.height + "px";
+      window.scrollTo(0, 0);
+    }
+    resize();
+  };
+  (vv || window).addEventListener("resize", layout);
+
+  const mods = {Ctrl: false, Alt: false};
+  const buttons = {};
+
+  const paint = () => {
+    for (const name in mods) buttons[name].setAttribute("aria-pressed", mods[name]);
+  };
+
+  const withMods = (data) => {
+    if (mods.Ctrl && data.length === 1) {
+      const code = data.toUpperCase().charCodeAt(0);
+      if (code >= 64 && code <= 95) data = String.fromCharCode(code - 64);
+      else if (data === "?") data = "\x7f";
+    }
+    if (mods.Alt) data = "\x1b" + data;
+    if (mods.Ctrl || mods.Alt) {
+      mods.Ctrl = mods.Alt = false;
+      paint();
+    }
+    return data;
+  };
+
+  const arrow = (letter) => () =>
+    (term.modes.applicationCursorKeysMode ? "\x1bO" : "\x1b[") + letter;
+
+  const KEYS = [
+    ["Esc", () => "\x1b"],
+    ["Tab", () => "\t"],
+    ["Ctrl", null],
+    ["Alt", null],
+    ["←", arrow("D")],
+    ["↑", arrow("A")],
+    ["↓", arrow("B")],
+    ["→", arrow("C")],
+    ["|", () => "|"],
+    ["-", () => "-"],
+    ["/", () => "/"],
+    ["~", () => "~"],
+  ];
+
+  const bar = document.getElementById("keys");
+  for (const [label, key] of KEYS) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.tabIndex = -1;
+    button.addEventListener("pointerdown", (e) => e.preventDefault());
+    button.addEventListener("click", () => {
+      if (key) {
+        send(withMods(key()));
+      } else {
+        mods[label] = !mods[label];
+        paint();
+      }
+      term.focus();
+    });
+    if (!key) buttons[label] = button;
+    bar.appendChild(button);
+  }
+  paint();
+
+  ws.onopen = () => {
+    layout();
+    term.focus();
+  };
+  ws.onmessage = (e) => term.write(new Uint8Array(e.data));
+  ws.onclose = () => term.write("\r\n\x1b[31m[session closed]\x1b[0m\r\n");
+  term.onData((data) => send(withMods(data)));
+</script>
+</body>
+</html>

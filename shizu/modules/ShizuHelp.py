@@ -14,6 +14,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import re
+
+from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
+
 from shizu import loader, utils
 
 
@@ -150,25 +154,65 @@ class Help(loader.Module):
                 "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
             )
 
-        dop_help = "<emoji id=5100652175172830068>🔸</emoji>"
-        command_descriptions = "\n".join(
-            f"{dop_help} <code>{prefix + command}</code> - {module.command_handlers[command].__doc__ or 'No description'}"
+        def short(doc):
+            return re.sub(r"<[^>]+>", "", doc or "No description").split("\n")[0][:40]
+
+        rows = [
+            (prefix + command, short(module.command_handlers[command].__doc__))
             for command in module.command_handlers
-        )
-        inline_descriptions = "\n".join(
-            f"{dop_help} <code>@{bot_username} {command}</code> - {module.inline_handlers[command].__doc__ or 'No description'}"
+        ]
+        rows += [
+            (f"@{bot_username} {command}", short(module.inline_handlers[command].__doc__))
             for command in module.inline_handlers
-        )
-        modname = module.name
-        header = (
-            f"<emoji id=6334457642064283339>🐙</emoji> <b>{modname}</b>\n"
-            f"<emoji id=5787544344906959608>ℹ️</emoji>"
-            f" {module.__doc__ or 'No description'}\n\n"
+        ]
+
+        title = f"{module.name} — {short(module.__doc__)}".strip(" —")
+        return await utils.send_table(
+            message, rows, header=["Command", "Description"], title=title
         )
 
-        return await send_response(
-            header + command_descriptions + "\n" + inline_descriptions
-        )
+    async def help_inline_handler(self, app, inline_query, args):
+        """Modules and their commands - help [query]"""
+        prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
+        bot_username = (await self.bot.bot.get_me()).username
+        query = args.lower()
+        results = []
+
+        for module in sorted(
+            self.all_modules.modules,
+            key=lambda mod: (mod.name not in self.cmodules, len(mod.name)),
+        ):
+            commands = [c for c in module.command_handlers if c not in self.hidden]
+            if not commands and not module.inline_handlers:
+                continue
+
+            if query and query not in module.name.lower() and not any(
+                query in c for c in [*commands, *module.inline_handlers]
+            ):
+                continue
+
+            text = f"🐙 <b>{module.name}</b>\nℹ️ {module.__doc__ or 'No description'}\n\n"
+            text += "\n".join(
+                f"▫️ <code>{prefix}{c}</code> - {module.command_handlers[c].__doc__ or 'No description'}"
+                for c in commands
+            )
+            text += "".join(
+                f"\n🤖 <code>@{bot_username} {c}</code> - {f.__doc__ or 'No description'}"
+                for c, f in module.inline_handlers.items()
+            )
+
+            results.append(
+                InlineQueryResultArticle(
+                    id=utils.random_id(),
+                    title=module.name,
+                    description=" | ".join([*commands, *module.inline_handlers])[:100],
+                    input_message_content=InputTextMessageContent(
+                        text[:4096], "HTML", disable_web_page_preview=True
+                    ),
+                )
+            )
+
+        await inline_query.answer(results[:50], cache_time=0)
 
     @loader.command()
     async def support(self, app=None, message=None):
