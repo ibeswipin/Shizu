@@ -346,7 +346,18 @@ def setup_logger(level: Union[str, int], log_file_path: str = "shizu.log"):
 
     logging.basicConfig(handlers=[handler, tg], level=level, force=True)
 
-    logging.getLogger("pyrogram").setLevel(logging.CRITICAL)
+    # Suppress specific Pyrogram warnings
+    class PyrogramFilter(logging.Filter):
+        def filter(self, record):
+            # Suppress "Server resent the older message" warnings
+            if "Server resent the older message" in record.getMessage():
+                return False
+            return True
+    
+    pyrogram_logger = logging.getLogger("pyrogram")
+    pyrogram_logger.setLevel(logging.CRITICAL)
+    pyrogram_logger.addFilter(PyrogramFilter())
+    
     logging.getLogger("aiogram").setLevel(logging.WARNING)
     logging.getLogger("telethon").setLevel(logging.WARNING)
     logging.getLogger("asyncio").setLevel(logging.WARNING)

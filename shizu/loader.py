@@ -202,10 +202,10 @@ def watcher(
     no_videos: bool = False,
     no_photos: bool = False,
     no_forwards: bool = False,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> FunctionType:
     """Watcher decorator with filtering options
-    
+
     Parameters:
     only_messages (`bool`): Only process text messages (default: True)
     no_commands (`bool`): Skip messages that are commands (default: False)
@@ -216,6 +216,7 @@ def watcher(
     no_photos (`bool`): Skip photo messages (default: False)
     no_forwards (`bool`): Skip forwarded messages (default: False)
     """
+
     def decorator(func):
         func.is_watcher = True
         func.watcher_only_messages = only_messages
@@ -227,45 +228,47 @@ def watcher(
         func.watcher_no_photos = no_photos
         func.watcher_no_forwards = no_forwards
         return func
+
     return decorator
 
 
 def get_watcher_handlers(instance: Module) -> List[FunctionType]:
     """Returns a list of watchers bound to the instance"""
     watchers = []
-    
+
     for attr_name in dir(instance):
         module_name = getattr(instance, "name", "unknown")
         if attr_name.startswith("_"):
             continue
-        
+
         try:
             attr = getattr(instance, attr_name, None)
             if not attr or not callable(attr):
                 continue
-            
+
             is_watcher_by_name = "watcher" in attr_name.lower()
-            
+
             func_for_check = attr
             if inspect.ismethod(attr):
                 func_for_check = getattr(attr, "__func__", attr)
             elif hasattr(attr, "__call__") and not inspect.isfunction(attr):
                 func_for_check = getattr(attr, "__func__", attr)
-            
+
             is_watcher_decorated = getattr(func_for_check, "is_watcher", False)
-            
+
             if is_watcher_by_name or is_watcher_decorated:
                 if inspect.ismethod(attr):
                     watchers.append(attr)
                 elif inspect.isfunction(attr):
                     import types
+
                     bound_method = types.MethodType(attr, instance)
                     watchers.append(bound_method)
                 elif hasattr(attr, "__call__"):
                     watchers.append(attr)
         except Exception:
             continue
-    
+
     return watchers
 
 
@@ -442,6 +445,7 @@ class Validators:
                 if isinstance(value, str):
                     try:
                         import json
+
                         value = json.loads(value)
 
                         if not isinstance(value, list):
@@ -450,10 +454,10 @@ class Validators:
                         value = [v.strip() for v in value.split(",") if v.strip()]
                 else:
                     value = [str(value)] if value is not None else []
-            
+
             if isinstance(value, tuple):
                 value = list(value)
-            
+
             if self.validators:
                 validated_list = []
                 for v in value:
@@ -466,7 +470,7 @@ class Validators:
                 value = validated_list
             else:
                 value = [str(v) for v in value]
-            
+
             return value
 
     class Boolean:
@@ -492,30 +496,35 @@ class Validators:
             value = str(value).strip()
             if not value:
                 raise ValueError("Link cannot be empty")
-            
-            
+
             original_value = value
-            if not value.startswith(('http://', 'https://')):
-                value = 'https://' + value
-            
+            if not value.startswith(("http://", "https://")):
+                value = "https://" + value
+
             parsed = urlparse(value)
-            
-            if parsed.scheme not in ('http', 'https'):
-                raise ValueError(f"Invalid link scheme. Only http:// and https:// are allowed: {original_value}")
-            
+
+            if parsed.scheme not in ("http", "https"):
+                raise ValueError(
+                    f"Invalid link scheme. Only http:// and https:// are allowed: {original_value}"
+                )
+
             if not parsed.netloc:
-                raise ValueError(f"Invalid link format. Missing domain: {original_value}")
-            
-            netloc = parsed.netloc.split(':')[0]
+                raise ValueError(
+                    f"Invalid link format. Missing domain: {original_value}"
+                )
+
+            netloc = parsed.netloc.split(":")[0]
             is_valid_domain = (
-                '.' in netloc or
-                netloc.lower() == 'localhost' or
-                re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', netloc)
+                "." in netloc
+                or netloc.lower() == "localhost"
+                or re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", netloc)
             )
-            
+
             if not is_valid_domain:
-                raise ValueError(f"Invalid link format. Invalid domain: {original_value}")
-            
+                raise ValueError(
+                    f"Invalid link format. Invalid domain: {original_value}"
+                )
+
             return value
 
     class Float:
@@ -544,7 +553,7 @@ class Validators:
         def validate(self, value):
             if not self.validators:
                 return value
-            
+
             errors = []
             for validator in self.validators:
                 try:
@@ -552,8 +561,10 @@ class Validators:
                 except ValueError as e:
                     errors.append(str(e))
                     continue
-            
-            raise ValueError(f"Value does not match any of the validators: {', '.join(errors)}")
+
+            raise ValueError(
+                f"Value does not match any of the validators: {', '.join(errors)}"
+            )
 
 
 validators = Validators()
@@ -685,9 +696,10 @@ class ModulesManager:
         await self.bot_manager.load()
 
         extrapatchs.MessageMagic(types.Message, app)
-        
+
         if utils.is_tl_enabled() and hasattr(app, "tl") and app.tl != "Not enabled":
             from shizu.telethon_dispatcher import TelethonDispatcherManager
+
             await app.tl.connect() if not app.tl.is_connected() else None
             self.telethon_dp = TelethonDispatcherManager(app.tl, self)
             await self.telethon_dp.load()
@@ -698,12 +710,14 @@ class ModulesManager:
         except Exception:
             pass
 
-        modules_list = sorted(filter(
-            lambda file_name: file_name.endswith(".py")
-            and not file_name.startswith("_"),
-            os.listdir(self._local_modules_path),
-        ))
-        
+        modules_list = sorted(
+            filter(
+                lambda file_name: file_name.endswith(".py")
+                and not file_name.startswith("_"),
+                os.listdir(self._local_modules_path),
+            )
+        )
+
         for local_module in modules_list:
             module_name = f"shizu.modules.{local_module[:-3]}"
             file_path = os.path.join(
@@ -739,13 +753,18 @@ class ModulesManager:
                             and self._app.tl != "Not enabled"
                         ):
                             await self._register_telethon_handlers(instance)
-                        
+
                         try:
-                            if not hasattr(instance, "_client") or instance._client is None:
+                            if (
+                                not hasattr(instance, "_client")
+                                or instance._client is None
+                            ):
                                 instance._client = self._app.tl
                                 instance.client = self._app.tl
                                 instance.tl = self._app.tl
-                            await self.send_on_load(instance, Translator(self._app, self._db))
+                            await self.send_on_load(
+                                instance, Translator(self._app, self._db)
+                            )
                             self.config_reconfigure(instance, self._db)
                         except Exception:
                             pass
@@ -756,8 +775,16 @@ class ModulesManager:
                         pass
                 else:
                     instance = self.register_instance(module_name, file_path)
-                    if instance and hasattr(instance, "m__telethon") and instance.m__telethon:
-                        if utils.is_tl_enabled() and hasattr(self._app, "tl") and self._app.tl != "Not enabled":
+                    if (
+                        instance
+                        and hasattr(instance, "m__telethon")
+                        and instance.m__telethon
+                    ):
+                        if (
+                            utils.is_tl_enabled()
+                            and hasattr(self._app, "tl")
+                            and self._app.tl != "Not enabled"
+                        ):
                             await self._register_telethon_handlers(instance)
 
             except Exception:
@@ -855,13 +882,18 @@ class ModulesManager:
             instance.callback_handlers = get_callback_handlers(instance)
             instance.inline_handlers = get_inline_handlers(instance)
 
-            explicitly_pyrogram = hasattr(instance, "m__telethon") and instance.m__telethon is False
-            
+            explicitly_pyrogram = (
+                hasattr(instance, "m__telethon") and instance.m__telethon is False
+            )
+
             if instance.name in self.cmodules:
                 instance.m__telethon = False
             elif explicitly_pyrogram:
                 instance.m__telethon = False
-            elif not hasattr(instance, "m__telethon") or instance.m__telethon is not False:
+            elif (
+                not hasattr(instance, "m__telethon")
+                or instance.m__telethon is not False
+            ):
                 is_telethon_detected = False
                 for handler in instance.command_handlers.values():
                     try:
@@ -876,7 +908,7 @@ class ModulesManager:
                             break
                     except (ValueError, TypeError, AttributeError):
                         continue
-                
+
                 if not is_telethon_detected:
                     for watcher in instance.watcher_handlers:
                         try:
@@ -884,24 +916,33 @@ class ModulesManager:
                                 sig = inspect.signature(watcher.__func__)
                                 params = list(sig.parameters.keys())[1:]
                                 param_annotations = {
-                                    name: sig.parameters[name].annotation 
-                                    for name in params 
-                                    if sig.parameters[name].annotation != inspect.Parameter.empty
+                                    name: sig.parameters[name].annotation
+                                    for name in params
+                                    if sig.parameters[name].annotation
+                                    != inspect.Parameter.empty
                                 }
                             else:
                                 sig = inspect.signature(watcher)
                                 params = list(sig.parameters.keys())
                                 param_annotations = {
-                                    name: sig.parameters[name].annotation 
-                                    for name in params 
-                                    if sig.parameters[name].annotation != inspect.Parameter.empty
+                                    name: sig.parameters[name].annotation
+                                    for name in params
+                                    if sig.parameters[name].annotation
+                                    != inspect.Parameter.empty
                                 }
-                            
-                            if len(params) >= 1 and "message" in params and "app" not in params:
+
+                            if (
+                                len(params) >= 1
+                                and "message" in params
+                                and "app" not in params
+                            ):
                                 if "message" in param_annotations:
                                     annotation = param_annotations["message"]
                                     annotation_str = str(annotation)
-                                    if "patched" in annotation_str or "telethon.tl" in annotation_str:
+                                    if (
+                                        "patched" in annotation_str
+                                        or "telethon.tl" in annotation_str
+                                    ):
                                         is_telethon_detected = True
                                         break
                                 else:
@@ -909,7 +950,7 @@ class ModulesManager:
                                     break
                         except (ValueError, TypeError, AttributeError):
                             continue
-                
+
                 if is_telethon_detected:
                     instance.m__telethon = True
 
@@ -949,65 +990,66 @@ class ModulesManager:
             return
 
         client = self._app.tl
-        
+
         if hasattr(client, "is_connected"):
             if not client.is_connected():
                 try:
                     await client.connect()
                 except Exception:
                     pass
-        
+
         prefix = self._db.get("shizu.loader", "prefixes", ["."])[0]
         module._telethon_handlers = []
 
         def make_command_handler(cmd, handler_func):
             pattern = re.compile(rf"^{re.escape(prefix)}{re.escape(cmd)}(?:\s|$)")
+
             async def telethon_command_handler(event):
                 try:
                     message = event.message
                     if not message:
                         return
-                    
+
                     if message.out:
                         await handler_func(message)
                         return
-                    
+
                     user_id = None
-                    if hasattr(message, 'from_id') and message.from_id:
-                        if hasattr(message.from_id, 'user_id'):
+                    if hasattr(message, "from_id") and message.from_id:
+                        if hasattr(message.from_id, "user_id"):
                             user_id = message.from_id.user_id
                         else:
                             user_id = message.from_id
-                    elif hasattr(message, 'sender_id'):
+                    elif hasattr(message, "sender_id"):
                         sender_id = message.sender_id
                         if sender_id:
-                            if hasattr(sender_id, 'user_id'):
+                            if hasattr(sender_id, "user_id"):
                                 user_id = sender_id.user_id
                             else:
                                 user_id = sender_id
-                    
+
                     if not user_id:
                         return
-                    
+
                     db = self._db
-                    
+
                     me_id = db.get("shizu.me", "me", None)
                     if user_id == me_id:
                         await handler_func(message)
                         return
-                    
+
                     owners = db.get("shizu.me", "owners", [])
                     owner_status = db.get("shizu.owner", "status", False)
                     if user_id in owners and owner_status:
                         await handler_func(message)
                         return
-                    
+
                     perms = db.get("shizu.permissions", "users", {})
                     user_id_str = str(user_id)
                     if user_id_str in perms and cmd in perms[user_id_str]:
                         await handler_func(message)
                         return
-                    
+
                     user_groups = db.get("shizu.commandgroups", "user_groups", {})
                     if user_id_str in user_groups:
                         groups = db.get("shizu.commandgroups", "groups", {})
@@ -1017,13 +1059,13 @@ class ModulesManager:
                                 return
                 except Exception:
                     pass
+
             return telethon_command_handler, pattern
 
         for cmd_name, handler in module.command_handlers.items():
             handler_func, pattern = make_command_handler(cmd_name, handler)
             handler_ref = client.add_event_handler(
-                handler_func,
-                events.NewMessage(pattern=pattern)
+                handler_func, events.NewMessage(pattern=pattern)
             )
             module._telethon_handlers.append(handler_ref)
 
@@ -1039,13 +1081,13 @@ class ModulesManager:
             return
 
         client = self._app.tl
-        
+
         for handler in module._telethon_handlers:
             try:
                 client.remove_event_handler(handler)
             except Exception:
                 pass
-        
+
         module._telethon_handlers = []
 
     def _lookup(self, modname: str):
@@ -1198,7 +1240,7 @@ class ModulesManager:
                                 db.set(module.name, "__config__", modcfg)
                             except (ValueError, TypeError):
                                 value = config_value.default
-                              
+
                                 modcfg[conf] = value
                                 db.set(module.name, "__config__", modcfg)
                     module.config[conf] = value
@@ -1228,7 +1270,7 @@ class ModulesManager:
         """Used to perform the function after loading the module"""
         if hasattr(module, "_client_ready_called") and module._client_ready_called:
             return True
-        
+
         for _, method in iter_attrs(module):
             if hasattr(method, "strings"):
                 method.strings = Strings(method, translator, self._db)
@@ -1265,13 +1307,16 @@ class ModulesManager:
                         module._client = self._app.tl
                         module.client = self._app.tl
                         module.tl = self._app.tl
-                    
+
                     try:
-                        if hasattr(self._app.tl, "is_connected") and not self._app.tl.is_connected():
+                        if (
+                            hasattr(self._app.tl, "is_connected")
+                            and not self._app.tl.is_connected()
+                        ):
                             await self._app.tl.connect()
                     except Exception:
                         pass
-                    
+
                     if has_client_param:
                         await module.client_ready(self._app.tl)
                     else:
@@ -1281,7 +1326,7 @@ class ModulesManager:
                         await module.client_ready(self._app)
                     else:
                         await module.client_ready()
-                
+
                 module._client_ready_called = True
         except Exception:
             pass
@@ -1305,7 +1350,12 @@ class ModulesManager:
                     os.remove(path)
 
             get_module = inspect.getmodule(module)
-            if get_module and hasattr(get_module, "__spec__") and get_module.__spec__ and get_module.__spec__.origin != "<string>":
+            if (
+                get_module
+                and hasattr(get_module, "__spec__")
+                and get_module.__spec__
+                and get_module.__spec__.origin != "<string>"
+            ):
                 set_modules = set(self._db.get(__name__, "modules", []))
                 self._db.set(
                     "shizu.loader",
@@ -1319,23 +1369,28 @@ class ModulesManager:
                     del self.command_handlers[command]
 
         is_telethon_module = getattr(module, "m__telethon", False)
-        
+
         if is_telethon_module:
             self._unregister_telethon_handlers(module)
 
         unload_module_name = getattr(module, "name", None)
-        
+
         self.modules.remove(module)
         for cmd in module.command_handlers:
             if cmd in self.command_handlers:
                 del self.command_handlers[cmd]
-        
+
         self.watcher_handlers = [
-            w for w in self.watcher_handlers 
+            w
+            for w in self.watcher_handlers
             if not (
-                hasattr(w, "__self__") and (
-                    w.__self__ is module or 
-                    (hasattr(w.__self__, "name") and getattr(w.__self__, "name", None) == unload_module_name)
+                hasattr(w, "__self__")
+                and (
+                    w.__self__ is module
+                    or (
+                        hasattr(w.__self__, "name")
+                        and getattr(w.__self__, "name", None) == unload_module_name
+                    )
                 )
             )
         ]
@@ -1348,7 +1403,7 @@ class ModulesManager:
         )
 
         module_module = inspect.getmodule(module)
-        if module_module and hasattr(module_module, '__name__'):
+        if module_module and hasattr(module_module, "__name__"):
             sys_module_name = module_module.__name__
             if sys_module_name in sys.modules:
                 del sys.modules[sys_module_name]

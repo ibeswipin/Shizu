@@ -93,7 +93,7 @@ class ShizuOnload(loader.Module):
 
         if restart := self.db.get("shizu.updater", "restart"):
             restarted_text = None
-            
+
             if restart["type"] == "restart":
                 start_time = restart.get("start")
                 if isinstance(start_time, str):
@@ -112,11 +112,17 @@ class ShizuOnload(loader.Module):
                 try:
                     try:
                         await app.edit_message_caption(
-                            restart["chat"], restart["id"], caption=restarted_text, parse_mode="html"
+                            restart["chat"],
+                            restart["id"],
+                            caption=restarted_text,
+                            parse_mode="html",
                         )
                     except (BadRequest, MessageIdInvalid):
                         await app.edit_message_text(
-                            restart["chat"], restart["id"], restarted_text, parse_mode="html"
+                            restart["chat"],
+                            restart["id"],
+                            restarted_text,
+                            parse_mode="html",
                         )
                 except (MessageIdInvalid, BadRequest):
                     try:
