@@ -1204,7 +1204,7 @@ class ModulesManager:
                         "-m",
                         "pip",
                         "install",
-                        "--user",
+                        *(["--user"] if sys.prefix == sys.base_prefix else []),
                         *requirements,
                     ],
                     check=True,
