@@ -358,16 +358,16 @@ class Loader(loader.Module):
     async def unloadmod(self, app: Client, message: types.Message):
         """Unload a module. Usage: unloadmod <module name>"""
 
-        args = message.get_args_raw()
+        module = self.all_modules.find_module_strict(message.get_args_raw())
 
-        if not (module_name := self.all_modules.unload_module(args)):
+        if not module:
             return await message.answer(self.strings("inc_module_name"))
 
-        if module_name in self.cmodules:
-            logging.error("You can't unload core modules")
+        if self.all_modules.is_core(module):
             return await message.answer(self.strings("core_unload"))
 
-        return await message.answer(self.strings("unloaded").format(module_name))
+        name = self.all_modules.unload_module(module.name)
+        return await message.answer(self.strings("unloaded").format(name))
 
     @loader.command()
     async def unloadall(self, app: Client, message: types.Message):

@@ -1354,80 +1354,66 @@ class ModulesManager:
 
         return True
 
-    def unload_module(self, module_name: str = None, is_replace: bool = False) -> str:
+    def find_module_strict(self, name: str) -> Union[Module, None]:
+        name = (name or "").strip().lower()
+        if not name:
+            return None
+        for module in self.modules:
+            if module.name.lower() == name:
+                return module
+        handler = self.command_handlers.get(self.aliases.get(name, name))
+        return getattr(handler, "__self__", None)
+
+    def is_core(self, module: Module) -> bool:
+        return module.name in self.cmodules
+
+    def unload_module(self, module_name=None, is_replace: bool = False) -> str:
         """Unloads the loaded (if loaded) module"""
-        if module_name in self.cmodules:
-            return False
         if is_replace:
             module = module_name
         else:
-            if not (module := self.get_module(module_name)):
+            module = self.find_module_strict(module_name)
+            if not module or self.is_core(module):
                 return False
 
-            with contextlib.suppress(TypeError):
+            with contextlib.suppress(TypeError, OSError):
                 path = inspect.getfile(module.__class__)
-
-                if os.path.exists(path):
+                if os.path.isfile(path):
                     os.remove(path)
 
-            get_module = inspect.getmodule(module)
-            if (
-                get_module
-                and hasattr(get_module, "__spec__")
-                and get_module.__spec__
-                and get_module.__spec__.origin != "<string>"
-            ):
-                set_modules = set(self._db.get(__name__, "modules", []))
+            spec = getattr(inspect.getmodule(module), "__spec__", None)
+            if spec and spec.origin != "<string>":
                 self._db.set(
-                    "shizu.loader",
+                    __name__,
                     "modules",
-                    list(set_modules - {get_module.__spec__.origin}),
+                    [
+                        m
+                        for m in self._db.get(__name__, "modules", [])
+                        if m != spec.origin
+                    ],
                 )
 
-            for alias, command in self.aliases.copy().items():
-                if command in module.command_handlers:
-                    del self.aliases[alias]
-                    del self.command_handlers[command]
-
-        is_telethon_module = getattr(module, "m__telethon", False)
-
-        if is_telethon_module:
+        if getattr(module, "m__telethon", False):
             self._unregister_telethon_handlers(module)
 
-        unload_module_name = getattr(module, "name", None)
+        def owned(handler) -> bool:
+            return getattr(handler, "__self__", None) is module
 
-        self.modules.remove(module)
-        for cmd in module.command_handlers:
-            if cmd in self.command_handlers:
-                del self.command_handlers[cmd]
-
-        self.watcher_handlers = [
-            w
-            for w in self.watcher_handlers
-            if not (
-                hasattr(w, "__self__")
-                and (
-                    w.__self__ is module
-                    or (
-                        hasattr(w.__self__, "name")
-                        and getattr(w.__self__, "name", None) == unload_module_name
-                    )
-                )
-            )
-        ]
-
-        self.inline_handlers = dict(
-            set(self.inline_handlers.items()) ^ set(module.inline_handlers.items())
-        )
-        self.callback_handlers = dict(
-            set(self.callback_handlers.items()) ^ set(module.callback_handlers.items())
-        )
+        if module in self.modules:
+            self.modules.remove(module)
+        self.watcher_handlers[:] = [w for w in self.watcher_handlers if not owned(w)]
+        for registry in (
+            self.command_handlers,
+            self.message_handlers,
+            self.inline_handlers,
+            self.callback_handlers,
+        ):
+            for key in [k for k, v in registry.items() if owned(v)]:
+                del registry[key]
 
         module_module = inspect.getmodule(module)
-        if module_module and hasattr(module_module, "__name__"):
-            sys_module_name = module_module.__name__
-            if sys_module_name in sys.modules:
-                del sys.modules[sys_module_name]
+        if module_module and module_module.__name__ in sys.modules:
+            del sys.modules[module_module.__name__]
 
         return module.name
 
