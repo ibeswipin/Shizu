@@ -26,6 +26,7 @@ from pyrogram import Client, filters, types
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
 from shizu import loader, utils, database, logger as lo
+from shizu.security import SecurityManager
 
 
 async def check_filters(
@@ -34,7 +35,6 @@ async def check_filters(
     message: types.Message,
     command_name: str = None,
 ) -> bool:
-    db = database.db
     if custom_filters := getattr(func, "_filters", None):
         coro = custom_filters(app, message)
 
@@ -44,33 +44,32 @@ async def check_filters(
         if not coro:
             return False
 
-    if message.outgoing or (message.from_user and message.from_user.is_self):
-        return True
-
+    manager = security_manager()
+    if not await manager.check(message, func, command_name, app):
+        return False
     user = message.from_user or message.sender_chat
-    return bool(user) and has_access(db, user.id, command_name)
+    if (
+        getattr(getattr(func, "__func__", func), "ratelimit", False)
+        and user
+        and not (message.outgoing or getattr(message.from_user, "is_self", False))
+        and manager.rate_limited(user.id, command_name)
+    ):
+        return False
+    return True
+
+
+_security = None
+
+
+def security_manager() -> SecurityManager:
+    global _security
+    if _security is None:
+        _security = SecurityManager(database.db)
+    return _security
 
 
 def has_access(db, user_id: int, command_name: str = None) -> bool:
-    if user_id in db.get("shizu.me", "owners", []) and db.get(
-        "shizu.owner", "status", False
-    ):
-        return True
-
-    if not command_name:
-        return False
-
-    user_id_str = str(user_id)
-    if command_name in db.get("shizu.permissions", "users", {}).get(user_id_str, []):
-        return True
-
-    groups = db.get("shizu.commandgroups", "groups", {})
-    return any(
-        command_name in groups.get(group_name, [])
-        for group_name in db.get("shizu.commandgroups", "user_groups", {}).get(
-            user_id_str, []
-        )
-    )
+    return security_manager().has_command_access(user_id, command_name)
 
 
 class DispatcherManager:

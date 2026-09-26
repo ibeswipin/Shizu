@@ -3,31 +3,34 @@ import tokenize
 import io
 
 
+CLASS_RE = re.compile(
+    r"^((?:[ \t]*@[^\n]*\n)*)class\s+(\w+)\s*\(([^()]*\bloader\.Module\b[^()]*)\)\s*:",
+    re.MULTILINE,
+)
+LOADER_DECORATOR_RE = re.compile(r"^[ \t]*@loader\.(?:tds|module\([^\n]*\))[ \t]*\n", re.MULTILINE)
+NAME_RE = re.compile(r"""["']name["']\s*:\s*["']([^"']+)["']""")
+
+
+def _decorate_modules(code: str) -> str:
+    name_match = NAME_RE.search(code)
+
+    def repl(match):
+        decorators = LOADER_DECORATOR_RE.sub("", match.group(1))
+        module_name = name_match.group(1) if name_match else match.group(2)
+        return (
+            f'{decorators}@loader.module("{module_name}", "telethon", "")\n'
+            f"class {match.group(2)}({match.group(3).strip()}):"
+        )
+
+    return CLASS_RE.sub(repl, code)
+
+
 def transform(code: str) -> str:
-    lines = code.split("\n")
-    transformed_lines = []
-
-    for line in lines:
-        if re.match(r"^\s*from \.\.inline", line):
-            continue
-        transformed_lines.append(line)
-
-    code = "\n".join(transformed_lines)
     code = re.sub(r"from\s+hikkatl(\s+import|\s*\.)", r"from telethon\1", code)
     code = re.sub(r"import\s+hikkatl(\s+as\s+\w+)?", r"import telethon\1", code)
     code = re.sub(r"\bhikkatl\b", "telethon", code)
 
-    code = re.sub(r"@loader\.tds", "@loader.module()", code)
-
-    match = re.search(r"class\s+(\w+)\s*\(\s*loader\.Module\s*\)\s*:", code)
-    if match:
-        name_match = re.search(r"""["']name["']\s*:\s*["']([^"']+)["']""", code)
-        module_name = name_match.group(1) if name_match else match.group(1)
-        code = re.sub(
-            r"@loader\.module\(\)",
-            f'@loader.module("{module_name}", "telethon", "")',
-            code,
-        )
+    code = _decorate_modules(code)
 
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(code).readline)) # type: ignore[reportUnknownReturnType]

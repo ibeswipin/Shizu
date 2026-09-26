@@ -336,6 +336,8 @@ class BeSafe(loader.Module):
             text = self.strings("approved_restart").format(name)
         elif isinstance(result, str) and result not in ("NFA", "OTL", "PENDING", "DENIED"):
             self._persist(result, item["source"], item["origin"])
+            if module := self.all_modules.find_module_strict(result):
+                await self.all_modules.call_hook(module, "on_dlmod")
             text = self.strings("loaded").format(utils.escape_html(result))
         else:
             text = self.strings("approved_only").format(name, utils.escape_html(str(result)))

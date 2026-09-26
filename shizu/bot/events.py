@@ -68,6 +68,7 @@ from aiogram.types import (
 from typing import Union, List, Any, Optional
 
 from shizu import utils, logger as lo
+from shizu.security import EVERYONE, mask_of
 from shizu.bot.types import Item
 from shizu import database
 from shizu.translator import Translator
@@ -209,7 +210,53 @@ class Events(Item):
     def __init__(self):
         self._forms = {}
         self._custom_map = {}
+        self._states = {}
         self._me = database.db.get("shizu.me", "me")
+
+    def ss(self, user_id: int, state) -> None:
+        """Set a custom state for a user talking to the bot; False clears it"""
+        if state is False or state is None:
+            self._states.pop(user_id, None)
+        else:
+            self._states[user_id] = state
+
+    def gs(self, user_id: int):
+        """Custom state of a user talking to the bot, False when unset"""
+        return self._states.get(user_id, False)
+
+    @staticmethod
+    def sanitise_text(text: str) -> str:
+        """Make userbot HTML safe for the Bot API: custom emoji tags become plain emoji"""
+        text = re.sub(r"<emoji[^>]*>(.*?)</emoji>", r"\1", str(text or ""), flags=re.S)
+        return re.sub(r"</?tg-emoji[^>]*>", "", text)
+
+    async def query_gallery(self, query: InlineQuery, items: list) -> bool:
+        """Answer an inline query with a list of photos
+        (dicts with `photo_url`/`photo`, `title`, `description`, `caption`)"""
+        results = [
+            {
+                "photo": item.get("photo_url") or item.get("photo"),
+                "thumb": item.get("thumb_url") or item.get("thumb"),
+                "title": item.get("title"),
+                "description": item.get("description"),
+                "caption": item.get("caption"),
+                "reply_markup": item.get("reply_markup"),
+            }
+            for item in items
+            if item.get("photo_url") or item.get("photo")
+        ]
+        if not results:
+            return False
+        await self._answer_results(query, results)
+        return True
+
+    def generate_markup(self, markup) -> InlineKeyboardMarkup:
+        """Build an inline keyboard from button dicts"""
+        if isinstance(markup, dict):
+            markup = [[markup]]
+        elif markup and isinstance(markup[0], dict):
+            markup = [markup]
+        return self._generate_markup(markup or [])
 
     async def _message_handler(self, message: Message) -> Message:
         setattr(message, "answer", functools.partial(answer, app=self, message=message))
@@ -221,15 +268,139 @@ class Events(Item):
                 await func(self._app, message)
             except Exception as error:
                 logging.exception(error)
+
+        for module in list(self._all_modules.modules):
+            watcher = getattr(module, "aiogram_watcher", None)
+            if not callable(watcher):
+                continue
+            try:
+                await watcher(message)
+            except Exception:
+                logger.exception("aiogram_watcher of %s failed", getattr(module, "name", module))
         return message
+
+    async def gallery(
+        self,
+        message,
+        next_handler,
+        caption="",
+        *,
+        force_me: bool = True,
+        always_allow: list = None,
+        ttl: int = False,
+        preload: int = False,
+        gif: bool = False,
+        manual_security: bool = False,
+        disable_security: bool = False,
+        silent: bool = False,
+        reply_markup: list = None,
+        **kwargs,
+    ):
+        """Photo (or gif) viewer with previous / next buttons; `next_handler`
+        is a list of URLs or a (sync or async) callable returning a URL or a list of them"""
+        history, pool = [], []
+
+        async def fetch() -> str:
+            if isinstance(next_handler, (list, tuple)):
+                index = len(history)
+                return next_handler[index] if index < len(next_handler) else None
+            if not pool:
+                result = next_handler()
+                if inspect.isawaitable(result):
+                    result = await result
+                pool.extend(result if isinstance(result, (list, tuple)) else [result])
+            return pool.pop(0) if pool else None
+
+        def caption_for(index: int) -> str:
+            text = caption(history[index]) if callable(caption) else caption
+            return self.sanitise_text(text)
+
+        first = await fetch()
+        if not first:
+            return False
+        history.append(first)
+        position = {"index": 0}
+        extra = reply_markup or []
+        if isinstance(extra, dict):
+            extra = [[extra]]
+        elif extra and isinstance(extra[0], dict):
+            extra = [extra]
+
+        def keyboard():
+            row = []
+            if position["index"] > 0:
+                row.append({"text": "⬅️", "callback": functools.partial(navigate, -1)})
+            if not isinstance(next_handler, (list, tuple)) or position["index"] + 1 < len(next_handler):
+                row.append({"text": "➡️", "callback": functools.partial(navigate, 1)})
+            row.append({"text": "🔻", "callback": close})
+            buttons = [row, *extra]
+            for button in (b for r in buttons for b in r):
+                button["force_me"] = force_me and not disable_security
+            return buttons
+
+        allowed = set(always_allow or [])
+
+        async def guard(call) -> bool:
+            if disable_security or not force_me or self._is_owner(call.from_user.id) or call.from_user.id in allowed:
+                return True
+            await call.answer("🚫 You are not allowed to press this button!")
+            return False
+
+        async def navigate(step: int, call):
+            if not await guard(call):
+                return
+            target = position["index"] + step
+            if target < 0:
+                return await call.answer()
+            if target >= len(history):
+                url = await fetch()
+                if not url:
+                    return await call.answer("No more items", show_alert=False)
+                history.append(url)
+            position["index"] = target
+            media_cls = aiogram.types.InputMediaAnimation if gif else aiogram.types.InputMediaPhoto
+            await self.bot.edit_message_media(
+                media=media_cls(history[target], caption=caption_for(target), parse_mode="HTML"),
+                inline_message_id=call.inline_message_id,
+                chat_id=None if call.inline_message_id else call.message.chat.id,
+                message_id=None if call.inline_message_id else call.message.message_id,
+                reply_markup=self._generate_markup(keyboard()),
+            )
+            await call.answer()
+
+        async def close(call):
+            if not await guard(call):
+                return
+            if call.inline_message_id:
+                await self.bot.edit_message_caption(
+                    inline_message_id=call.inline_message_id, caption="🔻", reply_markup=None
+                )
+            else:
+                await call.message.delete()
+
+        return await self.form(
+            caption_for(0),
+            message,
+            reply_markup=keyboard(),
+            force_me=force_me,
+            always_allow=list(allowed),
+            ttl=ttl,
+            **({"gif": first} if gif else {"photo": first}),
+        )
+
+    def _is_owner(self, user_id: int) -> bool:
+        return user_id in (self._me, database.db.get("shizu.me", "me")) or user_id in database.db.get(
+            "shizu.me", "owners", []
+        )
 
     async def _inline_handler(self, inline_query: InlineQuery) -> InlineQuery:
         """Handles inline queries"""
-        if inline_query.from_user.id != database.db.get(
-            "shizu.me", "me"
-        ) and inline_query.from_user.id not in database.db.get(
-            "shizu.me", "owners", []
-        ):
+        query = inline_query.query.strip()
+        cmd, _, args = query.partition(" ")
+        func = self._all_modules.inline_handlers.get(cmd.lower()) if query else None
+        public = bool(func) and bool(mask_of(func) & EVERYONE)
+
+        if not self._is_owner(inline_query.from_user.id) and not public:
             return await inline_query.answer(
                 [
                     InlineQueryResultArticle(
@@ -243,24 +414,11 @@ class Events(Item):
                 ],
                 cache_time=0,
             )
-        if not (query := inline_query.query.strip()):
+        if not query:
             return await self._answer_inline_commands(inline_query)
 
-        query_ = query.split()
-
-        cmd = query_[0]
-        args = " ".join(query_[1:])
-
-        if func := self._all_modules.inline_handlers.get(cmd):
-            if (
-                len(vars_ := inspect.getfullargspec(func).args) > 3
-                and vars_[3] == "args"
-            ):
-                await func(self._app, inline_query, args)
-            else:
-                await func(self._app, inline_query)
-
-            return
+        if func:
+            return await self._run_inline_handler(func, inline_query, args.strip())
 
         try:
             if self._forms[query].get("type", None) == "form":
@@ -353,7 +511,8 @@ class Events(Item):
                         [
                             InlineQueryResultAudio(
                                 id=utils.random_id(),
-                                title="Shizu",
+                                title=self._forms[query].get("audio_title") or "Shizu",
+                                performer=self._forms[query].get("audio_performer"),
                                 caption=self._forms[query].get("text", None),
                                 audio_url=self._forms[query].get("audio", None),
                                 reply_markup=self._generate_markup(query, for_inline_query=True),
@@ -444,6 +603,78 @@ class Events(Item):
                         return
 
             return await self._answer_inline_commands(inline_query, cmd)
+
+    async def _run_inline_handler(self, func, inline_query: InlineQuery, args: str):
+        inline_query.args = args
+        try:
+            params = [
+                p for p in inspect.signature(func).parameters.values()
+                if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+            ]
+        except (TypeError, ValueError):
+            params = []
+        try:
+            if getattr(func.__self__, "m__telethon", False) or len(params) == 1:
+                result = await func(inline_query)
+            elif len(params) >= 3 and params[2].name == "args":
+                result = await func(self._app, inline_query, args)
+            else:
+                result = await func(self._app, inline_query)
+        except Exception:
+            logger.exception("Inline handler %s failed", getattr(func, "__name__", func))
+            return
+        if result:
+            await self._answer_results(inline_query, result)
+
+    async def _answer_results(self, inline_query: InlineQuery, result) -> None:
+        """Answer an inline query with result dicts returned by a handler"""
+        items = [result] if isinstance(result, dict) else list(result)
+        answers = []
+        for item in items[:50]:
+            markup = item.get("reply_markup")
+            if isinstance(markup, dict):
+                markup = [[markup]]
+            elif markup and isinstance(markup[0], dict):
+                markup = [markup]
+            keyboard = self._generate_markup(markup) if markup else None
+            text = self.sanitise_text(item.get("message") or item.get("caption") or item.get("title", ""))
+            common = {"id": utils.random_id(), "reply_markup": keyboard}
+            if item.get("photo"):
+                answers.append(
+                    InlineQueryResultPhoto(
+                        photo_url=item["photo"],
+                        thumb_url=item.get("thumb") or item["photo"],
+                        title=item.get("title"),
+                        description=item.get("description"),
+                        caption=text,
+                        parse_mode="HTML",
+                        **common,
+                    )
+                )
+            elif item.get("gif"):
+                answers.append(
+                    InlineQueryResultGif(
+                        gif_url=item["gif"],
+                        thumb_url=item.get("thumb") or item["gif"],
+                        title=item.get("title"),
+                        caption=text,
+                        parse_mode="HTML",
+                        **common,
+                    )
+                )
+            else:
+                answers.append(
+                    InlineQueryResultArticle(
+                        title=item.get("title", "Shizu"),
+                        description=item.get("description"),
+                        input_message_content=InputTextMessageContent(
+                            text, "HTML", disable_web_page_preview=True
+                        ),
+                        thumb_url=item.get("thumb"),
+                        **common,
+                    )
+                )
+        await inline_query.answer(answers, cache_time=0, is_personal=True)
 
     async def _answer_inline_commands(
         self, inline_query: InlineQuery, prefix: str = ""
@@ -779,6 +1010,18 @@ class Events(Item):
         if always_allow is None:
             always_allow = []
 
+        if reply_markup is None:
+            reply_markup = []
+        elif isinstance(reply_markup, dict):
+            reply_markup = [[reply_markup]]
+        elif reply_markup and isinstance(reply_markup[0], dict):
+            reply_markup = [reply_markup]
+
+        if isinstance(audio, dict):
+            kwargs.setdefault("audio_title", audio.get("title"))
+            kwargs.setdefault("audio_performer", audio.get("performer"))
+            audio = audio.get("url")
+
         if not isinstance(text, str):
             logger.error("Invalid type for `text`")
             return False
@@ -840,6 +1083,8 @@ class Events(Item):
             **({"video": video} if video else {}),
             **({"gif": gif} if gif else {}),
             **({"audio": audio} if audio else {}),
+            **({"audio_title": kwargs["audio_title"]} if kwargs.get("audio_title") else {}),
+            **({"audio_performer": kwargs["audio_performer"]} if kwargs.get("audio_performer") else {}),
             **({"rich_message": rich_message} if rich_message else {}),
         }
 
@@ -855,13 +1100,16 @@ class Events(Item):
                 (await self._app.inline_bot.get_me()).username, form_uid
             )
             q = await self._app.send_inline_bot_result(
-                message.chat.id,
+                getattr(message, "chat_id", None) or message.chat.id,
                 results.query_id,
                 results.results[0].id,
                 reply_to_message_id=msg_id or None,
             )
             if soo:
                 await self._app.delete_messages(soo.chat.id, soo.id)
+            elif prev and hasattr(message, "chat_id") and getattr(message, "out", False):
+                with contextlib.suppress(Exception):
+                    await message.delete()
         except Exception as erro:
             msg = (
                 "🚫 <b>A problem occurred with the inline bot "
@@ -878,7 +1126,7 @@ class Events(Item):
             )
 
             del self._forms[form_uid]
-            if isinstance(message, Message):
+            if hasattr(message, "chat_id") and hasattr(message, "respond"):
                 await (message.edit if message.out else message.respond)(msg)
             else:
                 await self._app.send_message(message.chat.id, msg)

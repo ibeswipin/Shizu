@@ -82,6 +82,7 @@ class InfiniteLoop:
         self._wait_before = wait_before
         self.module_instance = None
         self._task = None
+        self._wait_for_stop = asyncio.Event()
 
     def _stop(self, *args, **kwargs):
         self._wait_for_stop.set()
@@ -91,8 +92,9 @@ class InfiniteLoop:
             logger.info("Stopped loop for method %s", self.func)
             self._wait_for_stop = asyncio.Event()
             self.status = False
-            self._task.add_done_callback(self._stop)
-            self._task.cancel()
+            task, self._task = self._task, None
+            task.add_done_callback(self._stop)
+            task.cancel()
             return await self._wait_for_stop.wait()
 
         logger.info("Loop is not running")
@@ -126,4 +128,5 @@ class InfiniteLoop:
         self.status = False
 
     def __del__(self):
-        self.stop()
+        if self._task and not self._task.done():
+            self._task.cancel()

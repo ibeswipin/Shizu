@@ -15,7 +15,9 @@
 
 import contextlib
 import copy
+import functools
 import inspect
+import asyncio
 import logging
 import os
 import random
@@ -35,13 +37,13 @@ import requests
 from pyrogram import Client, filters, types
 
 from shizu import bot, database, dispatcher, utils, logger as logger_, extrapatchs
-from shizu.types import InfiniteLoop
+from shizu.types import InfiniteLoop, StopLoop
 from shizu.translator import Strings, Translator
 from shizu.inter import inter
 
 VALID_URL = r"[-[\]_.~:/?#@!$&'()*+,;%<=>a-zA-Z0-9]+"
 VALID_PIP_PACKAGES = re.compile(
-    r"^\s*# required:(?: ?)((?:{url} )*(?:{url}))\s*$".format(url=VALID_URL),
+    r"^\s*# requi(?:red|res):(?: ?)((?:{url} )*(?:{url}))\s*$".format(url=VALID_URL),
     re.MULTILINE,
 )
 
@@ -88,80 +90,136 @@ class Module:
         """Called when loading the module"""
 
     async def client_ready(self, client=None) -> Any:
-        """Called when client is ready (Telethon compatibility)
-        For Telethon modules, client is Telethon client
-        For Pyrogram modules, client is Pyrogram client
-        """
+        """Called once the client is ready; receives the Telethon client for
+        Telethon modules and the Pyrogram client otherwise"""
 
-    def pointer(self, key: str, default: Any = None):
-        """Get a pointer to a database value (Telethon compatibility)
-        Returns a list-like object that can be modified and automatically saves to DB
-        """
-        if not hasattr(self, "db"):
-            return default if default is not None else []
+    def get_prefix(self) -> str:
+        """First configured command prefix"""
+        return self.db.get("shizu.loader", "prefixes", ["."])[0]
 
-        class PointerList(list):
-            """List-like object that automatically saves to database"""
+    def pointer(self, key: str, default: Any = None, item_type: Any = None):
+        """List or dict bound to `key` that is saved on every change"""
+        from shizu.pointers import PointerDict, PointerList
 
-            def __init__(self, module, key, default):
-                super().__init__()
-                self._module = module
-                self._key = key
-                self._db_key = f"{module.name}.{key}"
-                db = getattr(module, "db", None)
-                if db is not None:
-                    value = db.get(module.name, key, default)
-                    if isinstance(value, list):
-                        self.extend(value)
-                    elif value is not None:
-                        self.append(value)
-
-            def _save(self):
-                """Save current state to database"""
-                db = getattr(self._module, "db", None)
-                if db is not None:
-                    db.set(self._module.name, self._key, list(self))
-
-            def append(self, item):
-                super().append(item)
-                self._save()
-
-            def extend(self, iterable):
-                super().extend(iterable)
-                self._save()
-
-            def clear(self):
-                super().clear()
-                self._save()
-
-            def remove(self, item):
-                super().remove(item)
-                self._save()
-
-            def pop(self, index=-1):
-                result = super().pop(index)
-                self._save()
-                return result
-
-            def insert(self, index, item):
-                super().insert(index, item)
-                self._save()
-
-        return PointerList(self, key, default)
+        if isinstance(default, dict) or item_type is dict:
+            return PointerDict(self.db, self.name, key, default)
+        return PointerList(self.db, self.name, key, default)
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Get a value from database (Telethon compatibility)"""
+        """Read a value from this module's database section"""
         db = getattr(self, "db", None)
         if db is None:
             return default
         return db.get(self.name, key, default)
 
     def set(self, key: str, value: Any) -> None:
-        """Set a value in database (Telethon compatibility)"""
+        """Write a value to this module's database section"""
         db = getattr(self, "db", None)
         if db is None:
             return
         db.set(self.name, key, value)
+
+    @property
+    def _db(self):
+        return getattr(self, "db", None)
+
+    @_db.setter
+    def _db(self, value):
+        self.db = value
+
+    @property
+    def allmodules(self) -> "ModulesManager":
+        return getattr(self, "all_modules", None)
+
+    @allmodules.setter
+    def allmodules(self, value):
+        self.all_modules = value
+
+    async def invoke(
+        self,
+        command: str,
+        args: str = "",
+        peer: Any = None,
+        message: Any = None,
+        edit: bool = False,
+    ):
+        """Run another command by sending it as an outgoing message; with
+        `edit=True` the given message is edited into the command instead"""
+        text = f"{self.get_prefix()}{command} {args or ''}".strip()
+        client = getattr(self, "client", None) or self.app
+        if edit and message is not None:
+            return await message.edit(text)
+        target = peer
+        if target is None and message is not None:
+            target = getattr(message, "chat_id", None) or message.chat.id
+        if target is None:
+            target = "me"
+        reply_to = getattr(message, "id", None) if message is not None and not edit else None
+        if hasattr(client, "send_message") and hasattr(client, "get_permissions"):
+            return await client.send_message(target, text, reply_to=reply_to)
+        return await client.send_message(target, text, reply_to_message_id=reply_to)
+
+    async def animate(self, message: Any, frames: list, interval: float, *, inline: bool = False):
+        """Edit `message` through `frames`, waiting `interval` seconds between them"""
+        from shizu import utils
+
+        if interval < 0.1:
+            interval = 0.1
+        for frame in frames:
+            message = await utils.answer(message, frame) or message
+            await asyncio.sleep(interval)
+        return message
+
+    async def import_lib(
+        self,
+        url: str,
+        *,
+        suspend_on_error: bool = False,
+    ):
+        """Download, review and initialise a shared library, cached per URL"""
+        return await self.all_modules.import_library(
+            url, suspend_on_error=suspend_on_error
+        )
+
+    async def request_join(self, peer: Any, reason: str, assure_joined: bool = False) -> bool:
+        """Ask the owner through the inline bot whether to join `peer`"""
+        return await self.all_modules.request_join(self, peer, reason)
+
+
+class Library:
+    """Shared code loaded with `import_lib`; `init` is awaited once after loading"""
+
+    name: str = None
+    developer: str = None
+    version: Any = None
+
+    async def init(self):
+        """Called once after the library is loaded"""
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.db.get(self._section, key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        self.db.set(self._section, key, value)
+
+    def pointer(self, key: str, default: Any = None, item_type: Any = None):
+        from shizu.pointers import PointerDict, PointerList
+
+        if isinstance(default, dict) or item_type is dict:
+            return PointerDict(self.db, self._section, key, default)
+        return PointerList(self.db, self._section, key, default)
+
+    @property
+    def _section(self) -> str:
+        return f"__lib__{self.name or type(self).__name__}"
+
+    @property
+    def _db(self):
+        return getattr(self, "db", None)
+
+    @_db.setter
+    def _db(self, value):
+        self.db = value
 
 
 class StringLoader(SourceLoader):
@@ -181,6 +239,18 @@ class StringLoader(SourceLoader):
 
     def get_data(self, _: str) -> str:
         return self.data
+
+
+def _hook_args(func, available: tuple) -> tuple:
+    """Positional arguments `func` accepts, taken from `available` in order"""
+    try:
+        params = inspect.signature(func).parameters.values()
+    except (ValueError, TypeError):
+        return ()
+    if any(p.kind is p.VAR_POSITIONAL for p in params):
+        return available
+    positional = [p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    return available[: len(positional)]
 
 
 def get_command_handlers(instance: Module) -> Dict[str, FunctionType]:
@@ -216,9 +286,15 @@ def watcher(
     no_videos (`bool`): Skip video messages (default: False)
     no_photos (`bool`): Skip photo messages (default: False)
     no_forwards (`bool`): Skip forwarded messages (default: False)
+
+    Positional string tags (`"out"`, `"only_pm"`, `"no_media"`, ...) and
+    keyword filters (`startswith=`, `contains=`, `regex=`, `from_id=`,
+    `chat_id=`, `filter=`) narrow down which messages reach the watcher
     """
 
     flags = {tag for tag in tags if isinstance(tag, str)}
+    flags |= {key for key, value in kwargs.items() if value is True}
+    values = {key: value for key, value in kwargs.items() if not isinstance(value, bool)}
     if flags:
         only_messages = "only_messages" in flags
         no_commands = no_commands or "no_commands" in flags
@@ -226,6 +302,7 @@ def watcher(
     def decorator(func):
         func.is_watcher = True
         func.watcher_tags = flags
+        func.watcher_values = values
         func.watcher_only_messages = only_messages
         func.watcher_no_commands = no_commands
         func.watcher_no_stickers = no_stickers
@@ -292,16 +369,27 @@ def get_message_handlers(instance: Module) -> Dict[str, FunctionType]:
     }
 
 
+def _decorated(instance: Module, flag: str) -> Dict[str, FunctionType]:
+    return {
+        getattr(method.__func__, flag + "_name", None) or name.lower(): method
+        for name, method in inspect.getmembers(instance, inspect.ismethod)
+        if getattr(method.__func__, flag, False)
+    }
+
+
 def get_callback_handlers(instance: Module) -> Dict[str, FunctionType]:
     """Returns a dictionary of names with callback handler functions"""
     return {
-        method_name[:-17].lower(): getattr(instance, method_name)
-        for method_name in dir(instance)
-        if (
-            callable(getattr(instance, method_name))
-            and len(method_name) > 17
-            and method_name.endswith("_callback_handler")
-        )
+        **{
+            method_name[:-17].lower(): getattr(instance, method_name)
+            for method_name in dir(instance)
+            if (
+                callable(getattr(instance, method_name))
+                and len(method_name) > 17
+                and method_name.endswith("_callback_handler")
+            )
+        },
+        **_decorated(instance, "is_callback_handler"),
     }
 
 
@@ -310,13 +398,25 @@ def get_inline_handlers(instance: Module) -> Dict[str, FunctionType]:
     instance_methods = dir(instance)
 
     return {
-        method_name[:-15].lower(): method
-        for method_name in instance_methods
-        if (
-            callable((method := getattr(instance, method_name)))
-            and method_name[-15:] == "_inline_handler"
-        )
+        **{
+            method_name[:-15].lower(): method
+            for method_name in instance_methods
+            if (
+                callable((method := getattr(instance, method_name)))
+                and method_name[-15:] == "_inline_handler"
+            )
+        },
+        **_decorated(instance, "is_inline_handler"),
     }
+
+
+def get_raw_handlers(instance: Module) -> List[FunctionType]:
+    """Methods decorated with `raw_handler`"""
+    return [
+        method
+        for _, method in inspect.getmembers(instance, inspect.ismethod)
+        if getattr(method.__func__, "raw_handler_updates", None) is not None
+    ]
 
 
 def on(custom_filters):
@@ -389,6 +489,122 @@ def command(aliases: list = None, hidden: bool = False, **kwargs: Any) -> Functi
     return decorator
 
 
+SECURITY_FLAGS = (
+    "owner",
+    "sudo",
+    "support",
+    "unrestricted",
+    "inline_everyone",
+    "pm",
+    "group_owner",
+    "group_admin",
+    "group_admin_add_admins",
+    "group_admin_change_info",
+    "group_admin_ban_users",
+    "group_admin_delete_messages",
+    "group_admin_pin_messages",
+    "group_admin_invite_users",
+    "group_member",
+    "everyone",
+)
+
+
+def _security_flag(flag: str):
+    def decorator(func):
+        func.security = getattr(func, "security", set()) | {flag}
+        return func
+
+    decorator.__name__ = flag
+    return decorator
+
+
+for _flag in SECURITY_FLAGS:
+    globals()[_flag] = _security_flag(_flag)
+
+
+def inline_handler(name: str = None, **kwargs):
+    """Register a method as an inline command of the bot (`@bot name args`)"""
+
+    def decorator(func):
+        func.is_inline_handler = True
+        label = name if isinstance(name, str) else None
+        func.is_inline_handler_name = (label or func.__name__.removesuffix("_inline_handler")).lower()
+        return func
+
+    return decorator(name) if callable(name) else decorator
+
+
+def callback_handler(name: str = None, **kwargs):
+    """Register a method that receives every button press of the bot"""
+
+    def decorator(func):
+        func.is_callback_handler = True
+        label = name if isinstance(name, str) else None
+        func.is_callback_handler_name = (label or func.__name__.removesuffix("_callback_handler")).lower()
+        return func
+
+    return decorator(name) if callable(name) else decorator
+
+
+def raw_handler(*updates):
+    """Receive raw Telethon updates of the given types (all updates when empty)"""
+
+    def decorator(func):
+        func.raw_handler_updates = tuple(updates)
+        return func
+
+    return decorator
+
+
+_db = None
+_manager = None
+
+
+async def download_and_install(url: str, message: Any = None) -> bool:
+    """Download a module from `url`, load it and keep it installed across restarts"""
+    if _manager is None:
+        return False
+    response = await utils.run_sync(requests.get, url, timeout=30)
+    if response.status_code != 200:
+        return False
+    name = await _manager.load_module(response.text, response.url)
+    if not isinstance(name, str) or name in ("NFA", "OTL", "PENDING", "DENIED"):
+        return False
+    modules = _db.get("shizu.loader", "modules", [])
+    if url not in modules:
+        _db.set("shizu.loader", "modules", modules + [url])
+    if module := _manager.find_module_strict(name):
+        await _manager.call_hook(module, "on_dlmod")
+    return True
+
+
+def ratelimit(func):
+    """Limit how often users other than the owner may call the command"""
+    func.ratelimit = True
+    return func
+
+
+def tag(*tags: str, **kwargs):
+    """Only run the command for messages matching the given tags and filters"""
+
+    def decorator(func):
+        func.tags = set(tags) | {key for key, value in kwargs.items() if value is True}
+        func.tag_values = {
+            key: value for key, value in kwargs.items() if not isinstance(value, bool)
+        }
+        return func
+
+    return decorator
+
+
+class LoadError(Exception):
+    """Raise from `on_load` or `client_ready` to abort loading with a message"""
+
+
+class SelfUnload(Exception):
+    """Raise from `on_load` or `client_ready` to unload the module"""
+
+
 def on_bot(custom_filters):
     """Creates a filter for bot command"""
     return lambda func: setattr(func, "_filters", custom_filters) or func
@@ -429,23 +645,39 @@ class Validators:
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid integer value: {e}")
 
+    class ValidationError(ValueError):
+        """Raised by validators when a config value is rejected"""
+
     class RegExp:
-        def __init__(self, pattern):
-            self.pattern = re.compile(pattern)
+        def __init__(self, pattern, description=None, flags=0):
+            self.pattern = re.compile(pattern, flags)
+            self.description = description
 
         def validate(self, value):
             if not self.pattern.match(str(value)):
                 raise ValueError(
-                    f"Value does not match pattern: {self.pattern.pattern}"
+                    self.description or f"Value does not match pattern: {self.pattern.pattern}"
                 )
             return value
 
     class Series:
-        def __init__(self, *args, validator=None):
+        def __init__(self, *args, validator=None, min_len=None, max_len=None, fixed_len=None):
             if validator is not None:
                 self.validators = (validator,)
             else:
                 self.validators = args
+            self.min_len = min_len
+            self.max_len = max_len
+            self.fixed_len = fixed_len
+
+        def _check_length(self, value: list) -> list:
+            if self.fixed_len is not None and len(value) != self.fixed_len:
+                raise ValueError(f"List must contain exactly {self.fixed_len} items")
+            if self.min_len is not None and len(value) < self.min_len:
+                raise ValueError(f"List must contain at least {self.min_len} items")
+            if self.max_len is not None and len(value) > self.max_len:
+                raise ValueError(f"List must contain at most {self.max_len} items")
+            return value
 
         def validate(self, value):
             if not isinstance(value, (list, tuple)):
@@ -466,7 +698,7 @@ class Validators:
                 value = list(value)
 
             if not self.validators:
-                return [str(v) for v in value]
+                return self._check_length([str(v) for v in value])
 
             validated_list = []
             for v in value:
@@ -474,7 +706,7 @@ class Validators:
                     v = validator.validate(v)
                 validated_list.append(v)
 
-            return validated_list
+            return self._check_length(validated_list)
 
     class Boolean:
         def validate(self, value):
@@ -491,8 +723,56 @@ class Validators:
             raise ValueError("Value must be None")
 
     class String:
+        def __init__(self, length=None, min_len=None, max_len=None):
+            self.length = length
+            self.min_len = min_len
+            self.max_len = max_len
+
         def validate(self, value):
-            return str(value)
+            value = str(value)
+            if self.length is not None and len(value) != self.length:
+                raise ValueError(f"Text must be exactly {self.length} characters long")
+            if self.min_len is not None and len(value) < self.min_len:
+                raise ValueError(f"Text must be at least {self.min_len} characters long")
+            if self.max_len is not None and len(value) > self.max_len:
+                raise ValueError(f"Text must be at most {self.max_len} characters long")
+            return value
+
+    class TelegramID:
+        def validate(self, value):
+            try:
+                value = int(str(value).strip())
+            except (TypeError, ValueError):
+                raise ValueError("Value must be a Telegram ID (a number)")
+            if not -(10**15) < value < 10**15 or value == 0:
+                raise ValueError("Value is not a valid Telegram ID")
+            return value
+
+    class EntityLike:
+        def validate(self, value):
+            value = str(value).strip()
+            if re.fullmatch(r"-?\d+", value):
+                return int(value)
+            if re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{3,31}", value) or value.startswith(("https://t.me/", "t.me/")):
+                return value
+            raise ValueError("Value must be an ID, @username or t.me link")
+
+    class Emoji:
+        def __init__(self, length=None, min_len=None, max_len=None):
+            self.length, self.min_len, self.max_len = length, min_len, max_len
+
+        def validate(self, value):
+            value = str(value)
+            if any(ch.isalnum() for ch in value):
+                raise ValueError("Value must contain only emoji")
+            count = len([ch for ch in value if not ch.isspace() and ord(ch) not in (0x200D, 0xFE0F)])
+            if self.length is not None and count != self.length:
+                raise ValueError(f"Value must contain exactly {self.length} emoji")
+            if self.min_len is not None and count < self.min_len:
+                raise ValueError(f"Value must contain at least {self.min_len} emoji")
+            if self.max_len is not None and count > self.max_len:
+                raise ValueError(f"Value must contain at most {self.max_len} emoji")
+            return value
 
     class Link:
         def validate(self, value):
@@ -564,6 +844,22 @@ class Validators:
             raise ValueError(
                 f"Value must be one of: {', '.join(map(str, self.possible_values))}"
             )
+
+    class MultiChoice:
+        def __init__(self, possible_values):
+            self.possible_values = list(possible_values)
+
+        def validate(self, value):
+            if isinstance(value, str):
+                value = [v.strip() for v in value.split(",") if v.strip()]
+            result = []
+            for item in value or []:
+                match = next((p for p in self.possible_values if item == p or str(item) == str(p)), None)
+                if match is None:
+                    raise ValueError(f"{item} is not one of: {', '.join(map(str, self.possible_values))}")
+                if match not in result:
+                    result.append(match)
+            return result
 
     class Union:
         def __init__(self, *validators, validator=None):
@@ -672,6 +968,11 @@ class ModulesManager:
         self.bot_manager: bot.BotManager = None
         self.telethon_dp = None
         self.load_guard = None
+        global _db, _manager
+        _db, _manager = db, self
+        self.last_commands: Dict[int, tuple] = {}
+        self._libraries: Dict[str, "Library"] = {}
+        self._join_requests: Dict[str, tuple] = {}
 
         self.root_module: Module = None
         self.cmodules = [
@@ -709,7 +1010,13 @@ class ModulesManager:
             r"from telethon\.tl\.patched",
             r"from telethon\.tl\.types import Message",
             r"from telethon\.tl\.types import.*Message",
+            r"(?m)^def register\(cb\)",
+            r"(?m)^\s*(?:from|import)\s+(?:telethon|hikkatl)\b",
+            r"strings\s*=\s*\{\s*[\"']name[\"']",
         ]
+
+        if re.search(r"^\s*(?:from|import)\s+pyrogram\b", source_code, re.MULTILINE):
+            return False
 
         return any(
             re.search(pattern, source_code, re.IGNORECASE)
@@ -889,6 +1196,7 @@ class ModulesManager:
                 instance._client = self._app.tl
                 instance.tl = self._app.tl
 
+            instance.raw_handlers = get_raw_handlers(instance)
             instance.command_handlers = get_command_handlers(instance)
             instance.watcher_handlers = get_watcher_handlers(instance)
             instance.message_handlers = get_message_handlers(instance)
@@ -968,6 +1276,8 @@ class ModulesManager:
                     instance.m__telethon = True
 
             self.modules.append(instance)
+            if self.telethon_dp and getattr(instance, "m__telethon", False):
+                self.telethon_dp.register_raw(instance)
 
             is_telethon_module = getattr(instance, "m__telethon", False)
             if not is_telethon_module:
@@ -1103,19 +1413,20 @@ class ModulesManager:
             return False
 
         try:
-            await self.send_on_load(instance, Translator(self._app, self._db))
             self.config_reconfigure(instance, self._db)
-
+            if not await self.send_on_load(instance, Translator(self._app, self._db)):
+                return False
         except Exception:
+            logging.exception("Failed to start module %s", instance.name)
             return False
 
         return instance.name
 
     async def send_on_loads(self) -> bool:
         """Sends commands to execute the function"""
-        for module_name in self.modules:
-            await self.send_on_load(module_name, Translator(self._app, self._db))
-            self.config_reconfigure(module_name, self._db)
+        for module in list(self.modules):
+            self.config_reconfigure(module, self._db)
+            await self.send_on_load(module, Translator(self._app, self._db))
 
     @staticmethod
     def config_reconfigure(module: Module, db):
@@ -1177,11 +1488,6 @@ class ModulesManager:
 
         module._client_ready_called = True
 
-        try:
-            await module.on_load(self._app)
-        except Exception:
-            logging.exception("on_load failed in module %s", module.name)
-
         client = self._app
         if getattr(module, "m__telethon", False) and utils.is_tl_enabled():
             client = getattr(self._app, "tl", None)
@@ -1190,21 +1496,191 @@ class ModulesManager:
             if getattr(module, "client", None) is None:
                 module._client = module.client = module.tl = client
 
-        try:
-            params = [
-                p
-                for p in inspect.signature(module.client_ready).parameters.values()
-                if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
-            ]
-        except (ValueError, TypeError):
-            params = []
-
-        try:
-            await module.client_ready(*(client, self._db)[: len(params)])
-        except Exception:
-            logging.exception("client_ready failed in module %s", module.name)
+        for hook, args in (
+            (module.on_load, (self._app,)),
+            (module.client_ready, (client, self._db)),
+        ):
+            try:
+                await hook(*_hook_args(hook, args))
+            except (LoadError, SelfUnload) as error:
+                reason = str(error) or type(error).__name__
+                logging.error("Module %s was unloaded: %s", module.name, reason)
+                module._load_error = reason
+                with contextlib.suppress(Exception):
+                    self.unload_module(module, True)
+                return False
+            except Exception:
+                logging.exception("%s failed in module %s", hook.__name__, module.name)
 
         return True
+
+    @property
+    def commands(self) -> Dict[str, FunctionType]:
+        return self.command_handlers
+
+    @property
+    def security(self):
+        return dispatcher.security_manager()
+
+    def dispatch(self, command: str) -> tuple:
+        """Resolve an alias and return `(command, handler)`; handler is None when unknown"""
+        command = command.lower()
+        command = self.aliases.get(command, command).lower()
+        return command, self.command_handlers.get(command)
+
+    def last_command(self, message) -> Union[tuple, None]:
+        chat_id = getattr(message, "chat_id", None) or getattr(getattr(message, "chat", None), "id", None)
+        return self.last_commands.get(chat_id)
+
+    def log(self, type_: str, *, group: Any = None, affected_uids: Any = None, data: Any = None):
+        """Record an action performed by a module in the Shizu log"""
+        details = ", ".join(
+            f"{key}={value}"
+            for key, value in (("group", group), ("users", affected_uids), ("data", data))
+            if value is not None
+        )
+        logging.getLogger("shizu.actions").info("%s%s", type_, f" ({details})" if details else "")
+
+    async def check_security(self, message, func) -> bool:
+        """Whether the sender of `message` may run `func` (a handler or a permission bitmask)"""
+        command = None
+        if not isinstance(func, int):
+            command = next((name for name, handler in self.command_handlers.items() if handler == func), None)
+        return await self.security.check(message, func, command, getattr(self._app, "tl", None))
+
+    def _module_client(self):
+        tl = getattr(self._app, "tl", None)
+        return tl if utils.is_tl_enabled() and tl not in (None, "Not enabled") else self._app
+
+    async def import_library(self, url: str, *, suspend_on_error: bool = False) -> "Library":
+        """Load a shared library from `url` once; later calls return the same instance"""
+        if url in self._libraries:
+            return self._libraries[url]
+        try:
+            response = await utils.run_sync(requests.get, url, timeout=30)
+            response.raise_for_status()
+            source = response.text
+        except Exception as error:
+            raise LoadError(f"Could not download library {url}: {error}") from error
+
+        if self.load_guard:
+            verdict = await self.load_guard(source, url)
+            if verdict is not True:
+                raise LoadError(f"Library {url} is not approved yet ({verdict})")
+
+        library = await self._exec_library(url, inter.transform(source), source)
+        self._libraries[url] = library
+        return library
+
+    async def _exec_library(self, url: str, code: str, source: str, retried: bool = False) -> "Library":
+        name = "shizu.modules.__lib_" + re.sub(r"\W", "_", urlparse(url).path.rsplit("/", 1)[-1][:-3] or "lib")
+        spec = ModuleSpec(name, StringLoader(code, url), origin=url)
+        module = module_from_spec(spec)
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+        except ImportError as error:
+            match = VALID_PIP_PACKAGES.search(source)
+            if retried or not match:
+                raise LoadError(f"Library {url} failed to import: {error}") from error
+            await utils.run_sync(
+                subprocess.run,
+                [sys.executable, "-m", "pip", "install",
+                 *(["--user"] if sys.prefix == sys.base_prefix else []),
+                 *match[1].split()],
+                check=False,
+            )
+            return await self._exec_library(url, code, source, True)
+
+        classes = [
+            value
+            for value in vars(module).values()
+            if inspect.isclass(value) and issubclass(value, Library) and value is not Library
+        ]
+        if not classes:
+            raise LoadError(f"{url} does not define a library class")
+        library = classes[0]()
+        library.name = library.name or classes[0].__name__
+        client = self._module_client()
+        library.client = library._client = client
+        library.db = self._db
+        library.all_modules = library.allmodules = self
+        library.inline = self.bot_manager
+        library.tg_id = library._tg_id = self.me.id
+        library.lookup = self._lookup
+        library.source_url = url
+        if hasattr(library, "config"):
+            self.config_reconfigure(library, self._db)
+        await library.init()
+        return library
+
+    async def request_join(self, module: Module, peer: Any, reason: str) -> bool:
+        """Ask the owner in the bot chat whether to join `peer`; True if already a member"""
+        client = self._module_client()
+        try:
+            if hasattr(client, "get_permissions"):
+                await client.get_permissions(peer, "me")
+            else:
+                await client.get_chat_member(peer, "me")
+            return True
+        except Exception:
+            pass
+
+        key = f"{getattr(module, 'name', '?')}:{peer}"
+        if key in self._db.get("shizu.loader", "declined_joins", []):
+            return False
+
+        token = utils.rand(16)
+        self._join_requests[token] = (client, peer, key)
+
+        async def decide(join: bool, call):
+            if call.from_user.id != self.me.id:
+                return await call.answer("🚫", show_alert=True)
+            request = self._join_requests.pop(token, None)
+            if not request:
+                return await call.answer()
+            join_client, join_peer, join_key = request
+            if join:
+                try:
+                    if hasattr(join_client, "get_permissions"):
+                        from telethon.tl.functions.channels import JoinChannelRequest
+
+                        await join_client(JoinChannelRequest(join_peer))
+                    else:
+                        await join_client.join_chat(join_peer)
+                    text = f"✅ Joined <code>{utils.escape_html(str(join_peer))}</code>"
+                except Exception as error:
+                    text = f"❌ Could not join: <code>{utils.escape_html(str(error))}</code>"
+            else:
+                declined = self._db.get("shizu.loader", "declined_joins", [])
+                self._db.set("shizu.loader", "declined_joins", declined + [join_key])
+                text = "❌ Declined"
+            await call.message.edit_text(text)
+
+
+        markup = self.bot_manager._generate_markup(
+            [[
+                {"text": "✅ Join", "callback": functools.partial(decide, True)},
+                {"text": "❌ Decline", "callback": functools.partial(decide, False)},
+            ]]
+        )
+        await self.bot_manager.bot.send_message(
+            self.me.id,
+            f"📨 <b>{utils.escape_html(getattr(module, 'name', 'Module'))}</b> asks to join "
+            f"<code>{utils.escape_html(str(peer))}</code>\n\n<i>{utils.escape_html(reason)}</i>",
+            reply_markup=markup,
+        )
+        return False
+
+    async def call_hook(self, module: Module, hook: str):
+        func = getattr(module, hook, None)
+        if not callable(func):
+            return
+        try:
+            client = getattr(module, "client", None) or self._app
+            await func(*_hook_args(func, (client, self._db)))
+        except Exception:
+            logging.exception("%s failed in module %s", hook, getattr(module, "name", module))
 
     def find_module_strict(self, name: str) -> Union[Module, None]:
         name = (name or "").strip().lower()
@@ -1259,6 +1735,16 @@ class ModulesManager:
         ):
             for key in [k for k, v in registry.items() if owned(v)]:
                 del registry[key]
+
+        if self.telethon_dp:
+            self.telethon_dp.unregister_raw(module)
+
+        if callable(getattr(module, "on_unload", None)):
+            asyncio.ensure_future(self.call_hook(module, "on_unload"))
+
+        for attr in vars(type(module)).values():
+            if isinstance(attr, InfiniteLoop) and attr.module_instance is module:
+                asyncio.ensure_future(attr.stop())
 
         module_module = inspect.getmodule(module)
         if module_module and module_module.__name__ in sys.modules:

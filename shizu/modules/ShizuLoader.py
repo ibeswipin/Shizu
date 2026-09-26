@@ -228,6 +228,8 @@ class Loader(loader.Module):
                 "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
             )
 
+        await self.all_modules.call_hook(module, "on_dlmod")
+
         prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
         command_descriptions = "\n".join(
             f"{dop_help} <code>{prefix + command}</code> - {module.command_handlers[command].__doc__ or 'No description'}"
@@ -340,6 +342,8 @@ class Loader(loader.Module):
             return await message.answer(
                 "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
             )
+
+        await self.all_modules.call_hook(module, "on_dlmod")
 
         prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
         command_descriptions = "\n".join(

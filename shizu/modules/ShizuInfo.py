@@ -21,6 +21,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import collections
+
 from pyrogram import Client, types
 from shizu import loader, utils, version
 
@@ -44,18 +46,22 @@ class InformationMod(loader.Module):
             lambda: self.strings("photo_url"),
         )
 
-    def text_(self, me: types.User, username):
+    async def text_(self, me: types.User, username):
         """Get text"""
         mention = f'<a href="tg://user?id={me.id}">{utils.escape_html((utils.get_display_name(me)))}</a>'
         prefix = ", ".join(self.prefix)
 
         if self.config["custom_message"]:
-            return "🐙 Shizu\n" + self.config["custom_message"].format(
-                mention=mention,
-                version={".".join(map(str, version.__version__))},
-                prefix=prefix,
-                branch=version.branch,
-                platform=utils.get_platform(),
+            values = {
+                **await utils.get_placeholders(),
+                "mention": mention,
+                "version": ".".join(map(str, version.__version__)),
+                "prefix": prefix,
+                "branch": version.branch,
+                "platform": utils.get_platform(),
+            }
+            return "🐙 Shizu\n" + self.config["custom_message"].format_map(
+                collections.defaultdict(str, values)
             )
 
         stats = utils.render_table(
@@ -74,7 +80,7 @@ class InformationMod(loader.Module):
         """Info about Shizu"""
         if self.config["custom_buttons"]:
             await message.answer(
-                response=self.text_(self.me, (await self.bot.bot.get_me()).username),
+                response=await self.text_(self.me, (await self.bot.bot.get_me()).username),
                 reply_markup=[[self.config["custom_buttons"]]],
                 photo=self.config["photo_url"],
             )
@@ -82,5 +88,5 @@ class InformationMod(loader.Module):
             await message.answer(
                 response=self.config["photo_url"],
                 photo_=True,
-                caption=self.text_(self.me, (await self.bot.bot.get_me()).username),
+                caption=await self.text_(self.me, (await self.bot.bot.get_me()).username),
             )

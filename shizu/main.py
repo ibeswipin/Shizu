@@ -25,6 +25,7 @@ from pyrogram import types
 from pyrogram.methods.utilities.idle import idle
 
 from shizu import auth, database, loader, utils
+from shizu.version import __version__
 
 
 async def main():
