@@ -152,22 +152,14 @@ class ShizuOnload(loader.Module):
                             restart["chat"],
                             restart["id"],
                             caption=restarted_text,
-<<<<<<< HEAD
-                            parse_mode="html",
-=======
                             parse_mode=enums.ParseMode.HTML,
->>>>>>> 168008eb615eec518461b641667eeaa4ec5feb03
                         )
                     except (BadRequest, MessageIdInvalid):
                         await app.edit_message_text(
                             restart["chat"],
                             restart["id"],
                             restarted_text,
-<<<<<<< HEAD
-                            parse_mode="html",
-=======
                             parse_mode=enums.ParseMode.HTML,
->>>>>>> 168008eb615eec518461b641667eeaa4ec5feb03
                         )
                 except Exception:
                     logging.exception("Could not edit restart message, sending a new one")
