@@ -550,7 +550,7 @@ class SystemdMod(loader.Module):
         self.tunnel = TunnelManager()
 
     @property
-    def client(self) -> SystemdClient:
+    def systemctl(self) -> SystemdClient:
         return SystemdClient(bool(self.config["USE_SUDO"]))
 
     @property
@@ -577,7 +577,7 @@ class SystemdMod(loader.Module):
             if not ref:
                 report.append(self.strings("bad_name").format(utils.escape_html(raw)))
                 continue
-            info = await self.client.info(ref)
+            info = await self.systemctl.info(ref)
             if not info.exists:
                 report.append(self.strings("not_found").format(ref.name))
             elif ref in refs:
@@ -613,7 +613,7 @@ class SystemdMod(loader.Module):
         if not ref:
             return await message.answer(self.strings("logs_usage"))
         n = int(args[1]) if len(args) > 1 and args[1].isdigit() else 40
-        r = await self.client.logs(ref, n)
+        r = await self.systemctl.logs(ref, n)
         await message.answer(
             self.fmt.code_block(f"📜 <b>{ref.name}</b>", self._err_hint(r) or r.out)
         )
@@ -652,7 +652,7 @@ class SystemdMod(loader.Module):
         refs = self._refs()
         if not refs:
             return self.strings("list_empty"), [refresh]
-        infos = await asyncio.gather(*(self.client.info(r) for r in refs))
+        infos = await asyncio.gather(*(self.systemctl.info(r) for r in refs))
         up = sum(i.active == "active" for i in infos)
         failed = sum(i.active == "failed" for i in infos)
         head = self.strings("list_head").format(up, len(infos))
@@ -739,7 +739,7 @@ class SystemdMod(loader.Module):
         await call.edit(text, reply_markup=markup)
 
     async def inline__service(self, call, key: str, note: str = ""):
-        info = await self.client.info(ServiceRef.from_key(key))
+        info = await self.systemctl.info(ServiceRef.from_key(key))
         await call.edit(
             self.fmt.card(info, note), reply_markup=self._service_buttons(info)
         )
@@ -748,7 +748,7 @@ class SystemdMod(loader.Module):
         self, call, key: str, action: str, confirmed: bool = False
     ):
         ref = ServiceRef.from_key(key)
-        info = await self.client.info(ref)
+        info = await self.systemctl.info(ref)
         if (
             action in self.CONFIRM or (info.is_shizu() and action == "restart")
         ) and not confirmed:
@@ -771,7 +771,7 @@ class SystemdMod(loader.Module):
             )
         if info.is_shizu() and action in ("restart", "stop"):
             await call.edit(self.strings("shizu_going").format(action, ref.name))
-        r = await self.client.action(ref, action)
+        r = await self.systemctl.action(ref, action)
         await asyncio.sleep(1.2)
         if r.ok:
             note = self.strings("act_" + action.replace("-", "_"))
@@ -783,7 +783,7 @@ class SystemdMod(loader.Module):
 
     async def inline__logs(self, call, key: str, errors_only: bool):
         ref = ServiceRef.from_key(key)
-        r = await self.client.logs(ref, 60 if errors_only else 30, errors_only)
+        r = await self.systemctl.logs(ref, 60 if errors_only else 30, errors_only)
         title = self.strings(
             "logs_errors_title" if errors_only else "logs_recent_title"
         ).format(ref.short)
@@ -803,7 +803,7 @@ class SystemdMod(loader.Module):
 
     async def inline__unit(self, call, key: str):
         ref = ServiceRef.from_key(key)
-        r = await self.client.cat(ref)
+        r = await self.systemctl.cat(ref)
         await call.edit(
             self.fmt.code_block(f"📄 <b>{ref.name}</b>", r.out or r.text),
             reply_markup=[[self._back(key)]],
@@ -814,7 +814,7 @@ class SystemdMod(loader.Module):
         await call.edit(self.strings("live_opening").format(ref.short))
         try:
             if not self.live:
-                self.live = LiveLogServer(self.client)
+                self.live = LiveLogServer(self.systemctl)
             port = await self.live.start()
             url = await self.tunnel.open(port, str(self.config["TUNNEL"]))
         except Exception as e:
@@ -859,7 +859,7 @@ class SystemdMod(loader.Module):
             return
         last: Dict[str, str] = self.db.get(self.name, "last_state", {})
         for ref in self._refs():
-            info = await self.client.info(ref)
+            info = await self.systemctl.info(ref)
             prev, now = last.get(ref.key), info.active
             last[ref.key] = now
             if (
@@ -869,7 +869,7 @@ class SystemdMod(loader.Module):
             ):
                 continue
             if now == "failed" or (prev == "active" and now == "inactive"):
-                r = await self.client.logs(ref, 15)
+                r = await self.systemctl.logs(ref, 15)
                 text = self.fmt.code_block(
                     self.strings("watch_down").format(ref.name, prev, now), r.out
                 )
