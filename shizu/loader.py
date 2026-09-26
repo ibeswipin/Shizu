@@ -666,6 +666,7 @@ class ModulesManager:
             "ShizuOnload",
             "ShizuUpdateNotifier",
             "ShizuPermissions",
+            "ShizuSystemd",
         ]
         self.hidden = []
         app.db = db

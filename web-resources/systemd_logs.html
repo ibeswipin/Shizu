@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>__NAME__ · journal</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--ink:#c9d1d9;--dim:#6e7681;--line:#30363d;--err:#ff7b72;--warn:#e3b341;--ok:#3fb950;--acc:#58a6ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;display:flex;flex-direction:column;height:100vh}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0}
+h1{font-size:14px;margin:0;font-weight:600}.dot{width:8px;height:8px;border-radius:50%;background:var(--dim);display:inline-block;margin-right:6px}
+.live .dot{background:var(--ok);box-shadow:0 0 8px var(--ok)}#st{color:var(--dim)}
+input,button,select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:inherit}
+button{cursor:pointer}button[aria-pressed=true]{border-color:var(--acc);color:var(--acc)}.sp{flex:1}
+main{flex:1;overflow:auto;padding:8px 0}.l{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:1px 14px;white-space:pre-wrap;word-break:break-word}
+.l:hover{background:#161b2288}.t{color:var(--dim)}.p0,.p1,.p2,.p3{color:var(--err)}.p4{color:var(--warn)}.p7{color:var(--dim)}
+@media(max-width:600px){.l{grid-template-columns:1fr;gap:0}.t{font-size:11px}}
+</style></head><body>
+<header id="hd"><h1><span class="dot"></span>__NAME__</h1><span id="st">connecting…</span><span class="sp"></span>
+<select id="lvl" aria-label="Level"><option value="7">all</option><option value="4">warning+</option><option value="3">errors</option></select>
+<input id="q" placeholder="filter" aria-label="Filter">
+<button id="pause" aria-pressed="false">⏸ pause</button><button id="clr">clear</button></header>
+<main id="log"></main>
+<script>
+const log=document.getElementById('log'),st=document.getElementById('st'),hd=document.getElementById('hd');
+const q=document.getElementById('q'),lvl=document.getElementById('lvl'),pb=document.getElementById('pause');
+let paused=false,buf=[],MAX=5000;
+function visible(e){const t=q.value.toLowerCase();return e.p<=+lvl.value&&(!t||e.m.toLowerCase().includes(t))}
+function row(e){const d=document.createElement('div');d.className='l p'+e.p;d.dataset.p=e.p;
+ const a=document.createElement('span');a.className='t';a.textContent=e.t;const b=document.createElement('span');b.textContent=e.m;d.append(a,b);d.hidden=!visible(e);d._e=e;return d}
+function add(e){const stick=log.scrollTop+log.clientHeight>=log.scrollHeight-40;log.append(row(e));
+ while(log.childElementCount>MAX)log.firstChild.remove();if(stick&&!paused)log.scrollTop=log.scrollHeight}
+function refilter(){for(const d of log.children)d.hidden=!visible(d._e)}
+q.oninput=refilter;lvl.onchange=refilter;document.getElementById('clr').onclick=()=>log.replaceChildren();
+pb.onclick=()=>{paused=!paused;pb.setAttribute('aria-pressed',paused);pb.textContent=paused?'▶ resume':'⏸ pause';if(!paused){buf.forEach(add);buf=[]}};
+const es=new EventSource('stream');
+es.onopen=()=>{hd.classList.add('live');st.textContent='live'};
+es.onerror=()=>{hd.classList.remove('live');st.textContent='reconnecting… (link may have expired)'};
+es.onmessage=m=>{const e=JSON.parse(m.data);paused?buf.push(e):add(e)};
+</script></body></html>
