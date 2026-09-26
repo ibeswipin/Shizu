@@ -330,5 +330,7 @@
   "shizu.modules.ShizuSystemd.inline_desc": "Servislar ro'yxati va boshqaruv paneli",
   "shizu.modules.ShizuConfig.saved": "✅ <b>Saqlandi</b>",
   "shizu.modules.ShizuConfig.validation_error": "🚫 <b>Tekshiruv xatosi:</b> <code>{}</code>",
-  "shizu.modules.ShizuConfig.value_not_found": "Bu qiymat ro'yxatda yo'q"
+  "shizu.modules.ShizuConfig.value_not_found": "Bu qiymat ro'yxatda yo'q",
+  "shizu.modules.ShizuLoader.pending": "🛡 <b>The module was sent for review.</b> Check the card in the logs chat: after approval it loads by itself",
+  "shizu.modules.ShizuLoader.denied": "🛡 <b>This version of the module was denied.</b> Revoke the decision with <code>.bsforget</code> to review it again"
 }

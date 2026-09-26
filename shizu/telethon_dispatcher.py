@@ -1,4 +1,4 @@
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,96 +13,133 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from telethon import events
+import logging
+import traceback
 from typing import TYPE_CHECKING
+
+from telethon import events
+
+from shizu import utils
+from shizu.dispatcher import has_access
 
 if TYPE_CHECKING:
     from shizu.loader import ModulesManager
+
+logger = logging.getLogger(__name__)
+
+
+def _flag(watcher, name: str):
+    return getattr(getattr(watcher, "__func__", watcher), name, None)
+
+
+def watcher_accepts(watcher, message, prefixes) -> bool:
+    text = message.raw_text or ""
+    if _flag(watcher, "watcher_no_commands") and any(
+        text.startswith(p) for p in prefixes
+    ):
+        return False
+    checks = {
+        "watcher_no_stickers": message.sticker,
+        "watcher_no_docs": message.document,
+        "watcher_no_audios": message.audio,
+        "watcher_no_videos": message.video,
+        "watcher_no_photos": message.photo,
+        "watcher_no_forwards": message.fwd_from,
+    }
+    if any(_flag(watcher, name) and value for name, value in checks.items()):
+        return False
+    tags = _flag(watcher, "watcher_tags") or ()
+    rules = {
+        "out": message.out,
+        "in": not message.out,
+        "only_pm": message.is_private,
+        "no_pm": not message.is_private,
+        "only_groups": message.is_group,
+        "no_groups": not message.is_group,
+        "only_channels": message.is_channel and not message.is_group,
+        "no_channels": not (message.is_channel and not message.is_group),
+        "only_media": bool(message.media),
+        "no_media": not message.media,
+    }
+    return all(rules[tag] for tag in tags if tag in rules)
 
 
 class TelethonDispatcherManager:
     def __init__(self, client, modules: "ModulesManager") -> None:
         self.client = client
         self.modules = modules
-        self._watcher_handler = None
+        self._loaded = False
+
+    @property
+    def prefixes(self) -> list:
+        return self.modules._db.get("shizu.loader", "prefixes", ["."])
 
     async def load(self) -> bool:
-        if not self.client or not hasattr(self.client, "is_connected"):
-            return False
-
+        if self._loaded:
+            return True
         if not self.client.is_connected():
             try:
                 await self.client.connect()
             except Exception:
+                logger.exception("Telethon client failed to connect")
                 return False
 
-        if not hasattr(self.client, '_event_builders'):
-            self.client._event_builders = []
-
-        async def handle_all_messages(event):
-            await self._handle_watchers(event)
-
-        self.client.add_event_handler(
-            handle_all_messages,
-            events.NewMessage()
-        )
-        self._watcher_handler = handle_all_messages
+        self.client.add_event_handler(self._on_new, events.NewMessage())
+        self.client.add_event_handler(self._handle_command, events.MessageEdited())
+        self._loaded = True
         return True
 
-    async def _handle_watchers(self, event):
-        if not self.modules or not self.modules.modules:
+    async def _on_new(self, event):
+        await self._handle_watchers(event.message)
+        await self._handle_command(event)
+
+    def _parse(self, text: str):
+        for prefix in sorted(self.prefixes, key=len, reverse=True):
+            if text.startswith(prefix):
+                command, *_ = text[len(prefix) :].split(maxsplit=1) or [""]
+                return prefix, command.lower()
+        return None, None
+
+    async def _handle_command(self, event):
+        message = event.message
+        prefix, command = self._parse(message.raw_text or "")
+        if not command:
             return
 
-        for module in self.modules.modules:
-            if not hasattr(module, "m__telethon") or not module.m__telethon:
+        command = self.modules.aliases.get(command, command).lower()
+        func = self.modules.command_handlers.get(command)
+        module = getattr(func, "__self__", None)
+        if not func or not getattr(module, "m__telethon", False):
+            return
+
+        if not message.out and not has_access(
+            self.modules._db, message.sender_id, command
+        ):
+            return
+
+        try:
+            await func(message)
+        except Exception:
+            logger.exception("Command %s%s failed", prefix, command)
+            trace = utils.escape_html(traceback.format_exc(limit=-5))
+            try:
+                await utils.answer(
+                    message,
+                    f"🥶 <b>Command <code>{utils.escape_html(prefix + command)}</code>"
+                    f" failed with error:</b>\n\n<code>{trace}</code>",
+                )
+            except Exception:
+                pass
+
+    async def _handle_watchers(self, message):
+        prefixes = self.prefixes
+        for module in list(self.modules.modules):
+            if not getattr(module, "m__telethon", False):
                 continue
-
-            if not hasattr(module, "watcher_handlers") or not module.watcher_handlers:
-                continue
-            
-            module_name = getattr(module, "name", "unknown")
-
-            message = event.message
-            if not message:
-                continue
-
-            for watcher in module.watcher_handlers:
-                try:
-                    if not callable(watcher):
-                        continue
-
-                    func = watcher
-                    if hasattr(watcher, "__func__"):
-                        func = watcher.__func__
-                    
-                    watcher_only_messages = getattr(func, "watcher_only_messages", getattr(watcher, "watcher_only_messages", None))
-                    if watcher_only_messages is not None and watcher_only_messages:
-                        if not message.text and not message.raw_text:
-                            continue
-
-                    if getattr(func, "watcher_no_commands", getattr(watcher, "watcher_no_commands", False)):
-                        prefixes = self.modules._db.get("shizu.loader", "prefixes", [".", "/"])
-                        text = message.text or message.raw_text or ""
-                        if text and any(text.startswith(prefix) for prefix in prefixes):
-                            continue
-
-                    if getattr(func, "watcher_no_stickers", getattr(watcher, "watcher_no_stickers", False)) and message.sticker:
-                        continue
-                    if getattr(func, "watcher_no_docs", getattr(watcher, "watcher_no_docs", False)) and message.document:
-                        continue
-                    if getattr(func, "watcher_no_audios", getattr(watcher, "watcher_no_audios", False)) and message.audio:
-                        continue
-                    if getattr(func, "watcher_no_videos", getattr(watcher, "watcher_no_videos", False)) and message.video:
-                        continue
-                    if getattr(func, "watcher_no_photos", getattr(watcher, "watcher_no_photos", False)) and message.photo:
-                        continue
-                    if getattr(func, "watcher_no_forwards", getattr(watcher, "watcher_no_forwards", False)) and message.fwd_from:
-                        continue
-
-                    try:
-                        await watcher(message)
-                    except Exception as e:
-                        pass
-
-                except Exception:
+            for watcher in getattr(module, "watcher_handlers", None) or ():
+                if not watcher_accepts(watcher, message, prefixes):
                     continue
+                try:
+                    await watcher(message)
+                except Exception:
+                    logger.exception("Watcher of module %s failed", module.name)

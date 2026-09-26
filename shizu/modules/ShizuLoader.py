@@ -16,7 +16,7 @@
 
 # -------------------------------------------------------------------------
 
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -189,6 +189,10 @@ class Loader(loader.Module):
             is_private = True
 
         try:
+            if module_name == "PENDING":
+                error_text = self.strings("pending")
+            if module_name == "DENIED":
+                error_text = self.strings("denied")
             if module_name == "NFA":
                 error_text = self.strings("not_for_this_account")
             if module_name is True:
@@ -309,6 +313,12 @@ class Loader(loader.Module):
         module_name = await self.all_modules.load_module(module_source)
         if module_name is True:
             return await message.answer(self.strings("dep_installed_req_res"))
+
+        if module_name == "PENDING":
+            return await message.answer(self.strings("pending"))
+
+        if module_name == "DENIED":
+            return await message.answer(self.strings("denied"))
 
         if not module_name:
             return await message.answer(self.strings("not_module"))

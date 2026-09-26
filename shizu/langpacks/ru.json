@@ -331,5 +331,7 @@
   "shizu.modules.ShizuSystemd.inline_desc": "Список сервисов и панель управления",
   "shizu.modules.ShizuConfig.saved": "✅ <b>Сохранено</b>",
   "shizu.modules.ShizuConfig.validation_error": "🚫 <b>Ошибка валидации:</b> <code>{}</code>",
-  "shizu.modules.ShizuConfig.value_not_found": "Такого значения нет в списке"
+  "shizu.modules.ShizuConfig.value_not_found": "Такого значения нет в списке",
+  "shizu.modules.ShizuLoader.pending": "🛡 <b>Модуль отправлен на проверку.</b> Открой карточку в лог-чате: после одобрения он загрузится сам",
+  "shizu.modules.ShizuLoader.denied": "🛡 <b>Эта версия модуля отклонена.</b> Отзови решение через <code>.bsforget</code>, чтобы проверить заново"
 }

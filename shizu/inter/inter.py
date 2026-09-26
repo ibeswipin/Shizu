@@ -21,7 +21,8 @@ def transform(code: str) -> str:
 
     match = re.search(r"class\s+(\w+)\s*\(\s*loader\.Module\s*\)\s*:", code)
     if match:
-        module_name = match.group(1)
+        name_match = re.search(r"""["']name["']\s*:\s*["']([^"']+)["']""", code)
+        module_name = name_match.group(1) if name_match else match.group(1)
         code = re.sub(
             r"@loader\.module\(\)",
             f'@loader.module("{module_name}", "telethon", "")',

@@ -1,4 +1,4 @@
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -44,33 +44,33 @@ async def check_filters(
         if not coro:
             return False
 
-    if message.from_user.is_self:
+    if message.outgoing or (message.from_user and message.from_user.is_self):
         return True
 
-    user_id = message.sender_chat.id if message.from_user is None else message.from_user.id
-    
-    if (
-        user_id in db.get("shizu.me", "owners", []) and db.get("shizu.owner", "status", False)
+    user = message.from_user or message.sender_chat
+    return bool(user) and has_access(db, user.id, command_name)
+
+
+def has_access(db, user_id: int, command_name: str = None) -> bool:
+    if user_id in db.get("shizu.me", "owners", []) and db.get(
+        "shizu.owner", "status", False
     ):
         return True
 
-    if message.outgoing:
+    if not command_name:
+        return False
+
+    user_id_str = str(user_id)
+    if command_name in db.get("shizu.permissions", "users", {}).get(user_id_str, []):
         return True
 
-    if command_name:
-        perms = db.get("shizu.permissions", "users", {})
-        user_id_str = str(user_id)
-        if user_id_str in perms and command_name in perms[user_id_str]:
-            return True
-        
-        user_groups = db.get("shizu.commandgroups", "user_groups", {})
-        if user_id_str in user_groups:
-            groups = db.get("shizu.commandgroups", "groups", {})
-            for group_name in user_groups[user_id_str]:
-                if group_name in groups and command_name in groups[group_name]:
-                    return True
-
-    return False
+    groups = db.get("shizu.commandgroups", "groups", {})
+    return any(
+        command_name in groups.get(group_name, [])
+        for group_name in db.get("shizu.commandgroups", "user_groups", {}).get(
+            user_id_str, []
+        )
+    )
 
 
 class DispatcherManager:
