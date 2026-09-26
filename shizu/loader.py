@@ -917,6 +917,7 @@ class ModuleConfig(dict):
                     docstrings.append(entry)
 
         super().__init__(zip(keys, values) if keys else {})
+        self._storage = None
         self._docstrings = dict(zip(keys, docstrings)) if keys else {}
         self._defaults = (
             {key: copy.deepcopy(value) for key, value in zip(keys, defaults)}
@@ -940,6 +941,21 @@ class ModuleConfig(dict):
     def getdef(self, key):
         """Get the default value by key"""
         return copy.deepcopy(self._defaults.get(key))
+
+    def bind(self, db, section: str) -> None:
+        """Save values assigned from now on to `section` in `db`"""
+        self._storage = (db, section)
+
+    def __setitem__(self, key, value):
+        config_value = self._config_values.get(key)
+        if value is not None and config_value is not None and config_value.validator:
+            value = config_value.validator.validate(value)
+        super().__setitem__(key, value)
+        if self._storage:
+            db, section = self._storage
+            stored = db.get(section, "__config__", {})
+            stored[key] = value
+            db.set(section, "__config__", stored)
 
 
 class ModulesManager:
@@ -1448,7 +1464,7 @@ class ModulesManager:
                                 db.set(module.name, "__config__", modcfg)
                             except (ValueError, TypeError):
                                 value = module.config.getdef(conf)
-                    module.config[conf] = value
+                    dict.__setitem__(module.config, conf, value)
                 else:
                     try:
                         value = os.environ[f"{module.name}.{conf}"]
@@ -1465,9 +1481,11 @@ class ModulesManager:
                                     db.set(module.name, "__config__", modcfg)
                                 except (ValueError, TypeError):
                                     value = module.config.getdef(conf)
-                        module.config[conf] = value
+                        dict.__setitem__(module.config, conf, value)
                     except KeyError:
-                        module.config[conf] = module.config.getdef(conf)
+                        dict.__setitem__(module.config, conf, module.config.getdef(conf))
+            if isinstance(module.config, ModuleConfig):
+                module.config.bind(db, module.name)
 
     async def send_on_load(self, module: Module, translator: Translator) -> bool:
         """Used to perform the function after loading the module"""
