@@ -41,660 +41,395 @@ class ShizuConfig(loader.Module):
 
     strings = {}
 
+    MODULES_PER_PAGE = 15
+    OPTIONS_PER_PAGE = 12
+
     async def inline__close(self, call: CallbackQuery) -> None:
         await call.delete()
 
-    async def inline__set_to_default(
-        self,
-        call: CallbackQuery,
-        mod: str,
-        option: str,
-        inline_message_id: str,
-    ) -> None:
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                with contextlib.suppress(KeyError):
-                    del self.db.setdefault(module.name, {}).setdefault(
-                        "__config__", {}
-                    )[option]
-                self.reconfmod(module, self.db)
-                self.db.save()
+    def _module(self, name: str):
+        return next((m for m in self.all_modules.modules if m.name == name), None)
 
-        await call.edit(
-            self.strings("restored"),
-            reply_markup=[
+    @staticmethod
+    def _validator(module, option):
+        config_value = getattr(module.config, "_config_values", {}).get(option)
+        return config_value.validator if config_value else None
+
+    def _base_validator(self, module, option):
+        validator = self._validator(module, option)
+        if isinstance(validator, loader.Validators.Hidden):
+            return validator.validator
+        return validator
+
+    def _is_hidden(self, module, option) -> bool:
+        return isinstance(self._validator(module, option), loader.Validators.Hidden)
+
+    def _is_modified(self, module, option) -> bool:
+        return option in self.db.get(module.name, "__config__", {})
+
+    def _kind(self, module, option) -> str:
+        validator = self._base_validator(module, option)
+        default = module.config.getdef(option)
+        v = loader.Validators
+
+        if isinstance(validator, v.Boolean) or (validator is None and isinstance(default, bool)):
+            return "bool"
+        if isinstance(validator, v.Choice):
+            return "choice"
+        if isinstance(validator, v.Series) or (validator is None and isinstance(default, list)):
+            return "list"
+        if isinstance(validator, (v.Integer, v.Float)) or (
+            validator is None and isinstance(default, (int, float))
+        ):
+            return "number"
+        return "text"
+
+    def _validator_info(self, module, option) -> str:
+        validator = self._base_validator(module, option)
+        if validator is None:
+            return ""
+
+        info = []
+        if getattr(validator, "minimum", None) is not None:
+            info.append(f"Min: {validator.minimum}")
+        if getattr(validator, "maximum", None) is not None:
+            info.append(f"Max: {validator.maximum}")
+        if hasattr(validator, "pattern"):
+            info.append(f"Pattern: {validator.pattern.pattern}")
+        if hasattr(validator, "possible_values"):
+            info.append("Choice: " + ", ".join(map(str, validator.possible_values)))
+
+        return " | ".join(info) or f"Validator: {type(validator).__name__}"
+
+    def _display(self, module, option, value) -> str:
+        if self._is_hidden(module, option):
+            return "•" * 8 if value else ""
+        text = str(value)
+        if len(text) > 1000:
+            text = text[:1000] + "…"
+        return utils.escape_html(text)
+
+    def _check(self, module, option, value):
+        validator = self._validator(module, option)
+        return validator.validate(value) if validator else value
+
+    def _parse(self, module, option, raw: str):
+        try:
+            value = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            value = raw
+
+        if self._validator(module, option) is None and isinstance(
+            module.config.getdef(option), str
+        ):
+            value = raw
+
+        return self._check(module, option, value)
+
+    def _save(self, module, option, value) -> None:
+        self.db.setdefault(module.name, {}).setdefault("__config__", {})[option] = value
+        self.db.save()
+        self.reconfmod(module, self.db)
+
+    def _reset(self, module, option) -> None:
+        self.db.get(module.name, "__config__", {}).pop(option, None)
+        self.db.save()
+        self.reconfmod(module, self.db)
+
+    async def _show(self, target, text: str, markup: list, inline_message_id=None):
+        if isinstance(target, Message):
+            return await target.answer(text, reply_markup=markup)
+        await target.edit(text, reply_markup=markup, inline_message_id=inline_message_id)
+
+    def _close_row(self, back_callback, *args) -> list:
+        return [
+            {"text": self.strings("back"), "callback": back_callback, "args": args},
+            {"text": self.strings("close"), "callback": self.inline__close},
+        ]
+
+    def _global_view(self, page: int = 0):
+        mods = [m.name for m in self.all_modules.modules if getattr(m, "config", None)]
+        pages = max(1, -(-len(mods) // self.MODULES_PER_PAGE))
+        page = min(page, pages - 1)
+        chunk = mods[page * self.MODULES_PER_PAGE : (page + 1) * self.MODULES_PER_PAGE]
+
+        markup = utils.chunks(
+            [{"text": name, "callback": self.inline__configure, "args": (name,)} for name in chunk],
+            3,
+        )
+        markup += self.bot.build_pagination(
+            self.inline__global_config, pages, current_page=page + 1
+        )
+        markup += [[{"text": self.strings("close"), "callback": self.inline__close}]]
+        return self.strings("configure"), markup
+
+    def _module_view(self, module, page: int = 0):
+        options = list(module.config)
+        pages = max(1, -(-len(options) // self.OPTIONS_PER_PAGE))
+        page = min(page, pages - 1)
+        chunk = options[page * self.OPTIONS_PER_PAGE : (page + 1) * self.OPTIONS_PER_PAGE]
+
+        markup = utils.chunks(
+            [
+                {
+                    "text": ("✏️ " if self._is_modified(module, option) else "") + option,
+                    "callback": self.inline__configure_option,
+                    "args": (module.name, option),
+                }
+                for option in chunk
+            ],
+            2,
+        )
+        markup += self.bot.build_pagination(
+            self.inline__configure, pages, current_page=page + 1, args=(module.name,)
+        )
+        markup += [self._close_row(self.inline__global_config)]
+        return self.strings("configuring_mod").format(utils.escape_html(module.name)), markup
+
+    def _option_view(self, module, option, inline_message_id: str, note: str = ""):
+        mod = module.name
+        current = module.config[option]
+        kind = self._kind(module, option)
+        markup = []
+
+        if kind == "bool":
+            markup.append([
+                {
+                    "text": self.strings("false") if current else self.strings("true"),
+                    "callback": self.inline__set_value,
+                    "args": (mod, option, not current),
+                }
+            ])
+        elif kind == "choice":
+            markup += utils.chunks(
                 [
                     {
-                        "text": self.strings("back"),
-                        "callback": self.inline__configure_option,
+                        "text": ("✅ " if value == current else "") + str(value),
+                        "callback": self.inline__set_value,
+                        "args": (mod, option, value),
+                    }
+                    for value in self._base_validator(module, option).possible_values
+                ],
+                3,
+            )
+        elif kind == "number":
+            markup.append([
+                {
+                    "text": f"{delta:+}",
+                    "callback": self.inline__increment_value,
+                    "args": (mod, option, delta),
+                }
+                for delta in (-10, -1, 1, 10)
+            ])
+        elif kind == "list":
+            markup.append([
+                {
+                    "text": self.strings("add_value_to_list_button"),
+                    "input": self.strings("enter_value"),
+                    "handler": self.inline__add_item,
+                    "args": (mod, option, inline_message_id),
+                },
+                {
+                    "text": self.strings("remove_value_from_list_button"),
+                    "input": self.strings("enter_value"),
+                    "handler": self.inline__remove_item,
+                    "args": (mod, option, inline_message_id),
+                },
+            ])
+            if module.config.getdef(option):
+                markup.append([
+                    {
+                        "text": self.strings("choose_button"),
+                        "callback": self.inline__choose,
                         "args": (mod, option),
-                    },
-                    {"text": self.strings("close"), "callback": self.inline__close},
+                    }
+                ])
+
+        markup.append(
+            [
+                {
+                    "text": self.strings("ent_value"),
+                    "input": self.strings("enter_value"),
+                    "handler": self.inline__set_config,
+                    "args": (mod, option, inline_message_id),
+                }
+            ]
+            + (
+                [
+                    {
+                        "text": self.strings("restore_def_button"),
+                        "callback": self.inline__set_to_default,
+                        "args": (mod, option),
+                    }
                 ]
-            ],
-            inline_message_id=inline_message_id,
+                if self._is_modified(module, option)
+                else []
+            )
         )
+        markup.append(self._close_row(self.inline__configure, mod))
 
-    def _get_validator_info(self, module, option):
-        if (
-            hasattr(module.config, "_config_values")
-            and option in module.config._config_values
-        ):
-            config_value = module.config._config_values[option]
-            if config_value and config_value.validator:
-                validator = config_value.validator
-                info = []
-                validator_type = type(validator).__name__
+        doc = module.config.getdoc(option)
+        if info := self._validator_info(module, option):
+            doc = f"{doc}\n\n{info}"
 
-                if hasattr(validator, "minimum") and validator.minimum is not None:
-                    info.append(f"Min: {validator.minimum}")
-                if hasattr(validator, "maximum") and validator.maximum is not None:
-                    info.append(f"Max: {validator.maximum}")
-                if hasattr(validator, "pattern"):
-                    info.append(f"Pattern: {validator.pattern.pattern}")
+        text = self.strings("configuring_option").format(
+            utils.escape_html(option),
+            utils.escape_html(mod),
+            utils.escape_html(doc),
+            self._display(module, option, module.config.getdef(option)),
+            self._display(module, option, current),
+        )
+        if note:
+            text += f"\n\n{note}"
 
-                if info:
-                    return config_value, " | ".join(info)
-                else:
-                    return config_value, f"Validator: {validator_type}"
-        return None, None
+        return text, markup
+
+    async def _refresh_option(self, call, module, option, note: str = "", inline_message_id=None):
+        inline_message_id = inline_message_id or call.inline_message_id
+        text, markup = self._option_view(module, option, inline_message_id, note)
+        await call.edit(text, reply_markup=markup, inline_message_id=inline_message_id)
+
+    async def _apply(self, call, mod: str, option: str, get_value, inline_message_id=None):
+        module = self._module(mod)
+        if not module or option not in module.config:
+            return await call.edit("🚫", reply_markup=[], inline_message_id=inline_message_id)
+
+        try:
+            value = get_value(module)
+        except (ValueError, TypeError) as e:
+            note = self.strings("validation_error").format(utils.escape_html(str(e)))
+            return await self._refresh_option(call, module, option, note, inline_message_id)
+
+        if value is None:
+            self._reset(module, option)
+        else:
+            self._save(module, option, value)
+
+        await self._refresh_option(
+            call, module, option, self.strings("saved"), inline_message_id
+        )
 
     async def inline__set_config(
-        self,
-        call: CallbackQuery,
-        query: str,
-        mod: str,
-        option: str,
-        inline_message_id: str,
+        self, call, query: str, mod: str, option: str, inline_message_id: str
     ) -> None:
-        validation_error = None
-        with contextlib.suppress(ValueError, SyntaxError):
-            query = ast.literal_eval(query)
-
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                if query is not None and query != "":
-                    config_value, validator_info = self._get_validator_info(
-                        module, option
-                    )
-                    if config_value and config_value.validator:
-                        try:
-                            query = config_value.validator.validate(query)
-                        except ValueError as e:
-                            validation_error = str(e)
-                            return await call.edit(
-                                f"Validation error: {validation_error}",
-                                reply_markup=[
-                                    [
-                                        {
-                                            "text": self.strings("back"),
-                                            "callback": self.inline__configure_option,
-                                            "args": (mod, option),
-                                        },
-                                        {
-                                            "text": self.strings("close"),
-                                            "callback": self.inline__close,
-                                        },
-                                    ]
-                                ],
-                                inline_message_id=inline_message_id,
-                            )
-
-                    self.db.setdefault(module.name, {}).setdefault("__config__", {})[
-                        option
-                    ] = query
-                    module.config[option] = query
-                else:
-                    with contextlib.suppress(KeyError):
-                        del self.db.setdefault(module.name, {}).setdefault(
-                            "__config__", {}
-                        )[option]
-
-                self.reconfmod(module, self.db)
-                self.db.save()
-
-        await call.edit(
-            self.strings("option_saved").format(option, mod, query),
-            reply_markup=[
-                [
-                    {
-                        "text": self.strings("back"),
-                        "callback": self.inline__configure_option,
-                        "args": (mod, option),
-                    },
-                    {"text": self.strings("close"), "callback": self.inline__close},
-                ]
-            ],
-            inline_message_id=inline_message_id,
+        await self._apply(
+            call,
+            mod,
+            option,
+            lambda module: self._parse(module, option, query) if query.strip() else None,
+            inline_message_id,
         )
 
-    async def inline__add_item(
-        self,
-        call: CallbackQuery,
-        query: str,
-        mod: str,
-        option: str,
-        inline_message_id: str,
-    ) -> None:
-        with contextlib.suppress(ValueError, SyntaxError):
-            query = ast.literal_eval(query)
-
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                config_value, _ = self._get_validator_info(module, option)
-                if config_value and config_value.validator:
-                    try:
-                        query = config_value.validator.validate(query)
-                    except ValueError as e:
-                        return await call.edit(
-                            f"Validation error: {str(e)}",
-                            reply_markup=[
-                                [
-                                    {
-                                        "text": self.strings("back"),
-                                        "callback": self.inline__add_delete,
-                                        "args": (mod, option),
-                                    },
-                                    {
-                                        "text": self.strings("close"),
-                                        "callback": self.inline__close,
-                                    },
-                                ]
-                            ],
-                            inline_message_id=inline_message_id,
-                        )
-
-                try:
-                    self.db.setdefault(module.name, {}).setdefault("__config__", {})[
-                        option
-                    ] += [query]
-
-                except KeyError:
-                    self.db.setdefault(module.name, {}).setdefault("__config__", {})[
-                        option
-                    ] = module.config[option] + [query]
-
-                self.reconfmod(module, self.db)
-                self.db.save()
-
-        await call.edit(
-            self.strings("option_added").format(query),
-            reply_markup=[
-                [
-                    {
-                        "text": self.strings("back"),
-                        "callback": self.inline__add_delete,
-                        "args": (mod, option),
-                    },
-                    {"text": self.strings("close"), "callback": self.inline__close},
-                ]
-            ],
-            inline_message_id=inline_message_id,
-        )
-
-    async def inline__remove_item(
-        self,
-        call: CallbackQuery,
-        query: str,
-        mod: str,
-        option: str,
-        inline_message_id: str,
-    ) -> None:
-        with contextlib.suppress(ValueError, SyntaxError):
-            query = ast.literal_eval(query)
-
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                try:
-                    self.db.setdefault(module.name, {}).setdefault("__config__", {})[
-                        option
-                    ].remove(query)
-
-                except KeyError:
-                    self.db.setdefault(module.name, {}).setdefault("__config__", {})[
-                        option
-                    ] = module.config[option].remove(query)
-
-                self.reconfmod(module, self.db)
-                self.db.save()
-
-        await call.edit(
-            self.strings("option_removed").format(query),
-            reply_markup=[
-                [
-                    {
-                        "text": self.strings("back"),
-                        "callback": self.inline__add_delete,
-                        "args": (mod, option),
-                    },
-                    {"text": self.strings("close"), "callback": self.inline__close},
-                ]
-            ],
-            inline_message_id=inline_message_id,
-        )
-
-    async def inline__true_false(
-        self, call: CallbackQuery, mod: str, config_opt: str
-    ) -> None:
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                if isinstance(module.config[config_opt], bool):
-                    await call.edit(
-                        self.strings("configuring_option").format(
-                            utils.escape_html(config_opt),
-                            utils.escape_html(mod),
-                            utils.escape_html(module.config.getdoc(config_opt)),
-                            utils.escape_html(module.config.getdef(config_opt)),
-                            utils.escape_html(module.config[config_opt]),
-                        ),
-                        reply_markup=[
-                            [
-                                {
-                                    "text": (
-                                        self.strings("false")
-                                        if module.config[config_opt]
-                                        else self.strings("true")
-                                    ),
-                                    "callback": self.inline__true_false_set,
-                                    "args": (
-                                        not module.config[config_opt],
-                                        mod,
-                                        config_opt,
-                                        call.inline_message_id,
-                                    ),
-                                }
-                            ],
-                            [
-                                {
-                                    "text": self.strings("back"),
-                                    "callback": self.inline_advanced,
-                                    "args": (mod, config_opt),
-                                },
-                                {
-                                    "text": self.strings("close"),
-                                    "callback": self.inline__close,
-                                },
-                            ],
-                        ],
-                    )
-                else:
-                    return await call.answer("This option doesn't have a boolean type!")
-
-    async def inline__true_false_set(
-        self,
-        call: CallbackQuery,
-        query: bool,
-        mod: str,
-        option: str,
-        inline_message_id: str,
-    ) -> None:
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                self.db.setdefault(module.name, {}).setdefault("__config__", {})[
-                    option
-                ] = query
-                module.config[option] = query
-                self.reconfmod(module, self.db)
-                self.db.save()
-
-        await self.inline__true_false(call, mod, option)
-
-    async def inline__add_delete(
-        self, call: CallbackQuery, mod: str, config_opt: str
-    ) -> None:
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                if isinstance(module.config[config_opt], list):
-                    await call.edit(
-                        self.strings("configuring_option").format(
-                            utils.escape_html(config_opt),
-                            utils.escape_html(mod),
-                            utils.escape_html(module.config.getdoc(config_opt)),
-                            utils.escape_html(module.config.getdef(config_opt)),
-                            utils.escape_html(module.config[config_opt]),
-                        ),
-                        reply_markup=[
-                            [
-                                {
-                                    "text": self.strings("add_value_to_list_button"),
-                                    "input": self.strings("enter_value"),
-                                    "handler": self.inline__add_item,
-                                    "args": (mod, config_opt, call.inline_message_id),
-                                },
-                                {
-                                    "text": self.strings(
-                                        "remove_value_from_list_button"
-                                    ),
-                                    "input": self.strings("enter_value"),
-                                    "handler": self.inline__remove_item,
-                                    "args": (mod, config_opt, call.inline_message_id),
-                                },
-                            ],
-                            [
-                                {
-                                    "text": self.strings("back"),
-                                    "callback": self.inline_advanced,
-                                    "args": (mod, config_opt),
-                                },
-                                {
-                                    "text": self.strings("close"),
-                                    "callback": self.inline__close,
-                                },
-                            ],
-                        ],
-                    )
-                else:
-                    return await call.answer("This option doesn't have a list type!")
-
-    async def inline_advanced(
-        self, call: CallbackQuery, mod: str, config_opt: str
-    ) -> None:
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                await call.edit(
-                    self.strings("advanced").format(utils.escape_html(mod)),
-                    reply_markup=[
-                        [
-                            {
-                                "text": self.strings("true_false_button"),
-                                "callback": self.inline__true_false,
-                                "args": (mod, config_opt),
-                            },
-                            {
-                                "text": self.strings("add_delete_button"),
-                                "callback": self.inline__add_delete,
-                                "args": (mod, config_opt),
-                            },
-                        ],
-                        [
-                            {
-                                "text": self.strings("choose_button"),
-                                "callback": self.inline__choose,
-                                "args": (mod, config_opt),
-                            }
-                        ],
-                        [
-                            {
-                                "text": self.strings("back"),
-                                "callback": self.inline__configure_option,
-                                "args": (mod, config_opt),
-                            },
-                            {
-                                "text": self.strings("close"),
-                                "callback": self.inline__close,
-                            },
-                        ],
-                    ],
-                )
-
-    async def inline__choose(
-        self, call: CallbackQuery, mod: str, config_opt: str
-    ) -> None:
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                if not isinstance(module.config[config_opt], list):
-                    return await call.answer("This option doesn't have a default list!")
-
-                if not self.db.get(module.name, "__config__", {}).get(config_opt):
-                    self.db.setdefault(module.name, {}).setdefault("__config__", {})[
-                        config_opt
-                    ] = module.config.getdef(config_opt)[:]
-
-                    self.reconfmod(module, self.db)
-                    self.db.save()
-
-                kb = []
-                ops = [str(i) for i in module.config[config_opt]]
-                v = module.config.getdef(config_opt)[:]
-
-                for mod_row in utils.chunks(v, 3):
-                    row = [
-                        {
-                            "text": f"{'✅' if btn in ops else '❌'} {btn}",
-                            "callback": self.inline__choose_set,
-                            "args": (mod, config_opt, btn),
-                        }
-                        for btn in mod_row
-                    ]
-                    kb += [row]
-
-                kb += [
-                    [
-                        {
-                            "text": self.strings["back"],
-                            "callback": self.inline_advanced,
-                            "args": (mod, config_opt),
-                        },
-                        {
-                            "text": self.strings["close"],
-                            "callback": self.inline__close,
-                        },
-                    ]
-                ]
-
-                await call.edit(
-                    self.strings("configuring_option").format(
-                        utils.escape_html(config_opt),
-                        utils.escape_html(mod),
-                        utils.escape_html(module.config.getdoc(config_opt)),
-                        utils.escape_html(module.config.getdef(config_opt)),
-                        utils.escape_html(module.config[config_opt]),
-                    ),
-                    reply_markup=kb,
-                )
-
-    async def inline__choose_set(
-        self,
-        call: CallbackQuery,
-        mod: str,
-        option: str,
-        value: str,
-    ) -> None:
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                if value in module.config[option]:
-                    module.config[option] = [
-                        v for v in module.config[option] if v != value
-                    ]
-                else:
-                    module.config[option].append(value)
-
-                self.db.setdefault(module.name, {}).setdefault("__config__", {})[
-                    option
-                ] = module.config[option][:]
-
-                self.reconfmod(module, self.db)
-                self.db.save()
-
-                await self.inline__choose(call, mod, option)
+    async def inline__set_value(self, call: CallbackQuery, mod: str, option: str, value) -> None:
+        await self._apply(call, mod, option, lambda module: self._check(module, option, value))
 
     async def inline__increment_value(
-        self,
-        call: CallbackQuery,
-        mod: str,
-        option: str,
-        delta: int,
-        inline_message_id: str,
+        self, call: CallbackQuery, mod: str, option: str, delta: int
     ) -> None:
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                current_value = module.config[option]
-                if isinstance(current_value, (int, float)):
-                    new_value = current_value + delta
-                    config_value, _ = self._get_validator_info(module, option)
-                    if config_value and config_value.validator:
-                        try:
-                            new_value = config_value.validator.validate(new_value)
-                        except ValueError as e:
-                            await call.answer(
-                                f"Validation error: {str(e)}", show_alert=True
-                            )
-                            return
+        await self._apply(
+            call,
+            mod,
+            option,
+            lambda module: self._check(module, option, module.config[option] + delta),
+        )
 
-                    self.db.setdefault(module.name, {}).setdefault("__config__", {})[
-                        option
-                    ] = new_value
-                    module.config[option] = new_value
-                    self.reconfmod(module, self.db)
-                    self.db.save()
+    async def inline__set_to_default(self, call: CallbackQuery, mod: str, option: str) -> None:
+        module = self._module(mod)
+        if module:
+            self._reset(module, option)
+            await self._refresh_option(call, module, option, self.strings("restored"))
 
-                    await self.inline__configure_option(call, mod, option)
+    async def inline__add_item(
+        self, call, query: str, mod: str, option: str, inline_message_id: str
+    ) -> None:
+        def add(module):
+            try:
+                item = ast.literal_eval(query)
+            except (ValueError, SyntaxError):
+                item = query
+            return self._check(module, option, list(module.config[option] or []) + [item])
+
+        await self._apply(call, mod, option, add, inline_message_id)
+
+    async def inline__remove_item(
+        self, call, query: str, mod: str, option: str, inline_message_id: str
+    ) -> None:
+        def remove(module):
+            current = list(module.config[option] or [])
+            left = [item for item in current if str(item) != query.strip()]
+            if len(left) == len(current):
+                raise ValueError(self.strings("value_not_found"))
+            return left
+
+        await self._apply(call, mod, option, remove, inline_message_id)
+
+    async def inline__choose(self, call: CallbackQuery, mod: str, option: str) -> None:
+        module = self._module(mod)
+        if not module:
+            return
+
+        current = [str(item) for item in module.config[option] or []]
+        markup = utils.chunks(
+            [
+                {
+                    "text": f"{'✅' if str(item) in current else '❌'} {item}",
+                    "callback": self.inline__choose_set,
+                    "args": (mod, option, index),
+                }
+                for index, item in enumerate(module.config.getdef(option))
+            ],
+            3,
+        )
+        markup += [self._close_row(self.inline__configure_option, mod, option)]
+
+        text, _ = self._option_view(module, option, call.inline_message_id)
+        await call.edit(text, reply_markup=markup)
+
+    async def inline__choose_set(
+        self, call: CallbackQuery, mod: str, option: str, index: int
+    ) -> None:
+        module = self._module(mod)
+        if not module:
+            return
+
+        item = module.config.getdef(option)[index]
+        current = list(module.config[option] or [])
+        if any(str(i) == str(item) for i in current):
+            current = [i for i in current if str(i) != str(item)]
+        else:
+            current.append(item)
+
+        try:
+            self._save(module, option, self._check(module, option, current))
+        except (ValueError, TypeError) as e:
+            return await call.answer(str(e), show_alert=True)
+
+        await self.inline__choose(call, mod, option)
 
     async def inline__configure_option(
         self, call: CallbackQuery, mod: str, config_opt: str
     ) -> None:
-        for module in self.all_modules.modules:
-            if module.name == mod:
-                config_value, validator_info = self._get_validator_info(
-                    module, config_opt
-                )
-                current_value = module.config[config_opt]
+        module = self._module(mod)
+        if module and config_opt in module.config:
+            await self._refresh_option(call, module, config_opt)
 
-                is_numeric = isinstance(current_value, (int, float))
-                if not is_numeric and current_value is not None:
-                    try:
-                        float(current_value)
-                        is_numeric = True
-                    except (ValueError, TypeError):
-                        pass
+    async def inline__configure(self, call: CallbackQuery, mod: str, page: int = 0) -> None:
+        module = self._module(mod)
+        if module:
+            await self._show(call, *self._module_view(module, page))
 
-                has_validator = (
-                    config_value is not None and config_value.validator is not None
-                )
-
-                is_float_or_int_validator = False
-                if has_validator:
-                    validator = config_value.validator
-                    validator_type = type(validator).__name__
-                    is_float_or_int_validator = validator_type in ("Float", "Integer")
-
-                doc = module.config.getdoc(config_opt)
-                if validator_info:
-                    doc = f"{doc}\n\n{validator_info}"
-
-                markup = []
-                if (is_numeric or is_float_or_int_validator) and has_validator:
-                    markup.append(
-                        [
-                            {
-                                "text": "-1",
-                                "callback": self.inline__increment_value,
-                                "args": (mod, config_opt, -1, call.inline_message_id),
-                            },
-                            {
-                                "text": "+1",
-                                "callback": self.inline__increment_value,
-                                "args": (mod, config_opt, 1, call.inline_message_id),
-                            },
-                            {
-                                "text": "-10",
-                                "callback": self.inline__increment_value,
-                                "args": (mod, config_opt, -10, call.inline_message_id),
-                            },
-                            {
-                                "text": "+10",
-                                "callback": self.inline__increment_value,
-                                "args": (mod, config_opt, 10, call.inline_message_id),
-                            },
-                        ]
-                    )
-
-                markup.extend(
-                    [
-                        [
-                            {
-                                "text": self.strings("ent_value"),
-                                "input": self.strings("enter_value"),
-                                "handler": self.inline__set_config,
-                                "args": (mod, config_opt, call.inline_message_id),
-                            },
-                            {
-                                "text": self.strings("restore_def_button"),
-                                "callback": self.inline__set_to_default,
-                                "args": (mod, config_opt, call.inline_message_id),
-                            },
-                        ],
-                        [
-                            {
-                                "text": self.strings("advanced_button"),
-                                "callback": self.inline_advanced,
-                                "args": (mod, config_opt),
-                            }
-                        ],
-                        [
-                            {
-                                "text": self.strings("back"),
-                                "callback": self.inline__configure,
-                                "args": (mod,),
-                            },
-                            {
-                                "text": self.strings("close"),
-                                "callback": self.inline__close,
-                            },
-                        ],
-                    ]
-                )
-
-                await call.edit(
-                    self.strings("configuring_option").format(
-                        utils.escape_html(config_opt),
-                        utils.escape_html(mod),
-                        utils.escape_html(doc),
-                        utils.escape_html(module.config.getdef(config_opt)),
-                        utils.escape_html(module.config[config_opt]),
-                    ),
-                    reply_markup=markup,
-                )
-
-    async def inline__configure(self, call: CallbackQuery, mod: str) -> None:
-        btns = []
-        with contextlib.suppress(Exception):
-            for module in self.all_modules.modules:
-                if module.name == mod:
-                    for param in module.config:
-                        btns += [
-                            {
-                                "text": param,
-                                "callback": self.inline__configure_option,
-                                "args": (mod, param),
-                            }
-                        ]
-
-        await call.edit(
-            self.strings("configuring_mod").format(utils.escape_html(mod)),
-            reply_markup=list(utils.chunks(btns, 2))
-            + [
-                [
-                    {
-                        "text": self.strings("back"),
-                        "callback": self.inline__global_config,
-                    },
-                    {"text": self.strings("close"), "callback": self.inline__close},
-                ]
-            ],
-        )
-
-    async def inline__global_config(self, call: Union[Message, CallbackQuery]) -> None:
-        to_config = [
-            mod.name for mod in self.all_modules.modules if hasattr(mod, "config")
-        ]
-        kb = []
-        for mod_row in utils.chunks(to_config, 3):
-            row = [
-                {"text": btn, "callback": self.inline__configure, "args": (btn,)}
-                for btn in mod_row
-            ]
-            kb += [row]
-
-        kb += [[{"text": self.strings("close"), "callback": self.inline__close}]]
-
-        if isinstance(call, Message):
-            await call.answer(self.strings("configure"), reply_markup=kb)
-        else:
-            await call.edit(self.strings("configure"), reply_markup=kb)
+    async def inline__global_config(
+        self, call: Union[Message, CallbackQuery], page: int = 0
+    ) -> None:
+        await self._show(call, *self._global_view(page))
 
     async def configcmd(self, app, message: Message) -> None:
-        """Configure modules"""
+        """[module] - Configure modules"""
+        args = utils.get_args_raw(message)
+        module = self.all_modules.get_module(args) if args else None
+
+        if module and getattr(module, "config", None):
+            return await self._show(message, *self._module_view(module))
 
         await self.inline__global_config(message)
 
@@ -707,29 +442,28 @@ class ShizuConfig(loader.Module):
             module = self.all_modules.get_module(args)
             if not module or not hasattr(module, "config"):
                 await utils.answer(
-                    message, f"❌ Module '{args}' not found or has no config"
+                    message, f"❌ Module '{utils.escape_html(args)}' not found or has no config"
                 )
                 return
 
-            module_configs = self.db.get(module.name, "__config__", {})
-            if module_configs:
-                del self.db.get(module.name, {})["__config__"]
-                self.reconfmod(module, self.db)
+            if self.db.pop(module.name, "__config__"):
                 self.db.save()
-                await utils.answer(message, f"✅ Reset configs for module '{args}'")
+                self.reconfmod(module, self.db)
+                await utils.answer(
+                    message, f"✅ Reset configs for module '{utils.escape_html(module.name)}'"
+                )
             else:
-                await utils.answer(message, f"ℹ️ Module '{args}' has no custom configs")
+                await utils.answer(
+                    message, f"ℹ️ Module '{utils.escape_html(module.name)}' has no custom configs"
+                )
         else:
             # Reset all modules
             reset_count = 0
             for module in self.all_modules.modules:
                 if hasattr(module, "config"):
-                    module_configs = self.db.get(module.name, "__config__", {})
-                    if module_configs:
-                        with contextlib.suppress(KeyError):
-                            del self.db.get(module.name, {})["__config__"]
-                            self.reconfmod(module, self.db)
-                            reset_count += 1
+                    if self.db.pop(module.name, "__config__"):
+                        self.reconfmod(module, self.db)
+                        reset_count += 1
 
             self.db.save()
             await utils.answer(
@@ -780,19 +514,21 @@ class ShizuConfig(loader.Module):
         for module in self.all_modules.modules:
             if hasattr(module, "config"):
                 for option in module.config:
+                    if self._is_hidden(module, option):
+                        continue
                     current_value = str(module.config[option])
                     if query_lower in current_value.lower():
                         results.append(
-                            f"• <b>{module.name}</b>.<code>{option}</code> = <code>{utils.escape_html(current_value)}</code>"
+                            f"• <b>{module.name}</b>.<code>{option}</code> = <code>{self._display(module, option, current_value)}</code>"
                         )
 
         if not results:
             await utils.answer(
-                message, f"❌ No configs found with value matching '{query}'"
+                message, f"❌ No configs found with value matching '{utils.escape_html(query)}'"
             )
             return
 
-        result_text = f"🔍 <b>Configs with value '{query}':</b>\n\n" + "\n".join(
+        result_text = f"🔍 <b>Configs with value '{utils.escape_html(query)}':</b>\n\n" + "\n".join(
             results[:30]
         )
         if len(results) > 30:
@@ -874,7 +610,7 @@ class ShizuConfig(loader.Module):
         await utils.answer(
             message,
             f"✅ Copied <code>{option_name}</code> from <b>{source_module_name}</b> to <b>{target_module_name}</b>\n"
-            f"Value: <code>{utils.escape_html(str(value))}</code>",
+            f"Value: <code>{self._display(target_module, option_name, value)}</code>",
         )
 
     async def cfgvalidatecmd(self, app, message: Message) -> None:
@@ -957,8 +693,8 @@ class ShizuConfig(loader.Module):
                         if value != default_value:
                             modified.append(
                                 f"• <b>{module.name}</b>.<code>{option}</code>\n"
-                                f"  Default: <code>{utils.escape_html(str(default_value))}</code>\n"
-                                f"  Current: <code>{utils.escape_html(str(value))}</code>"
+                                f"  Default: <code>{self._display(module, option, default_value)}</code>\n"
+                                f"  Current: <code>{self._display(module, option, value)}</code>"
                             )
 
         if not modified:
@@ -994,22 +730,11 @@ class ShizuConfig(loader.Module):
             return
 
         option_name, rest = parts
-        # Try to parse value and module list
-        if " " in rest:
-            # Has module list
-            value_str, *module_names = rest.rsplit(" ", len(rest.split()) - 1)
-            try:
-                value = ast.literal_eval(value_str)
-            except (ValueError, SyntaxError):
-                value = value_str
-        else:
-            # Only value, apply to all modules
-            value_str = rest
-            module_names = []
-            try:
-                value = ast.literal_eval(value_str)
-            except (ValueError, SyntaxError):
-                value = value_str
+        tokens = rest.split()
+        module_names = []
+        while len(tokens) > 1 and self.all_modules.get_module(tokens[-1]):
+            module_names.insert(0, tokens.pop())
+        value_str = " ".join(tokens)
 
         updated = 0
         errors = []
@@ -1038,18 +763,7 @@ class ShizuConfig(loader.Module):
 
         for module in modules_to_update:
             try:
-                # Validate if validator exists
-                if (
-                    hasattr(module.config, "_config_values")
-                    and option_name in module.config._config_values
-                ):
-                    config_value = module.config._config_values[option_name]
-                    if config_value.validator:
-                        validated_value = config_value.validator.validate(value)
-                    else:
-                        validated_value = value
-                else:
-                    validated_value = value
+                validated_value = self._parse(module, option_name, value_str)
 
                 self.db.setdefault(module.name, {}).setdefault("__config__", {})[
                     option_name
@@ -1065,7 +779,7 @@ class ShizuConfig(loader.Module):
         result_text = (
             f"✅ Updated <code>{option_name}</code> in <b>{updated}</b> module(s)\n"
         )
-        result_text += f"Value: <code>{utils.escape_html(str(value))}</code>"
+        result_text += f"Value: <code>{utils.escape_html(value_str)}</code>"
 
         if errors:
             result_text += f"\n\n❌ Errors:\n" + "\n".join(errors[:5])

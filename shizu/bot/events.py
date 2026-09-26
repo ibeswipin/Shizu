@@ -516,18 +516,9 @@ class Events(Item):
                 if "callback" in button and not isinstance(button["callback"], str):
                     func = button["callback"]
                     button["_callback"] = func
-                    try:
-                        button["callback"] = (
-                            f"{func.__self__.__class__.__name__}.{func.__func__.__name__}"
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Error while forming markup! "
-                            "Probably, you passed wrong type "
-                            "to `callback` field, contact "
-                            "developer of module."
-                        )
-                        return None
+                    button["callback"] = getattr(
+                        func, "__qualname__", type(func).__name__
+                    )
 
                 if "callback" in button and "_callback_data" not in button:
                     button["_callback_data"] = utils.rand(30)
@@ -901,319 +892,174 @@ class Events(Item):
 
         return form_uid
 
+    def build_pagination(
+        self,
+        callback,
+        total_pages: int,
+        unit_id: Optional[str] = None,
+        current_page: Optional[int] = None,
+        args: tuple = (),
+    ) -> List[List[dict]]:
+        if current_page is None:
+            current_page = self._forms[unit_id]["current_index"] + 1
+
+        n, c = total_pages, current_page
+
+        if n <= 1:
+            return []
+
+        if n <= 5:
+            pages = [(str(p), p) for p in range(1, n + 1)]
+        elif c <= 3:
+            pages = [(str(p), p) for p in range(1, 4)] + [("4 ›", 4), (f"{n} »", n)]
+        elif c > n - 3:
+            pages = [("« 1", 1), (f"‹ {n - 3}", n - 3)] + [
+                (str(p), p) for p in range(n - 2, n + 1)
+            ]
+        else:
+            pages = [
+                ("« 1", 1),
+                (f"‹ {c - 1}", c - 1),
+                (str(c), c),
+                (f"{c + 1} ›", c + 1),
+                (f"{n} »", n),
+            ]
+
+        return [
+            [
+                {
+                    "text": f"· {p} ·" if p == c else text,
+                    "callback": callback,
+                    "args": (*args, p - 1),
+                }
+                for text, p in pages
+            ]
+        ]
+
     async def list(
         self,
-        message: Message,
+        message: Union[Message, int],
         strings: List[str],
         prev: bool = True,
         *,
         force_me: Optional[bool] = True,
         always_allow: Optional[list] = None,
-        manual_security: Optional[bool] = False,
-        disable_security: Optional[bool] = False,
-        ttl: Optional[Union[int, bool]] = False,
+        custom_buttons: Optional[List[List[dict]]] = None,
+        silent: bool = False,
+        disable_security: bool = False,
         **kwargs,
-    ) -> bool:
+    ) -> Union[str, bool]:
         """
         Send inline list to chat
-        :param message: Where to send list. Can be either `Message` or `int`
+        :param message: Where to send list. Can be either `Message` or chat id
         :param strings: List of strings, which should become inline list
         :param force_me: Either this list buttons must be pressed only by owner scope or no
         :param always_allow: Users, that are allowed to press buttons in addition to previous rules
-        :param ttl: Time, when the list is going to be unloaded. Unload means, that the list
-                    will become unusable. Pay attention, that ttl can't
-                    be bigger, than default one (1 day) and must be either `int` or `False`
-        :param on_unload: Callback, called when list is unloaded and/or closed. You can clean up trash
-                          or perform another needed action
-        :param manual_security: By default, Shizu will try to inherit inline buttons security from the caller (command)
-                                If you want to avoid this, pass `manual_security=True`
-        :param disable_security: By default, Shizu will try to inherit inline buttons security from the caller (command)
-                                 If you want to disable all security checks on this list in particular, pass `disable_security=True`
-        :param silent: Whether the list must be sent silently (w/o "Loading inline list..." message)
-        :return: If list is sent, returns :obj:`InlineMessage`, otherwise returns `False`
+        :param custom_buttons: Buttons to add above the pagination
+        :param silent: Don't show "Loading inline list..." message
+        :param disable_security: Allow anyone to press the buttons
+        :return: List id if sent, otherwise `False`
         """
-
-        if not isinstance(manual_security, bool):
-            logger.error("Invalid type for `manual_security`")
-            return False
-
-        if not isinstance(disable_security, bool):
-            logger.error("Invalid type for `disable_security`")
-            return False
-
-        if not isinstance(force_me, bool):
-            logger.error("Invalid type for `force_me`")
-            return False
-
         if not isinstance(strings, list) or not strings:
             logger.error("Invalid type for `strings`")
-            return False
-
-        if len(strings) > 50:
-            logger.error(f"Too much pages for `strings` ({len(strings)})")
             return False
 
         if always_allow and not isinstance(always_allow, list):
             logger.error("Invalid type for `always_allow`")
             return False
 
-        if not always_allow:
-            always_allow = []
-
-        if not isinstance(ttl, int) and ttl:
-            logger.error("Invalid type for `ttl`")
-            return False
-
-        if isinstance(ttl, int) and (ttl > self._markup_ttl or ttl < 10):
-            ttl = self._markup_ttl
-            logger.debug("Defaulted ttl, because it breaks out of limits")
-
         unit_id = utils.rand(16)
-        btn_call_data = {
-            key: utils.rand(10) for key in {"back", "next", "show_current"}
-        }
-
-        perms_map = None
-
         self._forms[unit_id] = {
             "type": "list",
+            "uid": unit_id,
             "chat": None,
             "message_id": None,
-            "uid": unit_id,
-            "btn_call_data": btn_call_data,
-            "current_index": 0,
             "strings": strings,
-            "future": asyncio.Event(),
-            **({"ttl": round(time.time()) + ttl} if ttl else {}),
-            **({"force_me": force_me} if force_me else {}),
-            **({"disable_security": disable_security} if disable_security else {}),
-            **({"always_allow": always_allow} if always_allow else {}),
-            **({"perms_map": perms_map} if perms_map else {}),
-            **({"message": message} if isinstance(message, Message) else {}),
+            "current_index": 0,
+            "custom_buttons": custom_buttons or [],
+            "force_me": bool(force_me) and not disable_security,
+            "always_allow": always_allow or [],
         }
+        self._forms[unit_id]["buttons"] = self._list_buttons(unit_id)
 
-        default_map = {}
-        default_map.update(
-            {"ttl": self._forms[unit_id]["ttl"]}
-            if "ttl" in self._forms[unit_id]
-            else {}
-        )
-        default_map.update({"always_allow": always_allow} if always_allow else {})
-        default_map.update({"force_me": force_me} if force_me else {})
-        default_map.update(
-            {"disable_security": disable_security} if disable_security else {}
-        )
-        default_map.update({"perms_map": perms_map} if perms_map else {})
-        default_map.update({"message": message} if isinstance(message, Message) else {})
+        chat_id = message if isinstance(message, int) else message.chat.id
 
-        markup = InlineKeyboardMarkup()
-        markup.row(
-            InlineKeyboardButton(
-                text="«",
-                callback_data=self._forms[unit_id]["btn_call_data"]["back"],
-            ),
-            InlineKeyboardButton(
-                f"• {self._forms[unit_id]['current_index'] + 1} •",
-                callback_data=self._forms[unit_id]["btn_call_data"]["show_current"],
-            ),
-            InlineKeyboardButton(
-                text="»",
-                callback_data=self._forms[unit_id]["btn_call_data"]["next"],
-            ),
-        )
-
-        self._forms[unit_id]["buttons"] = markup
-
-        self._custom_map[btn_call_data["back"]] = {
-            "handler": functools.partial(
-                self._list_back,
-                btn_call_data=btn_call_data,
-                unit_id=unit_id,
-            ),
-            **default_map,
-        }
-
-        self._custom_map[btn_call_data["next"]] = {
-            "handler": functools.partial(
-                self._list_next,
-                btn_call_data=btn_call_data,
-                unit_id=unit_id,
-            ),
-            **default_map,
-        }
-
-        self._custom_map[btn_call_data["show_current"]] = {
-            "handler": functools.partial(
-                self._list_show_current,
-                unit_id=unit_id,
-            )
-        }
-
-        if isinstance(message, pyrogram.types.Message) and prev:
-            message: pyrogram.types.Message
-            try:
-                status_message = await message.edit("🐙 Loading inline list...")
-            except Exception:
-                status_message = None
-        else:
-            status_message = None
-
-        async def answer(msg: str):
-            nonlocal message
-            if isinstance(message, Message):
-                await (message.edit if message.out else message.respond)(msg)
-            else:
-                await self._app.send_message(message.chat.id, msg)
+        if isinstance(message, Message) and prev and not silent:
+            with contextlib.suppress(Exception):
+                await message.edit("🐙 Loading inline list...")
 
         try:
             results = await self._app.get_inline_bot_results(
                 (await self._app.inline_bot.get_me()).username, unit_id
             )
-
-            if status_message:
-                await self._app.delete_messages(
-                    status_message.chat.id, status_message.id
-                )
-
-            await self._app.send_inline_bot_result(
-                message.chat.id,
-                results.query_id,
-                results.results[0].id,
-                reply_to_message_id=status_message.id if status_message else None,
+            q = await self._app.send_inline_bot_result(
+                chat_id, results.query_id, results.results[0].id
             )
-
         except Exception as e:
             logger.exception("Can't send list")
 
-            exc = traceback.format_exc()
-            exc = "\n".join(exc.splitlines()[1:])
+            exc = "\n".join(traceback.format_exc().splitlines()[1:])
             msg = (
                 f"<b>🚫 List invoke failed!</b>\n\n"
-                f"<b>🧾 Logs:</b>\n<code>{exc}</code>\n\n"
-                f"<b>🥲 What: <code>{e}</code></b>"
+                f"<b>🧾 Logs:</b>\n<code>{utils.escape_html(exc)}</code>\n\n"
+                f"<b>🥲 What: <code>{utils.escape_html(str(e))}</code></b>"
             )
 
             del self._forms[unit_id]
-            await answer(msg)
+            if isinstance(message, Message):
+                await (message.edit if message.outgoing else message.reply)(msg)
+            else:
+                await self._app.send_message(chat_id, msg)
 
             return False
 
-        await self._forms[unit_id]["future"].wait()
-        del self._forms[unit_id]["future"]
+        self._forms[unit_id]["chat"] = chat_id
+        self._forms[unit_id]["message_id"] = q.id
 
-        self._forms[unit_id]["chat"] = message
-        self._forms[unit_id]["message_id"] = message.message_id
-
-        if isinstance(message, Message) and message.out:
-            await message.delete()
-
-        if status_message and not message.out:
-            await status_message.delete()
+        if isinstance(message, Message):
+            with contextlib.suppress(Exception):
+                await message.delete()
 
         return unit_id
 
-    async def _list_back(
-        self,
-        call: CallbackQuery,
-        btn_call_data: List[str] = None,
-        unit_id: str = None,
-    ):
-        if not self._forms[unit_id]["current_index"]:
-            await call.answer("No way back", show_alert=True)
+    def _list_buttons(self, unit_id: str) -> List[List[dict]]:
+        form = self._forms[unit_id]
+        return (
+            form["custom_buttons"]
+            + self.build_pagination(
+                self._list_page, len(form["strings"]), unit_id, args=(unit_id,)
+            )
+            + [[{"text": "🔻 Close", "callback": self._list_page, "args": (unit_id, "close")}]]
+        )
+
+    async def _list_page(self, call: CallbackQuery, unit_id: str, page: Union[int, str]):
+        form = self._forms.get(unit_id)
+        if not form:
+            return await call.answer("⌛️ Expired", show_alert=True)
+
+        if page == "close":
+            if not await call.delete():
+                await call.answer("Can't delete this message", show_alert=True)
             return
 
-        self._forms[unit_id]["current_index"] -= 1
+        if page == form["current_index"]:
+            return await call.answer()
+
+        form["current_index"] = page
+        form["buttons"] = self._list_buttons(unit_id)
 
         try:
             await self.bot.edit_message_text(
                 inline_message_id=call.inline_message_id,
-                text=self._forms[unit_id]["strings"][
-                    self._forms[unit_id]["current_index"]
-                ],
-                reply_markup=self._list_markup(unit_id),
+                text=form["strings"][page],
+                reply_markup=self._generate_markup(unit_id),
                 disable_web_page_preview=True,
             )
             await call.answer()
         except aiogram.utils.exceptions.RetryAfter as e:
             await call.answer(
-                f"Got FloodWait. Wait for {e.timeout} seconds",
-                show_alert=True,
+                f"Got FloodWait. Wait for {e.timeout} seconds", show_alert=True
             )
         except Exception:
             logger.exception("Exception while trying to edit list")
             await call.answer("Error occurred", show_alert=True)
-            return
-
-    async def _list_next(
-        self,
-        call: CallbackQuery,
-        btn_call_data: List[str] = None,
-        unit_id: str = None,
-    ):
-        self._forms[unit_id]["current_index"] += 1
-        if self._forms[unit_id]["current_index"] >= len(
-            self._forms[unit_id]["strings"]
-        ):
-            await call.answer("No entries left...", show_alert=True)
-            self._forms[unit_id]["current_index"] -= 1
-            return
-
-        try:
-            await self.bot.edit_message_text(
-                inline_message_id=call.inline_message_id,
-                text=self._forms[unit_id]["strings"][
-                    self._forms[unit_id]["current_index"]
-                ],
-                reply_markup=self._list_markup(unit_id),
-                disable_web_page_preview=True,
-            )
-            await call.answer()
-        except aiogram.utils.exceptions.RetryAfter as e:
-            await call.answer(
-                f"Got FloodWait. Wait for {e.timeout} seconds",
-                show_alert=True,
-            )
-            return
-        except Exception:
-            logger.exception("Exception while trying to edit list")
-            await call.answer("Error occurred", show_alert=True)
-            return
-
-    def _list_markup(self, unit_id: str) -> InlineKeyboardMarkup:
-        """Converts `btn_call_data` into a aiogram markup"""
-        markup = InlineKeyboardMarkup()
-        markup.add(
-            *(
-                [
-                    InlineKeyboardButton(
-                        f"« [{self._forms[unit_id]['current_index']} / {len(self._forms[unit_id]['strings'])}]",
-                        callback_data=self._forms[unit_id]["btn_call_data"]["back"],
-                    )
-                ]
-                if self._forms[unit_id]["current_index"] > 0
-                else []
-            ),
-            InlineKeyboardButton(
-                f"• {self._forms[unit_id]['current_index'] + 1} •",
-                callback_data=self._forms[unit_id]["btn_call_data"]["show_current"],
-            ),
-            *(
-                [
-                    InlineKeyboardButton(
-                        f" [{self._forms[unit_id]['current_index'] + 2} / {len(self._forms[unit_id]['strings'])}] » ",
-                        callback_data=self._forms[unit_id]["btn_call_data"]["next"],
-                    ),
-                ]
-                if self._forms[unit_id]["current_index"]
-                < len(self._forms[unit_id]["strings"]) - 1
-                else []
-            ),
-        )
-
-        return markup
-
-    async def _list_show_current(self, call: CallbackQuery, unit_id: str = None):
-        await call.answer(
-            f"Current page: {self._forms[unit_id]['current_index'] + 1} / {len(self._forms[unit_id]['strings'])}",
-            show_alert=True,
-        )

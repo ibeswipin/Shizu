@@ -14,6 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import contextlib
+import copy
 import inspect
 import logging
 import os
@@ -459,20 +460,16 @@ class Validators:
             if isinstance(value, tuple):
                 value = list(value)
 
-            if self.validators:
-                validated_list = []
-                for v in value:
-                    try:
-                        for validator in self.validators:
-                            v = validator.validate(v)
-                        validated_list.append(str(v))
-                    except (ValueError, TypeError):
-                        validated_list.append(str(v))
-                value = validated_list
-            else:
-                value = [str(v) for v in value]
+            if not self.validators:
+                return [str(v) for v in value]
 
-            return value
+            validated_list = []
+            for v in value:
+                for validator in self.validators:
+                    v = validator.validate(v)
+                validated_list.append(v)
+
+            return validated_list
 
     class Boolean:
         def validate(self, value):
@@ -544,6 +541,25 @@ class Validators:
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid float value: {e}")
 
+    class Hidden:
+        def __init__(self, validator=None):
+            self.validator = validator
+
+        def validate(self, value):
+            return self.validator.validate(value) if self.validator else value
+
+    class Choice:
+        def __init__(self, possible_values):
+            self.possible_values = list(possible_values)
+
+        def validate(self, value):
+            for possible in self.possible_values:
+                if value == possible or str(value) == str(possible):
+                    return possible
+            raise ValueError(
+                f"Value must be one of: {', '.join(map(str, self.possible_values))}"
+            )
+
     class Union:
         def __init__(self, *validators, validator=None):
             if validator is not None:
@@ -601,7 +617,11 @@ class ModuleConfig(dict):
 
         super().__init__(zip(keys, values) if keys else {})
         self._docstrings = dict(zip(keys, docstrings)) if keys else {}
-        self._defaults = dict(zip(keys, defaults)) if keys else {}
+        self._defaults = (
+            {key: copy.deepcopy(value) for key, value in zip(keys, defaults)}
+            if keys
+            else {}
+        )
 
     def getdoc(self, key, message=None):
         """Get the documentation by key"""
@@ -618,7 +638,7 @@ class ModuleConfig(dict):
 
     def getdef(self, key):
         """Get the default value by key"""
-        return self._defaults.get(key)
+        return copy.deepcopy(self._defaults.get(key))
 
 
 class ModulesManager:
@@ -696,6 +716,10 @@ class ModulesManager:
 
         self.bot_manager = bot.BotManager(app, self._db, self)
         await self.bot_manager.load()
+
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logger_.Telegramhandler):
+                handler.manager = self.bot_manager
 
         extrapatchs.MessageMagic(types.Message, app)
 
@@ -1241,10 +1265,7 @@ class ModulesManager:
                                 modcfg[conf] = value
                                 db.set(module.name, "__config__", modcfg)
                             except (ValueError, TypeError):
-                                value = config_value.default
-
-                                modcfg[conf] = value
-                                db.set(module.name, "__config__", modcfg)
+                                value = module.config.getdef(conf)
                     module.config[conf] = value
                 else:
                     try:
@@ -1260,10 +1281,8 @@ class ModulesManager:
 
                                     modcfg[conf] = value
                                     db.set(module.name, "__config__", modcfg)
-                                except ValueError:
-                                    value = config_value.default
-                                    modcfg[conf] = value
-                                    db.set(module.name, "__config__", modcfg)
+                                except (ValueError, TypeError):
+                                    value = module.config.getdef(conf)
                         module.config[conf] = value
                     except KeyError:
                         module.config[conf] = module.config.getdef(conf)

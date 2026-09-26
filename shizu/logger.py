@@ -30,7 +30,7 @@ from datetime import datetime
 
 from typing import Union
 from aiogram import Bot, Dispatcher
-from aiogram.utils.exceptions import NetworkError
+from aiogram.utils.exceptions import MessageNotModified, NetworkError, RetryAfter
 from loguru._better_exceptions import ExceptionFormatter
 from loguru._colorizer import Colorizer
 from loguru import logger
@@ -99,7 +99,7 @@ class CustomException:
 
             return dictionary
 
-        full_stack = traceback.format_exc().replace(
+        full_stack = "".join(traceback.format_exception(exc_type, exc_value, tb)).replace(
             "Traceback (most recent call last):\n", ""
         )
 
@@ -259,6 +259,8 @@ class Telegramhandler(logging.Handler):
         self.chat = db.get("shizu.chat", "logs")
         self.last_log_time = None
         self.time_threshold = 1
+        self.manager = None
+        self._uids = []
 
     def dumps(self, lvl: int):
         """Returns a list of all incoming logs by minimum level"""
@@ -274,9 +276,14 @@ class Telegramhandler(logging.Handler):
         if self.last_log_time is None:
             self.last_log_time = current_time
 
-        self.msgs.append(
-            f"<code>{utils.escape_html(FORMAT_FOR_TGLOG.format(record))}</code>"
-        )
+        item = None
+        if record.exc_info and record.exc_info[1]:
+            with contextlib.suppress(Exception):
+                item = CustomException.from_exc_info(*record.exc_info)
+                head = utils.escape_html(record.getMessage()[:300])
+                item.message = f"<b>⛔ {head}</b>\n\n{item.message}"
+
+        self.msgs.append(item or FORMAT_FOR_TGLOG.format(record))
 
         if (
             current_time - self.last_log_time >= self.time_threshold
@@ -289,35 +296,124 @@ class Telegramhandler(logging.Handler):
                 return
 
             asyncio.ensure_future(self.send_logs(self.msgs))
+            self.msgs = []
 
             self.last_log_time = current_time
 
-    async def send_logs(self, msgs):
-        """Send logs to chat"""
+    @staticmethod
+    def _pages(lines: typing.List[str], limit: int = 3500) -> typing.List[str]:
+        pages, page = [], ""
+        for line in lines:
+            while len(line) > limit:
+                pages += [page] if page else []
+                pages.append(line[:limit])
+                page, line = "", line[limit:]
+            if len(page) + len(line) + 1 > limit:
+                pages.append(page)
+                page = ""
+            page += line + "\n"
+        return [p for p in pages + [page] if p.strip()]
 
-        ms = "\n".join(msgs)
+    def _form(self) -> str:
+        uid = utils.rand(30)
+        self.manager._forms[uid] = {
+            "type": "form",
+            "text": "",
+            "buttons": [],
+            "force_me": True,
+            "always_allow": [],
+            "chat": None,
+            "message_id": None,
+            "uid": uid,
+        }
+        self._uids.append(uid)
+        if len(self._uids) > 100:
+            self.manager._forms.pop(self._uids.pop(0), None)
+        return uid
 
-        if len(ms) > 4096:
-            logs = io.BytesIO(ms.encode("utf-8"))
-            logs.name = "logs.txt"
-
-            await bot.send_document(
-                self.chat,
-                document=logs,
-                caption="💾 <b>The message was too long, thus i send it as document</b>",
-                parse_mode="HTML",
-            )
-            self.msgs.clear()
-
-            return
-
+    async def _send(self, text: str, make_buttons: typing.Callable[[str], list]):
+        markup = None
+        if self.manager:
+            uid = self._form()
+            self.manager._forms[uid].update(text=text, buttons=make_buttons(uid))
+            markup = self.manager._generate_markup(uid)
         await bot.send_message(
             self.chat,
-            "\n".join(self.msgs)
-            + f"\n\n<b>⏳ Logged time:</b> <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>",
+            text,
             parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True,
+            disable_notification=True,
+            reply_markup=markup,
         )
-        self.msgs.clear()
+
+    async def _edit(self, call, uid: str, text: str, buttons: list):
+        form = self.manager._forms.get(uid)
+        if not form:
+            return await call.answer("⌛️ Expired")
+        form.update(text=text, buttons=buttons)
+        try:
+            await call.message.edit_text(
+                text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True,
+                reply_markup=self.manager._generate_markup(uid),
+            )
+        except MessageNotModified:
+            await call.answer()
+
+    def _page_buttons(self, uid: str, pages: list, i: int, exc=None) -> list:
+        rows = self.manager.build_pagination(
+            self._show, len(pages), current_page=i + 1, args=(uid, pages, exc)
+        )
+        if exc:
+            rows.append([{"text": "⬅️ Back", "callback": self._short, "args": (uid, exc)}])
+        return rows
+
+    def _trace_button(self, uid: str, exc: CustomException) -> list:
+        return [[{"text": "🪐 Full traceback", "callback": self._trace, "args": (uid, exc)}]]
+
+    async def _show(self, call, uid: str, pages: list, exc, i: int):
+        await self._edit(call, uid, pages[i], self._page_buttons(uid, pages, i, exc))
+
+    async def _short(self, call, uid: str, exc: CustomException):
+        await self._edit(call, uid, exc.message, self._trace_button(uid, exc))
+
+    async def _trace(self, call, uid: str, exc: CustomException):
+        text = exc.message + "\n\n<b>🪐 Full traceback:</b>\n" + exc.full_stack
+        await self._show(call, uid, self._pages(text.splitlines()), exc, 0)
+
+    async def send_logs(self, msgs):
+        """Send logs to chat"""
+        stamp = f"\n<b>⏳ Logged time:</b> <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
+        lines = [m for m in msgs if isinstance(m, str)]
+        pages = [
+            f"<code>{utils.escape_html(p.strip())}</code>\n{stamp}"
+            for p in self._pages("\n".join(lines).splitlines(), 3000)
+        ]
+
+        try:
+            for exc in (m for m in msgs if isinstance(m, CustomException)):
+                await self._send(exc.message, lambda uid: self._trace_button(uid, exc))
+
+            if not pages:
+                return
+
+            if len(pages) > 1 and not self.manager:
+                logs = io.BytesIO("\n".join(lines).encode("utf-8"))
+                logs.name = "logs.txt"
+                await bot.send_document(
+                    self.chat,
+                    document=logs,
+                    caption="💾 <b>The message was too long, thus i send it as document</b>",
+                    parse_mode="HTML",
+                )
+                return
+
+            await self._send(pages[0], lambda uid: self._page_buttons(uid, pages, 0))
+        except RetryAfter as e:
+            self.last_log_time = time.time() + e.timeout
+        except Exception:
+            pass
 
 
 def override_text(exception: Exception) -> typing.Optional[str]:

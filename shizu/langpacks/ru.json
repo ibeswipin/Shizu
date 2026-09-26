@@ -328,5 +328,8 @@
   "shizu.modules.ShizuSystemd.dur_minutes": "{}м {}с",
   "shizu.modules.ShizuSystemd.size_units": "Б,КБ,МБ,ГБ,ТБ",
   "shizu.modules.ShizuSystemd.empty": "пусто",
-  "shizu.modules.ShizuSystemd.inline_desc": "Список сервисов и панель управления"
+  "shizu.modules.ShizuSystemd.inline_desc": "Список сервисов и панель управления",
+  "shizu.modules.ShizuConfig.saved": "✅ <b>Сохранено</b>",
+  "shizu.modules.ShizuConfig.validation_error": "🚫 <b>Ошибка валидации:</b> <code>{}</code>",
+  "shizu.modules.ShizuConfig.value_not_found": "Такого значения нет в списке"
 }
