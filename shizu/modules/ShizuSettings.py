@@ -61,7 +61,7 @@ class ShizuSettings(loader.Module):
 
     @loader.command()
     async def setprefix(self, app: Client, message: types.Message):
-        """To change the prefix, you can have several pieces separated by a space. Usage: setprefix (prefix) [prefix, ...]"""
+        """Change the prefix. You can set several, separated by spaces. Usage: setprefix (prefix) [prefix, ...]"""
         args = utils.get_args_raw(message)
 
         if not (args := args.split()):
@@ -102,7 +102,7 @@ class ShizuSettings(loader.Module):
 
     @loader.command()
     async def delalias(self, app: Client, message: types.Message):
-        """Delete the alias. Usage: delalas (alias)"""
+        """Delete an alias. Usage: delalias (alias)"""
 
         args = utils.get_args_raw(message)
 
@@ -242,7 +242,7 @@ class ShizuSettings(loader.Module):
 
     @loader.command()
     async def enabletlmode(self, app, message):
-        """Enable telethon mode"""
+        """Enable Telethon mode"""
         if utils.is_tl_enabled() is False:
             return await message.answer(
                 self.strings["are_you_sure"],
@@ -253,7 +253,7 @@ class ShizuSettings(loader.Module):
 
     @loader.command()
     async def stopshizu(self, app, message):
-        """Just turn off the bot"""
+        """Turn off the bot"""
 
         await message.answer(
             self.strings["are_sure_to_stop"],
@@ -262,7 +262,7 @@ class ShizuSettings(loader.Module):
 
     @loader.command()
     async def purgecmd(self, app: Client, message: types.Message):
-        """[user(-s)] - Clean message history starting from replied one"""
+        """[user(-s)] - Delete message history starting from the replied message"""
         if not message.reply_to_message:
             await utils.answer(message, self.strings("from_where"))
             return

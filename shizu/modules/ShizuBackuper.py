@@ -29,13 +29,13 @@ LOADED_MODULES_DIR = os.path.join(os.getcwd(), "shizu/modules")
 
 @loader.module(name="ShizuBackuper", author="hikamoru")
 class BackupMod(loader.Module):
-    """With this module you can make backups of mods and the entire userbot"""
+    """Back up modules and the entire userbot"""
 
     strings = {}
 
     @loader.command()
     async def backupdb(self, app: Client, message: types.Message):
-        """Create database backup [will be sent in backups chat]"""
+        """Create a database backup [sent to the backups chat]"""
         txt = io.BytesIO(json.dumps(self.db).encode("utf-8"))
         txt.name = f"shizu-{datetime.now().strftime('%d-%m-%Y-%H-%M')}.json"
         await app.inline_bot.send_document(
@@ -49,7 +49,7 @@ class BackupMod(loader.Module):
 
     @loader.command()
     async def restoredb(self, app: Client, message: types.Message):
-        """Easy restore database"""
+        """Restore the database from a backup"""
         reply = message.reply_to_message
         if not reply or not reply.document:
             return await message.answer(self.strings("invalid"))

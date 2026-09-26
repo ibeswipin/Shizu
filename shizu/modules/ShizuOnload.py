@@ -36,7 +36,7 @@ from shizu.version import __version__, branch
 
 @loader.module(name="ShizuOnload", author="hikamoru")
 class ShizuOnload(loader.Module):
-    """This module for shizu onload events"""
+    """Handles Shizu startup events"""
 
     strings = {}
 
@@ -68,7 +68,7 @@ class ShizuOnload(loader.Module):
                     await utils.create_chat(
                         app,
                         "Shizu-logs",
-                        "📫 Shizu-logs do not delete this group, otherwise bot will be broken",
+                        "📫 Shizu logs. Do not delete this group, or the bot will break",
                         True,
                         True,
                         True,
@@ -81,7 +81,7 @@ class ShizuOnload(loader.Module):
                     await utils.create_chat(
                         app,
                         "Shizu-backup",
-                        "📫 Backup-logs do not delete this group, otherwise bot will be broken",
+                        "📫 Shizu backups. Do not delete this group, or the bot will break",
                         True,
                         True,
                         True,
@@ -173,7 +173,7 @@ class ShizuOnload(loader.Module):
             self.db.pop("shizu.updater", "restart")
 
         started_text = (
-            f"🐙 <b>Your <u>Shizu</u> started</b> <code>v{'.'.join(map(str, __version__))}</code>\n\n"
+            f"🐙 <b>Your <u>Shizu</u> has started</b> <code>v{'.'.join(map(str, __version__))}</code>\n\n"
             f"🌳 <b>Branch:</b> <code>{branch}</code>\n"
         )
         try:

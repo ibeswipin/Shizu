@@ -21,12 +21,12 @@ from shizu import loader, utils, translator
 
 @loader.module("ShizuLanguages", "hikamoru", 1.0)
 class ShizuLanguages(loader.Module):
-    """To change language of Shizu"""
+    """Change the Shizu language"""
 
     strings = {}
 
     async def setlangcmd(self, app, message):
-        """Change default language"""
+        """Change the default language"""
         args = utils.get_args_raw(message)
         if not args or any(len(i) != 2 for i in args.split(" ")):
             await utils.answer(message, self.strings("incorrect_language"))
@@ -39,7 +39,7 @@ class ShizuLanguages(loader.Module):
         )
 
     async def loadlgpackcmd(self, app, message):
-        """Load language pack (reply to file .json and write language code)"""
+        """Load a language pack (reply to a .json file with the language code)"""
         reply = message.reply_to_message
         args = utils.get_args_raw(message)
 

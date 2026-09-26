@@ -550,7 +550,7 @@ class ShizuConfig(loader.Module):
         parts = args.split(None, 2)
         if len(parts) < 3:
             await utils.answer(
-                message, "❌ Invalid format. Need: source_module option target_module"
+                message, "❌ Invalid format. Expected: source_module option target_module"
             )
             return
 
@@ -720,13 +720,13 @@ class ShizuConfig(loader.Module):
             await utils.answer(
                 message,
                 "❌ Usage: <code>.cfgsetall &lt;option&gt; &lt;value&gt; [module1] [module2] ...</code>\n"
-                "If no modules specified, applies to all modules with this option",
+                "If no modules are specified, it applies to all modules with this option",
             )
             return
 
         parts = args.split(None, 1)
         if len(parts) < 2:
-            await utils.answer(message, "❌ Need option name and value")
+            await utils.answer(message, "❌ Option name and value are required")
             return
 
         option_name, rest = parts
@@ -796,7 +796,7 @@ class ShizuConfig(loader.Module):
             if (
                 not getattr(message, "via_bot", False)
                 or message.via_bot.id != (await self.bot.bot.get_me()).id
-                or "This message is gonna be deleted..."
+                or "This message will be deleted..."
                 not in getattr(message, "text", "")
             ):
                 return

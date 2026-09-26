@@ -29,7 +29,7 @@ from shizu import loader, utils
 @loader.module("ShizuStart", "hikamoru")
 class ShizuStart(loader.Module):
     """
-    Module doesn't do anything just for notification that Shizu started first time
+    Sends a greeting when Shizu starts for the first time
     """
 
     text = """

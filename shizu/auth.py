@@ -130,7 +130,7 @@ class Auth:
             except errors.PhoneNumberBanned:
                 error_text = "Phone number is banned"
             except errors.PhoneNumberFlood:
-                error_text = "Phone number is flood protected"
+                error_text = "Too many attempts for this phone number, try again later"
             except errors.PhoneNumberUnoccupied:
                 error_text = "Phone number is not registered"
             except errors.BadRequest as error:
@@ -191,7 +191,7 @@ class Auth:
         with open("config.ini", "w", encoding="utf-8") as file:
             cfg.write(file)
 
-        qr = colored_input("Login with QR-CODE? y/n").lower().split()
+        qr = colored_input("Log in with a QR code? y/n").lower().split()
         if qr[0] == "y":
             await self.login_with_qr_code(cfg)
         else:
@@ -203,7 +203,7 @@ class Auth:
 
     async def handle_session_revoked(self) -> None:
         logging.error(
-            "Session has been revoked, delete the session and run the start command again"
+            "Session has been revoked. Delete the session file and run the start command again"
         )
         await self.app.disconnect()
 
@@ -227,7 +227,7 @@ class Auth:
             if isinstance(r, raw.types.auth.login_token_success.LoginTokenSuccess):
                 break
             if isinstance(r, raw.types.auth.login_token.LoginToken) and tries % 30 == 0:
-                print("Scan QR code below:")
+                print("Scan the QR code below:")
                 qr = QRCode(error_correction=1)
                 qr.add_data(
                     f"tg://login?token={base64.urlsafe_b64encode(r.token).decode('utf-8').rstrip('=')}"

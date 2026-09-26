@@ -83,14 +83,14 @@ class TokenManager(Item):
     async def _create_bot(self) -> Union[str, None]:
         """Create and configure a bot"""
 
-        logging.info("Started to search for a bot...")
+        logging.info("Searching for a bot...")
 
         if token := await self._find_bot():
             logger.info("Found bot: %s", token)
             return token
 
         async with fsm.Conversation(self._app, "@BotFather", True) as conv:
-            logging.info("The process of creating a new bot has begun...")
+            logging.info("Creating a new bot...")
 
             try:
                 await conv.ask("/cancel")
@@ -107,7 +107,7 @@ class TokenManager(Item):
 
             if any(phrase in response.text for phrase in error_phrases):
                 logging.error(
-                    "An error occurred when creating the bot. @BotFather's response:"
+                    "An error occurred while creating the bot. @BotFather's response:"
                 )
                 logging.error(response.text)
 

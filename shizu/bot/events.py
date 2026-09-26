@@ -167,7 +167,7 @@ async def edit(
     except aiogram.utils.exceptions.MessageIdInvalid:
         with contextlib.suppress(aiogram.utils.exceptions.InvalidQueryID):
             await query.answer(
-                "I should have edited some message, but it is deleted :("
+                "Couldn't edit the message because it was deleted :("
             )
 
 
@@ -234,9 +234,9 @@ class Events(Item):
                 [
                     InlineQueryResultArticle(
                         id=utils.random_id(),
-                        title="Available only for the owner of the user bot",
+                        title="Available only to the userbot owner",
                         input_message_content=InputTextMessageContent(
-                            "🚸 <b>Unfortunately, this is only available to the owner of the user bot</b>"
+                            "🚸 <b>Unfortunately, this is only available to the userbot owner</b>"
                         ),
                         thumb_url="https://cdn-icons-png.flaticon.com/512/7754/7754235.png",
                     )
@@ -429,10 +429,10 @@ class Events(Item):
                                 InlineQueryResultArticle(
                                     id=utils.rand(20),
                                     title=button["input"],
-                                    description="⚠️ Please, do not remove identifier!",
+                                    description="⚠️ Please do not remove the identifier!",
                                     input_message_content=InputTextMessageContent(
                                         "🔄 <b>Just ignore this message...</b>\n"
-                                        "<i>This message is gonna be deleted...</i>",
+                                        "<i>This message will be deleted...</i>",
                                         "HTML",
                                         disable_web_page_preview=True,
                                     ),
@@ -532,10 +532,10 @@ class Events(Item):
                         )
                     except Exception:
                         logger.exception(
-                            "Error while forming markup! "
-                            "Probably, you passed wrong type "
-                            "to `handler` field, contact "
-                            "developer of module."
+                            "Error while building markup! "
+                            "You probably passed a wrong type "
+                            "to the `handler` field. Contact "
+                            "the module developer."
                         )
                         return None
 
@@ -582,15 +582,15 @@ class Events(Item):
                         continue
                     else:
                         logger.warning(
-                            "Button have not been added to "
-                            "form, because it is not structured "
+                            "Button was not added to the "
+                            "form because it is not structured "
                             f"properly. {button}"
                         )
                 except KeyError:
                     logger.exception(
-                        "Error while forming markup! Probably, you "
-                        "passed wrong type combination for button. "
-                        "Contact developer of module."
+                        "Error while building markup! You probably "
+                        "passed a wrong type combination for a button. "
+                        "Contact the module developer."
                     )
                     return
 
@@ -602,7 +602,7 @@ class Events(Item):
     async def _callback_query_handler(
         self, query: CallbackQuery, reply_markup: List[List[dict]] = None
     ) -> None:
-        """Callback query handler (buttons' presses)"""
+        """Callback query handler (button presses)"""
         if reply_markup is None:
             reply_markup = []
 
@@ -622,7 +622,7 @@ class Events(Item):
                 except Exception:
                     logger.exception("Error on running callback watcher!")
                     await query.answer(
-                        "Error occured while processing request. More info in logs",
+                        "An error occurred while processing the request. See the logs for details",
                         show_alert=True,
                     )
 
@@ -667,9 +667,9 @@ class Events(Item):
                     except Exception:
                         logger.exception("Error on running callback watcher!")
                         await query.answer(
-                            "Error occurred while "
-                            "processing request. "
-                            "More info in logs",
+                            "An error occurred while "
+                            "processing the request. "
+                            "See the logs for details",
                             show_alert=True,
                         )
                         return
@@ -864,9 +864,9 @@ class Events(Item):
                 await self._app.delete_messages(soo.chat.id, soo.id)
         except Exception as erro:
             msg = (
-                "🚫 <b>A problem occurred with inline bot "
-                "while processing query. Check logs for "
-                f"further info.</b>\n\n {erro}"
+                "🚫 <b>A problem occurred with the inline bot "
+                "while processing the query. Check the logs for "
+                f"details.</b>\n\n {erro}"
             )
             item = lo.CustomException.from_exc_info(*sys.exc_info())
             exc = item.message + "\n\n" + item.full_stack

@@ -65,7 +65,7 @@ try:
     
 except ModuleNotFoundError as module:
     print(f"🚫 Error: {module} is not installed")
-    print("⌛ Attempting dependencies installation... Just wait.")
+    print("⌛ Installing dependencies... Please wait.")
     os.popen("pip3 install -r requirements.txt").read()
     print("👍 Dependencies installed")
-    print("🔁 Retry to run bot again please wait..")
+    print("🔁 Restarting the bot, please wait...")

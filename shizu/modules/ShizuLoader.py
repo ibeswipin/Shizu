@@ -79,7 +79,7 @@ class Loader(loader.Module):
 
     @loader.command(aliases=["dlm"])
     async def dlmod(self, app: Client, message: types.Message):
-        """Download module by link. Usage: dlmod <link or all or nothing>"""
+        """Download a module by link. Usage: dlmod <link | all | nothing>"""
 
         args = message.get_args_raw()
 
@@ -275,7 +275,7 @@ class Loader(loader.Module):
 
     @loader.command(aliases=["lm"])
     async def loadmod(self, app: Client, message: types.Message):
-        """Load the module by file. Usage: <replay per file>"""
+        """Load a module from a file. Usage: reply to the file"""
         reply = message.reply_to_message
         bot_username = (await self.bot.bot.get_me()).username
         dop_help = (
@@ -356,7 +356,7 @@ class Loader(loader.Module):
 
     @loader.command()
     async def unloadmod(self, app: Client, message: types.Message):
-        """Unload the module. Usage: unloadmod <module name>"""
+        """Unload a module. Usage: unloadmod <module name>"""
 
         args = message.get_args_raw()
 

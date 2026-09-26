@@ -46,13 +46,13 @@ from shizu import loader, utils, logger
 
 @loader.module(name="ShizuTester", author="shizu")
 class TesterMod(loader.Module):
-    """Execute activities based on userbot self-testing"""
+    """Userbot self-testing tools"""
 
     strings = {}
 
     @loader.command()
     async def logs(self, app: Client, message: types.Message):
-        """To get logs. Usage: logs (verbosity level)"""
+        """Get logs. Usage: logs (verbosity level)"""
 
         args = message.get_args()
 
@@ -83,7 +83,7 @@ class TesterMod(loader.Module):
 
     @loader.command()
     async def ping(self, app: Client, message: types.Message):
-        """Checks the response rate of the user bot"""
+        """Check the userbot response time"""
         start = time.perf_counter_ns()
 
         ms = await message.answer("<emoji id=5267444331010074275>▫️</emoji>")

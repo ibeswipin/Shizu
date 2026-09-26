@@ -23,14 +23,14 @@ from shizu import loader, utils, logger
 
 @loader.module(name="ShizuEval", author="hikamoru")
 class EvaluatorMod(loader.Module):
-    """Execute python code"""
+    """Execute Python code"""
     
     
     strings = {}
 
     @loader.command(aliases=["e"])
     async def eval(self, app: Client, message: types.Message):
-        """Execute python code and return result"""
+        """Execute Python code and return the result"""
         args = message.get_args_raw()
 
         try:

@@ -149,7 +149,7 @@ class ShizuGpt(loader.Module):
 
     @loader.command()
     async def gpt(self, app: Client, message: types.Message):
-        """Ask question to GPT"""
+        """Ask GPT a question"""
         args = message.get_args_raw()
 
         if not args:

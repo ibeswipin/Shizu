@@ -1194,7 +1194,7 @@ class ModulesManager:
 
             await self.bot_manager.bot.send_message(
                 self._db.get("shizu.chat", "logs", None),
-                f"⤵️ <b>Installing Packages:</b> <code>{', '.join(requirements)}</code>...",
+                f"⤵️ <b>Installing packages:</b> <code>{', '.join(requirements)}</code>...",
             )
 
             try:
@@ -1216,7 +1216,7 @@ class ModulesManager:
         except Exception as error:
             item = logger_.CustomException.from_exc_info(*sys.exc_info())
             exc = (
-                "🚫 <b>Error while loading modue</b>"
+                "🚫 <b>Error while loading module</b>"
                 "\n\n"
                 + "\n".join(item.full_stack.splitlines()[:-1])
                 + "\n\n"

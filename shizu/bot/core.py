@@ -67,7 +67,7 @@ class BotManager(Events, TokenManager):
         if not self._token:
             self._token = await self._create_bot()
             if self._token is False:
-                error_text = "A user bot needs a bot. Solve the problem of creating a bot and start the user bot again"
+                error_text = "The userbot needs a bot. Fix the bot creation problem and start the userbot again"
                 logging.error(error_text)
                 return sys.exit(1)
 
@@ -76,7 +76,7 @@ class BotManager(Events, TokenManager):
         try:
             self.bot = Bot(self._token, parse_mode="html")
         except (exceptions.ValidationError, exceptions.Unauthorized):
-            logging.error("Invalid token. Attempt to recreate the token")
+            logging.error("Invalid token. Trying to recreate it")
 
             self._db.set("shizu.bot", "token", self._token)
             return await self.load()

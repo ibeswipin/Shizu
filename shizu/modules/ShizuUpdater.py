@@ -86,7 +86,7 @@ class UpdateMod(loader.Module):
 
     @loader.command()
     async def restart(self, app: Client, message: types.Message):
-        """Rebooting the user bot"""
+        """Restart the userbot"""
 
         ms = await message.answer(self.strings("reboot_"))
         self.db.set(
