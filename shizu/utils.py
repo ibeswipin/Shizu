@@ -99,10 +99,14 @@ logger = logging.getLogger(__name__)
 def get_random_smartphone() -> str:
     """Returns a random smartphone model"""
 
-    devices = requests.get(
-        "https://gist.githubusercontent.com/ibeswipin/e5927fdd510097c37b5047fae333b8b4/raw/a8456cd97445b672fec6ac7a7aba843f73e3863c/phones.json"
-    ).json()
-    return random.choice(devices)
+    try:
+        devices = requests.get(
+            "https://gist.githubusercontent.com/ibeswipin/e5927fdd510097c37b5047fae333b8b4/raw/a8456cd97445b672fec6ac7a7aba843f73e3863c/phones.json",
+            timeout=5,
+        ).json()
+        return random.choice(devices)
+    except Exception:
+        return "Samsung Galaxy S24"
 
 
 def get_lang_flag(countrycode: str) -> str:
