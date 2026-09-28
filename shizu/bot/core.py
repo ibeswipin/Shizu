@@ -1,4 +1,4 @@
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -61,13 +61,14 @@ class BotManager(Events, TokenManager):
         self._custom_map = {}
         self._me = self._db.get("shizu.me", "me", None)
         self._token = self._db.get("shizu.bot", "token", None)
+        self.init_complete = False
 
     async def load(self) -> Union[bool, NoReturn]:
         """Loads the bot manager"""
         if not self._token:
             self._token = await self._create_bot()
             if self._token is False:
-                error_text = "A user bot needs a bot. Solve the problem of creating a bot and start the user bot again"
+                error_text = "The userbot needs a bot. Fix the bot creation problem and start the userbot again"
                 logging.error(error_text)
                 return sys.exit(1)
 
@@ -75,11 +76,17 @@ class BotManager(Events, TokenManager):
 
         try:
             self.bot = Bot(self._token, parse_mode="html")
+            me = await self.bot.get_me()
         except (exceptions.ValidationError, exceptions.Unauthorized):
-            logging.error("Invalid token. Attempt to recreate the token")
+            logging.error("Invalid token. Trying to recreate it")
 
-            self._db.set("shizu.bot", "token", self._token)
+            self._token = None
+            self._db.set("shizu.bot", "token", None)
             return await self.load()
+
+        self.bot_username = me.username
+        self.bot_id = me.id
+        self._db.set("shizu.bot", "username", me.username)
 
         self._dp = Dispatcher(self.bot)
         self._dp.register_message_handler(
@@ -96,4 +103,5 @@ class BotManager(Events, TokenManager):
         asyncio.ensure_future(self._dp.start_polling())
 
         self.bot.manager = self
+        self.init_complete = True
         return True

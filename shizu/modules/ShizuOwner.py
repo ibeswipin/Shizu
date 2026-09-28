@@ -1,4 +1,4 @@
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -157,7 +157,7 @@ class ShizuOwner(loader.Module):
 
     @loader.command()
     async def addowner(self, app, message):
-        """Give owner permissions to user - <user_id>"""
+        """Give owner permissions to a user - <user_id>"""
 
         user = utils.get_args(message)
         user_id = (await app.get_users(user)).id
@@ -182,7 +182,7 @@ class ShizuOwner(loader.Module):
 
     @loader.command()
     async def delowner(self, app, message):
-        """Remove owner permissions from user - <user_id>"""
+        """Remove owner permissions from a user - <user_id>"""
 
         user = utils.get_args(message)
         user_id = (await app.get_users(user)).id

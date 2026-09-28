@@ -16,7 +16,7 @@
 
 # -------------------------------------------------------------------------
 
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -79,7 +79,7 @@ class Loader(loader.Module):
 
     @loader.command(aliases=["dlm"])
     async def dlmod(self, app: Client, message: types.Message):
-        """Download module by link. Usage: dlmod <link or all or nothing>"""
+        """Download a module by link. Usage: dlmod <link | all | nothing>"""
 
         args = message.get_args_raw()
 
@@ -189,6 +189,10 @@ class Loader(loader.Module):
             is_private = True
 
         try:
+            if module_name == "PENDING":
+                error_text = self.strings("pending")
+            if module_name == "DENIED":
+                error_text = self.strings("denied")
             if module_name == "NFA":
                 error_text = self.strings("not_for_this_account")
             if module_name is True:
@@ -223,6 +227,8 @@ class Loader(loader.Module):
             return await message.answer(
                 "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
             )
+
+        await self.all_modules.call_hook(module, "on_dlmod")
 
         prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
         command_descriptions = "\n".join(
@@ -275,7 +281,7 @@ class Loader(loader.Module):
 
     @loader.command(aliases=["lm"])
     async def loadmod(self, app: Client, message: types.Message):
-        """Load the module by file. Usage: <replay per file>"""
+        """Load a module from a file. Usage: reply to the file"""
         reply = message.reply_to_message
         bot_username = (await self.bot.bot.get_me()).username
         dop_help = (
@@ -310,6 +316,12 @@ class Loader(loader.Module):
         if module_name is True:
             return await message.answer(self.strings("dep_installed_req_res"))
 
+        if module_name == "PENDING":
+            return await message.answer(self.strings("pending"))
+
+        if module_name == "DENIED":
+            return await message.answer(self.strings("denied"))
+
         if not module_name:
             return await message.answer(self.strings("not_module"))
 
@@ -330,6 +342,8 @@ class Loader(loader.Module):
             return await message.answer(
                 "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
             )
+
+        await self.all_modules.call_hook(module, "on_dlmod")
 
         prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
         command_descriptions = "\n".join(
@@ -356,18 +370,18 @@ class Loader(loader.Module):
 
     @loader.command()
     async def unloadmod(self, app: Client, message: types.Message):
-        """Unload the module. Usage: unloadmod <module name>"""
+        """Unload a module. Usage: unloadmod <module name>"""
 
-        args = message.get_args_raw()
+        module = self.all_modules.find_module_strict(message.get_args_raw())
 
-        if not (module_name := self.all_modules.unload_module(args)):
+        if not module:
             return await message.answer(self.strings("inc_module_name"))
 
-        if module_name in self.cmodules:
-            logging.error("You can't unload core modules")
+        if self.all_modules.is_core(module):
             return await message.answer(self.strings("core_unload"))
 
-        return await message.answer(self.strings("unloaded").format(module_name))
+        name = self.all_modules.unload_module(module.name)
+        return await message.answer(self.strings("unloaded").format(name))
 
     @loader.command()
     async def unloadall(self, app: Client, message: types.Message):

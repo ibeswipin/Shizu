@@ -9,3 +9,5 @@ shizu-tl.session
 shizu-tl.session-journal
 .idea
 venv/
+.compat_cache/
+compat_report/

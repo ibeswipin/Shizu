@@ -13,12 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__version__ = (1, 0, 4)
+"""Logging helpers available to modules as `..log`"""
 
-import os
+from shizu.logger import *
+from shizu.logger import CustomException
 
-from git import Repo
-
-repo = Repo(os.getcwd())
-
-branch = repo.active_branch
+HikkaException = CustomException

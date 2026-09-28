@@ -17,7 +17,7 @@
 # ---------------------------------------------------------------------------
 
 
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -86,7 +86,7 @@ class UpdateMod(loader.Module):
 
     @loader.command()
     async def restart(self, app: Client, message: types.Message):
-        """Rebooting the user bot"""
+        """Restart the userbot"""
 
         ms = await message.answer(self.strings("reboot_"))
         self.db.set(

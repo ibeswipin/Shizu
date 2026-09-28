@@ -16,7 +16,7 @@
 
 # -----------------------------------------------------------------------------
 
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@ class ModulesLinkMod(loader.Module):
 
     @loader.command()
     async def ml(self, app: Client, message: types.Message):
-        """Get a link or a module file. Usage: ml <module name or command>  | -c <module name> get core file of project must be provided exact name of module"""
+        """Get a module's link or file. Usage: ml <module name or command> | -c <exact module name> to get a core file"""
 
         args = message.get_args_raw()
 
@@ -121,7 +121,7 @@ class ModulesLinkMod(loader.Module):
 
     @loader.command()
     async def aeliscmd(self, app, message):
-        """Search module in Aelis API"""
+        """Search for a module in the Aelis API"""
         args = message.get_args_raw()
         if not args:
             return await message.answer(self.strings("what_"))

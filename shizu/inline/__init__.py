@@ -13,12 +13,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__version__ = (1, 0, 4)
+"""Hikka / GeekTG compatible `..inline` namespace for third-party modules"""
 
-import os
+from aiogram.types import InlineQuery as GeekInlineQuery
 
-from git import Repo
+from shizu.utils import rand
 
-repo = Repo(os.getcwd())
+from . import types
+from .types import InlineCall, InlineMessage, InlineQuery
 
-branch = repo.active_branch
+
+def __getattr__(name: str):
+    return getattr(types, name)

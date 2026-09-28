@@ -1,4 +1,4 @@
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -149,7 +149,7 @@ class ShizuGpt(loader.Module):
 
     @loader.command()
     async def gpt(self, app: Client, message: types.Message):
-        """Ask question to GPT"""
+        """Ask GPT a question"""
         args = message.get_args_raw()
 
         if not args:

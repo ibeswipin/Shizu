@@ -13,12 +13,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__version__ = (1, 0, 4)
+"""Hikka compatible `..inline.types` names mapped onto Shizu / aiogram types"""
 
-import os
+from aiogram.types import CallbackQuery, InlineQuery, Message
 
-from git import Repo
+from shizu.bot.events import InlineCall
 
-repo = Repo(os.getcwd())
+InlineMessage = CallbackQuery
+BotInlineCall = InlineCall
+BotInlineMessage = Message
+BotMessage = Message
 
-branch = repo.active_branch
+
+def __getattr__(name: str):
+    compat = type(name, (), {"__module__": __name__})
+    globals()[name] = compat
+    return compat

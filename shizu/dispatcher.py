@@ -1,4 +1,4 @@
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@ from pyrogram import Client, filters, types
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
 from shizu import loader, utils, database, logger as lo
+from shizu.security import SecurityManager
 
 
 async def check_filters(
@@ -34,7 +35,6 @@ async def check_filters(
     message: types.Message,
     command_name: str = None,
 ) -> bool:
-    db = database.db
     if custom_filters := getattr(func, "_filters", None):
         coro = custom_filters(app, message)
 
@@ -44,33 +44,32 @@ async def check_filters(
         if not coro:
             return False
 
-    if message.from_user.is_self:
-        return True
-
-    user_id = message.sender_chat.id if message.from_user is None else message.from_user.id
-    
+    manager = security_manager()
+    if not await manager.check(message, func, command_name, app):
+        return False
+    user = message.from_user or message.sender_chat
     if (
-        user_id in db.get("shizu.me", "owners", []) and db.get("shizu.owner", "status", False)
+        getattr(getattr(func, "__func__", func), "ratelimit", False)
+        and user
+        and not (message.outgoing or getattr(message.from_user, "is_self", False))
+        and manager.rate_limited(user.id, command_name)
     ):
-        return True
+        return False
+    return True
 
-    if message.outgoing:
-        return True
 
-    if command_name:
-        perms = db.get("shizu.permissions", "users", {})
-        user_id_str = str(user_id)
-        if user_id_str in perms and command_name in perms[user_id_str]:
-            return True
-        
-        user_groups = db.get("shizu.commandgroups", "user_groups", {})
-        if user_id_str in user_groups:
-            groups = db.get("shizu.commandgroups", "groups", {})
-            for group_name in user_groups[user_id_str]:
-                if group_name in groups and command_name in groups[group_name]:
-                    return True
+_security = None
 
-    return False
+
+def security_manager() -> SecurityManager:
+    global _security
+    if _security is None:
+        _security = SecurityManager(database.db)
+    return _security
+
+
+def has_access(db, user_id: int, command_name: str = None) -> bool:
+    return security_manager().has_command_access(user_id, command_name)
 
 
 class DispatcherManager:

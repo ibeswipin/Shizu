@@ -1,4 +1,4 @@
-# Shizu Copyright (C) 2023-2024  AmoreForever
+# Shizu Copyright (C) 2023-2026  Ibeswipin
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -65,7 +65,7 @@ try:
     
 except ModuleNotFoundError as module:
     print(f"🚫 Error: {module} is not installed")
-    print("⌛ Attempting dependencies installation... Just wait.")
+    print("⌛ Installing dependencies... Please wait.")
     os.popen("pip3 install -r requirements.txt").read()
     print("👍 Dependencies installed")
-    print("🔁 Retry to run bot again please wait..")
+    print("🔁 Restarting the bot, please wait...")
