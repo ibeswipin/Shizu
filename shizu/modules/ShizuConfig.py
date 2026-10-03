@@ -148,6 +148,7 @@ class ShizuConfig(loader.Module):
         ]
 
     SECTIONS = ("internal", "external")
+    SECTION_EMOJI = {"internal": "🛠", "external": "🧩"}
 
     def _section_of(self, module) -> str:
         return "internal" if module.name in self.all_modules.cmodules else "external"
@@ -159,10 +160,24 @@ class ShizuConfig(loader.Module):
                 sections[self._section_of(module)].append(module.name)
         return sections
 
+    def _sections_view(self):
+        sections = self._configurable()
+        markup = [[
+            {
+                "text": f"{self.SECTION_EMOJI[name]} {self.strings(name + '_title')} · {len(mods)}",
+                "callback": self.inline__global_config,
+                "args": (name, 0),
+            }
+            for name, mods in sections.items()
+            if mods
+        ]]
+        markup += [[{"text": self.strings("close"), "callback": self.inline__close}]]
+        return self.strings("configure"), markup
+
     def _global_view(self, section: str = None, page: int = 0):
         sections = self._configurable()
         if section not in sections:
-            section = "external" if sections["external"] else "internal"
+            return self._sections_view()
         mods = sections[section]
         pages = max(1, -(-len(mods) // self.MODULES_PER_PAGE))
         page = min(page, pages - 1)
@@ -175,17 +190,9 @@ class ShizuConfig(loader.Module):
         markup += self.bot.build_pagination(
             self.inline__global_config, pages, current_page=page + 1, args=(section,)
         )
-        if all(sections.values()):
-            markup.append([
-                {
-                    "text": ("• " if name == section else "") + f"{self.strings(name + '_title')} · {len(sections[name])}",
-                    "callback": self.inline__global_config,
-                    "args": (name, 0),
-                }
-                for name in self.SECTIONS
-            ])
-        markup += [[{"text": self.strings("close"), "callback": self.inline__close}]]
-        return self.strings("configure"), markup
+        markup += [self._close_row(self.inline__global_config)]
+        title = f"{self.SECTION_EMOJI[section]} <b>{self.strings(section + '_title')}</b>"
+        return f"{self.strings('configure')}\n\n{title}", markup
 
     def _module_view(self, module, page: int = 0):
         options = list(module.config)
