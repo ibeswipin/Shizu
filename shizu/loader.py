@@ -144,6 +144,15 @@ class Module:
             return
         db.set(self.name, key, value)
 
+    def adopt_config(self, old_name: str) -> None:
+        """Take over config values saved under this module's former name"""
+        old = self.db.get(old_name, "__config__", {})
+        for key, value in old.items():
+            if key in self.config:
+                self.config[key] = value
+        if old:
+            self.db.pop(old_name, "__config__")
+
     @property
     def _db(self):
         return getattr(self, "db", None)
@@ -1040,15 +1049,11 @@ class ModulesManager:
             "ShizuTester",
             "ShizuUpdater",
             "ShizuEval",
-            "ShizuModulesHelper",
-            "ShizuStart",
             "ShizuInfo",
             "ShizuConfig",
             "ShizuLanguages",
             "ShizuSettings",
-            "ShizuOwner",
             "ShizuOnload",
-            "ShizuUpdateNotifier",
             "ShizuPermissions",
             "ShizuSystemd",
             "ShizuBeSafe",

@@ -258,27 +258,3 @@ class Help(loader.Module):
             )
 
         await inline_query.answer(results[:50], cache_time=0)
-
-    @loader.command()
-    async def support(self, app=None, message=None):
-        """Support"""
-        if message is None:
-            message = app
-        await utils.answer(
-            message,
-            self.strings("support"),
-            reply_markup=[
-                [{"text": self.strings("button"), "url": "https://t.me/shizu_talks"}]
-            ],
-        )
-
-    @loader.command()
-    async def ubinfo(self, app=None, message=None):
-        """Info about Shizu-Userbot"""
-        if message is None:
-            message = app
-        await utils.answer(
-            message,
-            self.strings("info_ub"),
-            disable_web_page_preview=True,
-        )

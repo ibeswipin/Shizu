@@ -86,14 +86,16 @@ The default prefix is `.`. Change it with `.setprefix` or from `/panel`.
 | `.dlmod <link>` | Load a module from a link |
 | `.loadmod` | Load a module from a replied file |
 | `.unloadmod <name>` | Unload a module |
-| `.restart` / `.update` | Restart / update Shizu |
+| `.restart` / `.update` / `.stop` | Restart / update / stop Shizu |
+| `.checkupdate` | Show new commits without installing them |
 | `.setprefix <prefix>` | Change the prefix |
 | `.setbot <token>` | Change the bot token and restart |
-| `.langs` | Choose the language |
+| `.lang [code]` | Choose the language |
 | `.backupdb` / `.restoredb` | Back up / restore the database |
 | `.besafe` | BeSafe status, decisions and journal |
-| `.info` | Info card about your Shizu |
-| `.support` | Link to the support chat |
+| `.owner [user]` | Owners panel, or add / remove an owner |
+| `.alias [alias] [command]` | List, add or delete aliases |
+| `.info` | Info card about your Shizu, with the support chat link |
 
 In your bot:
 

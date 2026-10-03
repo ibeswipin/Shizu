@@ -75,7 +75,7 @@ class InformationMod(loader.Module):
         )
         return f"🐙 <b>Shizu</b> — {mention}\n{stats}"
 
-    @loader.command()
+    @loader.command(aliases=["ubinfo", "support"])
     async def info(self, app: Client, message: types.Message):
         """Info about Shizu"""
         if self.config["custom_buttons"]:
