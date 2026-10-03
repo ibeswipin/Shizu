@@ -45,7 +45,6 @@ import sys
 import inspect
 
 import logging
-import traceback
 import asyncio
 import functools
 import contextlib
@@ -202,6 +201,20 @@ class InlineCall(CallbackQuery):
         self.edit = functools.partial(edit, self=self)
         self.delete = functools.partial(delete, self=self)
     
+
+
+INLINE_ERRORS = {
+    "BOT_INLINE_DISABLED": (
+        "🚫 <b>Inline mode is off for @{bot}.</b>\n"
+        "Turn it on: @BotFather → /setinline → @{bot} → send any placeholder text. Then try again."
+    ),
+    "CHAT_SEND_INLINE_FORBIDDEN": (
+        "🚫 <b>Inline bots are not allowed in this chat.</b>\n"
+        "Ask an admin to allow them, or use the command in another chat."
+    ),
+    "BOT_RESPONSE_TIMEOUT": "⏳ <b>@{bot} did not answer in time.</b>\nTry the command again.",
+    "FLOOD_WAIT_X": "⏳ <b>Telegram asks to slow down.</b>\nTry again in {value} s.",
+}
 
 
 class Events(Item):
@@ -387,6 +400,29 @@ class Events(Item):
             ttl=ttl,
             **({"gif": first} if gif else {"photo": first}),
         )
+
+    def _inline_error_text(self, error: Exception) -> str:
+        if template := INLINE_ERRORS.get(getattr(error, "ID", None)):
+            return template.format(
+                bot=getattr(self, "bot_username", "bot"), value=getattr(error, "value", "")
+            )
+        return (
+            "🚫 <b>The inline bot could not show this message.</b>\n"
+            "Details are in the logs chat.\n\n"
+            f"<code>{utils.escape_html(str(error))}</code>"
+        )
+
+    async def _inline_results(self, query: str):
+        username = (await self._app.inline_bot.get_me()).username
+        try:
+            return await self._app.get_inline_bot_results(username, query)
+        except pyrogram.errors.BotInlineDisabled:
+            if getattr(self, "_inline_fix_tried", False):
+                raise
+            self._inline_fix_tried = True
+            logger.warning("Inline mode is off for @%s, enabling it via @BotFather", username)
+            await self.enable_inline(username)
+            return await self._app.get_inline_bot_results(username, query)
 
     def _is_owner(self, user_id: int) -> bool:
         return user_id in (self._me, database.db.get("shizu.me", "me")) or user_id in database.db.get(
@@ -1096,9 +1132,7 @@ class Events(Item):
         else:
             soo = None
         try:
-            results = await self._app.get_inline_bot_results(
-                (await self._app.inline_bot.get_me()).username, form_uid
-            )
+            results = await self._inline_results(form_uid)
             q = await self._app.send_inline_bot_result(
                 getattr(message, "chat_id", None) or message.chat.id,
                 results.query_id,
@@ -1111,19 +1145,18 @@ class Events(Item):
                 with contextlib.suppress(Exception):
                     await message.delete()
         except Exception as erro:
-            msg = (
-                "🚫 <b>A problem occurred with the inline bot "
-                "while processing the query. Check the logs for "
-                f"details.</b>\n\n {erro}"
-            )
-            item = lo.CustomException.from_exc_info(*sys.exc_info())
-            exc = item.message + "\n\n" + item.full_stack
+            msg = self._inline_error_text(erro)
+            if getattr(erro, "ID", None) in INLINE_ERRORS:
+                logger.warning("Inline form failed: %s", erro)
+            else:
+                item = lo.CustomException.from_exc_info(*sys.exc_info())
+                exc = item.message + "\n\n" + item.full_stack
 
-            log_message = "🚫 <b>Inline bot invoke failed!</b>\n\n" + f"{(exc)}"
+                log_message = "🚫 <b>Inline bot invoke failed!</b>\n\n" + f"{(exc)}"
 
-            await self._app.bot.send_message(
-                self._db.get("shizu.chat", "logs", None), log_message
-            )
+                await self._app.bot.send_message(
+                    self._db.get("shizu.chat", "logs", None), log_message
+                )
 
             del self._forms[form_uid]
             if hasattr(message, "chat_id") and hasattr(message, "respond"):
@@ -1237,21 +1270,16 @@ class Events(Item):
                 await message.edit("🐙 Loading inline list...")
 
         try:
-            results = await self._app.get_inline_bot_results(
-                (await self._app.inline_bot.get_me()).username, unit_id
-            )
+            results = await self._inline_results(unit_id)
             q = await self._app.send_inline_bot_result(
                 chat_id, results.query_id, results.results[0].id
             )
         except Exception as e:
-            logger.exception("Can't send list")
-
-            exc = "\n".join(traceback.format_exc().splitlines()[1:])
-            msg = (
-                f"<b>🚫 List invoke failed!</b>\n\n"
-                f"<b>🧾 Logs:</b>\n<code>{utils.escape_html(exc)}</code>\n\n"
-                f"<b>🥲 What: <code>{utils.escape_html(str(e))}</code></b>"
-            )
+            if getattr(e, "ID", None) in INLINE_ERRORS:
+                logger.warning("Inline list failed: %s", e)
+            else:
+                logger.exception("Can't send list")
+            msg = self._inline_error_text(e)
 
             del self._forms[unit_id]
             if isinstance(message, Message):

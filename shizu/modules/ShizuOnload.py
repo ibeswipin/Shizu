@@ -75,6 +75,12 @@ class ShizuOnload(loader.Module):
 
         chats = {key: self.db.get("shizu.chat", key) for key, *_ in SERVICE_CHATS}
 
+        for key, chat_id in chats.items():
+            try:
+                await utils.ensure_bot_in_chat(app, chat_id)
+            except Exception:
+                logging.exception("Could not add the bot to service chat %s", key)
+
         avatars = self.db.get("shizu.chat", "avatars")
         if not isinstance(avatars, dict):
             avatars = {}

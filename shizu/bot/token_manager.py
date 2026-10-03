@@ -56,6 +56,21 @@ def save_token(token: str, username: str) -> None:
 class TokenManager(Item):
     """Class for managing bot tokens"""
 
+    async def enable_inline(self, username: str) -> None:
+        """Turn on inline mode and inline feedback for the bot via @BotFather"""
+        async with fsm.Conversation(self._app, "@BotFather") as conv:
+            for text in (
+                "/cancel",
+                "/setinline",
+                f"@{username}",
+                "shizu>>",
+                "/setinlinefeedback",
+                f"@{username}",
+                "Enabled",
+            ):
+                await conv.ask(text)
+                await conv.get_response()
+
     async def _find_bot(self) -> Union[Tuple[str, str], None]:
         """Find the bot"""
 

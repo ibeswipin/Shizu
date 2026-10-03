@@ -111,14 +111,6 @@ class DispatcherManager:
             if hasattr(module, "m__telethon") and getattr(module, "m__telethon", False):
                 return
 
-        try:
-            sig = inspect.signature(func)
-            params = list(sig.parameters.keys())
-            if len(params) == 2 and 'message' in params and 'app' not in params:
-                return
-        except (ValueError, TypeError):
-            pass
-
         if not await check_filters(func, app, message, command_lower):
             return
 

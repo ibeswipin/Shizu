@@ -38,8 +38,10 @@ class BackupMod(loader.Module):
         """Create a database backup [sent to the backups chat]"""
         txt = io.BytesIO(json.dumps(self.db).encode("utf-8"))
         txt.name = f"shizu-{datetime.now().strftime('%d-%m-%Y-%H-%M')}.json"
+        chat = app.db.get("shizu.chat", "backup")
+        await utils.ensure_bot_in_chat(app, chat)
         await app.inline_bot.send_document(
-            app.db.get("shizu.chat", "backup"),
+            chat,
             document=txt,
             caption=self.strings("backup").format(
                 datetime.now().strftime("%d-%m-%Y %H:%M")
