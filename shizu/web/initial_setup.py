@@ -51,7 +51,7 @@ from aiohttp import web
 from pyrogram import errors, raw
 
 from shizu import utils
-from shizu.bot import token_manager
+from shizu.bot.token_manager import TokenManager
 
 BASE_DIR =  os.path.dirname(utils.get_base_dir())
 
@@ -266,9 +266,9 @@ class Web:
         token = (await request.text()).strip()
         if token:
             try:
-                username = await token_manager.check_token(token)
+                username = await TokenManager.check_token(token)
             except ValueError as e:
                 return web.json_response({"error": str(e)}, status=400)
-            token_manager.save_token(token, username)
+            TokenManager.save_token(token, username)
         self.clients_set.set()
         return web.Response()

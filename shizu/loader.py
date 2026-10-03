@@ -435,20 +435,22 @@ def on(custom_filters):
 
 
 def loop(
-    interval: int = 5,
+    interval: typing.Union[int, str, None] = None,
     autostart: typing.Optional[bool] = False,
     wait_before: typing.Optional[bool] = False,
+    time: typing.Union[str, typing.List[str], None] = None,
 ) -> FunctionType:
     """
-    Create new infinite loop from class method
-    :param interval: Loop iterations delay
+    Create new infinite loop from class method. Give exactly one of:
+    :param interval: Delay between iterations in seconds, or a config key holding it
+    :param time: "HH:MM", a list of them, or a config key holding them (server time)
     :param autostart: Start loop once module is loaded
     :param wait_before: Insert delay before actual iteration, rather than after
     :attr status: Boolean, describing whether the loop is running
     """
 
     def wrapped(func):
-        return InfiniteLoop(func, interval, autostart, wait_before)
+        return InfiniteLoop(func, interval, autostart, wait_before, time)
 
     return wrapped
 
@@ -988,6 +990,7 @@ class ModulesManager:
         _db, _manager = db, self
         self.last_commands: Dict[int, tuple] = {}
         self._libraries: Dict[str, "Library"] = {}
+        self.raw_modules: Dict[str, str] = {}
         self._join_requests: Dict[str, tuple] = {}
 
         self.root_module: Module = None
@@ -1361,6 +1364,7 @@ class ModulesManager:
 
         if re.search(r"# ?tl-only", module_source) and not utils.is_tl_enabled():
             return "OTL"
+        self.raw_modules[module_name] = original_source
         try:
             spec = ModuleSpec(
                 module_name, StringLoader(module_source, origin), origin=origin
@@ -1774,24 +1778,32 @@ class ModulesManager:
     def get_module(
         self, name: str, by_commands_too: bool = False, _=None
     ) -> Union[Module, None]:
-        name = name.lower()
+        """Exact module name, exact command or alias, then the closest partial match"""
+        name = name.lower().strip()
+        if not name:
+            return None
 
         for module in self.modules:
             if module.name.lower() == name:
                 return module
 
-        for module in self.modules:
-            if module.__doc__ and name in module.__doc__.lower():
+        if by_commands_too:
+            command = self.aliases.get(name, name).lower()
+            if module := getattr(self.command_handlers.get(command), "__self__", None):
                 return module
 
-        for module in self.modules:
-            if name in module.name.lower():
-                return module
+        partial = [module for module in self.modules if name in module.name.lower()]
+        if partial:
+            return min(partial, key=lambda module: len(module.name))
 
         if by_commands_too:
-            for cmd_name, handler in self.command_handlers.items():
-                if name in cmd_name.lower():
-                    return handler.__self__
+            commands = sorted(
+                (command for command in self.command_handlers if name in command.lower()),
+                key=len,
+            )
+            for command in commands:
+                if module := getattr(self.command_handlers[command], "__self__", None):
+                    return module
 
         return None
 

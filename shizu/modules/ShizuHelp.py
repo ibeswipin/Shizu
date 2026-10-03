@@ -79,12 +79,12 @@ class Help(loader.Module):
 
                 for command in module.command_handlers:
                     if command not in self.hidden and query in command.lower():
-                        doc = (
-                            module.command_handlers[command].__doc__ or "No description"
+                        doc = " ".join(
+                            (module.command_handlers[command].__doc__ or "No description").split()
                         )
                         results.append(
                             f"• <code>{prefix}{command}</code> - <b>{module.name}</b>\n"
-                            f"  └ {doc[:60]}{'...' if len(doc) > 60 else ''}"
+                            f"  └ {doc}"
                         )
 
             if not results:
@@ -154,19 +154,19 @@ class Help(loader.Module):
                 "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
             )
 
-        def short(doc):
-            return re.sub(r"<[^>]+>", "", doc or "No description").split("\n")[0][:40]
+        def describe(doc):
+            return " ".join(re.sub(r"<[^>]+>", "", doc or "No description").split())
 
         rows = [
-            (prefix + command, short(module.command_handlers[command].__doc__))
+            (prefix + command, describe(module.command_handlers[command].__doc__))
             for command in module.command_handlers
         ]
         rows += [
-            (f"@{bot_username} {command}", short(module.inline_handlers[command].__doc__))
+            (f"@{bot_username} {command}", describe(module.inline_handlers[command].__doc__))
             for command in module.inline_handlers
         ]
 
-        title = f"{module.name} — {short(module.__doc__)}".strip(" —")
+        title = f"{module.name} — {describe(module.__doc__)}".strip(" —")
         return await utils.send_table(
             message, rows, header=["Command", "Description"], title=title
         )

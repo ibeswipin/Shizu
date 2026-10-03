@@ -48,75 +48,81 @@ class ModulesLinkMod(loader.Module):
 
     strings = {}
 
+    CORE_DIR = os.path.realpath("shizu")
+
+    def _source(self, module) -> bytes:
+        mod = inspect.getmodule(module)
+        name = getattr(mod, "__name__", "")
+        if source := self.all_modules.raw_modules.get(name):
+            return source.encode("utf-8")
+        origin = self._origin(module)
+        if os.path.isfile(origin):
+            with open(origin, "rb") as file:
+                return file.read()
+        loader_ = getattr(getattr(mod, "__spec__", None), "loader", None)
+        if data := getattr(loader_, "data", None):
+            return data if isinstance(data, bytes) else data.encode("utf-8")
+        return inspect.getsource(mod).encode("utf-8")
+
+    @staticmethod
+    def _origin(module) -> str:
+        spec = getattr(inspect.getmodule(module), "__spec__", None)
+        return getattr(spec, "origin", None) or "<string>"
+
+    @classmethod
+    def _core_file(cls, name: str):
+        path = os.path.realpath(os.path.join(cls.CORE_DIR, name.removesuffix(".py") + ".py"))
+        if not path.startswith(cls.CORE_DIR + os.sep) or not os.path.isfile(path):
+            return None
+        return path
+
     @loader.command()
     async def ml(self, app: Client, message: types.Message):
-        """Get a module's link or file. Usage: ml <module name or command> | -c <exact module name> to get a core file"""
+        """Get a module's link or file. Usage: ml <module name or command> | -c <core file, e.g. loader or web/core> to get a core file"""
 
-        args = message.get_args_raw()
+        args = message.get_args_raw().strip()
 
         if not args:
             return await message.answer(
                 self.strings("what_"),
             )
 
-        if "-c" in args:
-            args = args.replace("-c", "").strip()
-
-            try:
-                with open(f"shizu/{args}.py", "rb") as f:
-                    source = f.read()
-
-            except FileNotFoundError:
+        if args == "-c" or args.startswith("-c "):
+            name = args[2:].strip()
+            if not name or not (path := self._core_file(name)):
                 return await message.answer(
                     self.strings("nope_"),
                 )
 
-            source_code = io.BytesIO(source)
-            source_code.name = f"{args}.py"
-            source_code.seek(0)
+            with open(path, "rb") as file:
+                source_code = io.BytesIO(file.read())
+            source_code.name = os.path.basename(path)
 
             return await message.answer(
-                source_code, doc=True, caption=self.strings("core_file").format(args)
+                source_code, doc=True, caption=self.strings("core_file").format(utils.escape_html(name))
             )
-
-        m = await message.answer(
-            self.strings("search_"),
-        )
 
         if not (module := self.all_modules.get_module(args, True, True)):
             return await message.answer(
                 self.strings("nope_"),
             )
 
-        get_module = inspect.getmodule(module)
-        origin = get_module.__spec__.origin
-
-        mod = inspect.getmodule(module)
         try:
-            source = self.all_modules.raw_modules.get(mod.__name__)
-
-            if not source and hasattr(mod.__loader__, "data"):
-                source = mod.__loader__.data
-
-            if not source:
-                source = inspect.getsource(mod).encode("utf-8")
-            elif isinstance(source, str):
-                source = source.encode("utf-8")
+            source = self._source(module)
         except Exception:
             return await message.answer("❌ Source unavailable for this module!")
 
         source_code = io.BytesIO(source)
         source_code.name = f"{module.name}.py"
-        source_code.seek(0)
 
+        origin = self._origin(module)
         caption = (
-            f'<emoji id=5260730055880876557>⛓</emoji> <a href="{origin}">Link</a> of <code>{module.name}</code> module:\n\n'
-            f"<b>{origin}</b>"
-            if origin != "<string>" and not os.path.exists(origin)
+            f'<emoji id=5260730055880876557>⛓</emoji> <a href="{utils.escape_html(origin)}">Link</a> of <code>{module.name}</code> module:\n\n'
+            f"<b>{utils.escape_html(origin)}</b>"
+            if origin.startswith(("http://", "https://"))
             else f"<emoji id=5870528606328852614>📁</emoji> <b>File of <code>{module.name}</code></b>"
         )
 
-        await m.delete()
         return await message.answer(source_code, doc=True, caption=caption)
 
     @loader.command()

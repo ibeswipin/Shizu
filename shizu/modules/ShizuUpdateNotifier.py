@@ -156,7 +156,7 @@ class ShizuUpdateNotifier(loader.Module):
             logging.error("Error fetching commits: %s", e)
             return []
 
-    @loader.loop(interval=60, autostart=True)
+    @loader.loop(interval="check_interval", autostart=True)
     async def check_updates_loop(self):
         """Periodically check for new commits"""
         if not self.config["enabled"]:

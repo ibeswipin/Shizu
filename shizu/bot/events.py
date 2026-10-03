@@ -203,22 +203,21 @@ class InlineCall(CallbackQuery):
     
 
 
-INLINE_ERRORS = {
-    "BOT_INLINE_DISABLED": (
-        "🚫 <b>Inline mode is off for @{bot}.</b>\n"
-        "Turn it on: @BotFather → /setinline → @{bot} → send any placeholder text. Then try again."
-    ),
-    "CHAT_SEND_INLINE_FORBIDDEN": (
-        "🚫 <b>Inline bots are not allowed in this chat.</b>\n"
-        "Ask an admin to allow them, or use the command in another chat."
-    ),
-    "BOT_RESPONSE_TIMEOUT": "⏳ <b>@{bot} did not answer in time.</b>\nTry the command again.",
-    "FLOOD_WAIT_X": "⏳ <b>Telegram asks to slow down.</b>\nTry again in {value} s.",
-}
-
-
 class Events(Item):
     """Events handler for inline forms and lists"""
+
+    INLINE_ERRORS = {
+        "BOT_INLINE_DISABLED": (
+            "🚫 <b>Inline mode is off for @{bot}.</b>\n"
+            "Turn it on: @BotFather → /setinline → @{bot} → send any placeholder text. Then try again."
+        ),
+        "CHAT_SEND_INLINE_FORBIDDEN": (
+            "🚫 <b>Inline bots are not allowed in this chat.</b>\n"
+            "Ask an admin to allow them, or use the command in another chat."
+        ),
+        "BOT_RESPONSE_TIMEOUT": "⏳ <b>@{bot} did not answer in time.</b>\nTry the command again.",
+        "FLOOD_WAIT_X": "⏳ <b>Telegram asks to slow down.</b>\nTry again in {value} s.",
+    }
 
     def __init__(self):
         self._forms = {}
@@ -402,7 +401,7 @@ class Events(Item):
         )
 
     def _inline_error_text(self, error: Exception) -> str:
-        if template := INLINE_ERRORS.get(getattr(error, "ID", None)):
+        if template := self.INLINE_ERRORS.get(getattr(error, "ID", None)):
             return template.format(
                 bot=getattr(self, "bot_username", "bot"), value=getattr(error, "value", "")
             )
@@ -1146,7 +1145,7 @@ class Events(Item):
                     await message.delete()
         except Exception as erro:
             msg = self._inline_error_text(erro)
-            if getattr(erro, "ID", None) in INLINE_ERRORS:
+            if getattr(erro, "ID", None) in self.INLINE_ERRORS:
                 logger.warning("Inline form failed: %s", erro)
             else:
                 item = lo.CustomException.from_exc_info(*sys.exc_info())
@@ -1275,7 +1274,7 @@ class Events(Item):
                 chat_id, results.query_id, results.results[0].id
             )
         except Exception as e:
-            if getattr(e, "ID", None) in INLINE_ERRORS:
+            if getattr(e, "ID", None) in self.INLINE_ERRORS:
                 logger.warning("Inline list failed: %s", e)
             else:
                 logger.exception("Can't send list")
