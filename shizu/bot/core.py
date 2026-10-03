@@ -78,6 +78,11 @@ class BotManager(Events, TokenManager):
             self.bot = Bot(self._token, parse_mode="html")
             me = await self.bot.get_me()
         except (exceptions.ValidationError, exceptions.Unauthorized):
+            if self._db.get("shizu.bot", "manual_token", False):
+                logging.error("The supplied bot token is invalid. Update shizu.bot.token in db.json and restart Shizu.")
+                session = await self.bot.get_session()
+                await session.close()
+                return sys.exit(1)
             logging.error("Invalid token. Trying to recreate it")
 
             self._token = None

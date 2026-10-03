@@ -14,7 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import asyncio
-import os
+import sys
 import logging
 import platform
 
@@ -64,8 +64,6 @@ try:
     asyncio.run(main.main())
     
 except ModuleNotFoundError as module:
-    print(f"🚫 Error: {module} is not installed")
-    print("⌛ Installing dependencies... Please wait.")
-    os.popen("pip3 install -r requirements.txt").read()
-    print("👍 Dependencies installed")
-    print("🔁 Restarting the bot, please wait...")
+    print(f"🚫 Missing dependency: {module}", file=sys.stderr)
+    print("Run bash install.sh to install Shizu dependencies.", file=sys.stderr)
+    sys.exit(1)

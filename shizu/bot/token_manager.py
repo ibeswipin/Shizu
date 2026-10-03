@@ -13,21 +13,44 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import asyncio
 import logging
 import re
 import time
 from typing import Union
 from typing import Tuple
 
+from aiogram import Bot, exceptions
 from pyrogram import errors
 
-from shizu import fsm, utils
+from shizu import database, fsm, utils
 from shizu.bot.types import Item
 
 FIND = True
 
 
 logger = logging.getLogger(__name__)
+
+
+async def check_token(token: str) -> str:
+    """Returns the bot username for a working token, raises ValueError otherwise"""
+    if not re.fullmatch(r"\d+:[A-Za-z0-9_-]{30,}", token):
+        raise ValueError("Invalid bot token format.")
+    bot = Bot(token=token)
+    try:
+        return (await bot.get_me()).username
+    except (exceptions.ValidationError, exceptions.Unauthorized):
+        raise ValueError("Token is invalid. Check it in @BotFather.")
+    except (exceptions.TelegramAPIError, asyncio.TimeoutError):
+        raise ValueError("Could not verify the bot. Try again.")
+    finally:
+        await (await bot.get_session()).close()
+
+
+def save_token(token: str, username: str) -> None:
+    database.db.set("shizu.bot", "token", token)
+    database.db.set("shizu.bot", "username", username)
+    database.db.set("shizu.bot", "manual_token", True)
 
 
 class TokenManager(Item):

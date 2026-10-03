@@ -1011,6 +1011,7 @@ class ModulesManager:
             "ShizuPermissions",
             "ShizuSystemd",
             "ShizuBeSafe",
+            "ShizuPanel",
         ]
         self.hidden = []
         app.db = db

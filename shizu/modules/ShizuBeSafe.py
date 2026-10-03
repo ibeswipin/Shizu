@@ -294,7 +294,9 @@ class BeSafe(loader.Module):
             with contextlib.suppress(Exception):
                 await self.bot.bot.delete_message(*old)
         sent = await self.bot.bot.send_message(
-            self.db.get("shizu.chat", "logs", None) or self.me.id,
+            self.db.get("shizu.chat", "besafe", None)
+            or self.db.get("shizu.chat", "logs", None)
+            or self.me.id,
             text,
             reply_markup=markup,
             disable_web_page_preview=True,

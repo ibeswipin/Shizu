@@ -1,12 +1,4 @@
 <!--
-    █ █ ▀ █▄▀ ▄▀█ █▀█ ▀    ▄▀█ ▀█▀ ▄▀█ █▀▄▀█ ▄▀█
-    █▀█ █ █ █ █▀█ █▀▄ █ ▄  █▀█  █  █▀█ █ ▀ █ █▀█
-
-    Copyright 2022 t.me/hikariatama
-    Licensed under the GNU GPLv3
-
-  ---------------------------------------------
-
     Shizu Copyright (C) 2023-2026  Ibeswipin
 
     This program is free software: you can redistribute it and/or modify
@@ -23,556 +15,102 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
-{% extends "base.jinja2" %}
-
-{% block head %}
-<script src="https://cdn.jsdelivr.net/npm/scrypt-async@2.0.1/scrypt-async.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<link href="https://cdn.jsdelivr.net/npm/@sweetalert2/theme-dark@4/dark.css" rel="stylesheet">
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shizu</title>
+<link rel="icon" href="https://i.imgur.com/j0OPQso.jpeg">
+<link rel="preload" as="image" href="{{ static('bg.webp') }}" fetchpriority="high">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans&family=Open+Sans:wght@300&display=swap');
-  @import url('https://fonts.googleapis.com/css2?family=Hubballi&display=swap');
-
-  .button {
-    border-radius: 100px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .button :hover {
-    animation: fadeIn 2s infinite ease;
-  }
-
-
-  @keyframes fadeIn {
-    0% {
-      transform: scale(1.0);
-      -webkit-transform: scale(1.0);
-    }
-
-    50% {
-      transform: scale(1.2);
-      -webkit-transform: scale(1.2);
-
-    }
-
-    100% {
-      transform: scale(1.0);
-      -webkit-transform: scale(1.0);
-
-    }
-  }
-
-
-  .signin_block {
-    display: inline-block;
-  }
-
-  .signin_block ul {
-    margin: 0;
-    list-style: none;
-    padding: 0;
-  }
-
-  .signin_block li {
-    width: 100%;
-  }
-
-  .signin_block h1 {
-    margin: 0;
-    color: #eee;
-    font-size: 22px;
-    padding: 10px;
-    font-family: "Open Sans";
-  }
+:root{color-scheme:dark;--ink:#f4f1ea;--muted:rgba(244,241,234,.62);--line:rgba(255,255,255,.16);--glass:rgba(16,16,22,.38);--field:rgba(255,255,255,.06);--accent:#ffb547;--accent-ink:#1d1406;--err:#ff8f7a}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;color:var(--ink);font:15px/1.55 "Zen Kaku Gothic New",system-ui,sans-serif;background:linear-gradient(180deg,rgba(8,8,14,.35),rgba(8,8,14,.7)),url("{{ static('bg.webp') }}") center/cover fixed,url("data:image/webp;base64,UklGRpQAAABXRUJQVlA4IIgAAACQBACdASoYAA4APxFwsFAsJiSisAgBgCIJYgCdMoFWAAUPts1POIXOF20Y6EAA/twhEVupozjYN3QxPX7vxi+tL9/UsInKPMNfkigluVwY8GxcR6G4UR/8YNwilWJZ0+4uR5wFg9G3yoLPxVSTAy8DBsqdKKNWJ8jpsmNSJIpXlSBMqeyOAAAA") center/cover fixed #0b0b10}
+.card{position:relative;width:min(420px,100%);padding:44px 36px 36px;border-radius:24px;background:var(--glass);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 30px 80px rgba(0,0,0,.45);-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%);text-align:center}
+.mark{font-size:13px;letter-spacing:.4em;color:var(--accent);margin-bottom:10px}
+.title{font-size:46px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.description{font-size:16px;color:var(--muted);margin-top:12px}
+.description span{color:var(--accent)}
+#get_started{display:grid;place-items:center;width:56px;height:56px;margin:30px auto 0;padding:0;border-radius:50%;background:var(--accent);color:var(--accent-ink);box-shadow:0 0 0 0 rgba(255,181,71,.5);animation:glow 2.6s infinite}
+#get_started:hover{transform:translateX(3px)}
+@keyframes glow{70%{box-shadow:0 0 0 16px rgba(255,181,71,0)}100%{box-shadow:0 0 0 0 rgba(255,181,71,0)}}
+form{margin-top:26px;text-align:left}
+.progress{display:flex;justify-content:center;gap:6px;margin-bottom:22px}
+.progress span{width:6px;height:6px;border-radius:6px;background:var(--line);transition:.3s}
+.progress .active{background:var(--accent);width:22px}
+h2{font-size:18px;font-weight:700;margin:0 0 2px;text-align:center}
+p{color:var(--muted);margin:0 0 6px;text-align:center;font-size:14px}
+a{color:var(--accent)}
+label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin:16px 0 6px}
+input[type=text],input[type=password],input[type=tel]{width:100%;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--ink);font:inherit;outline:none;transition:border-color .2s,background .2s}
+input::placeholder{color:rgba(244,241,234,.3)}
+input:focus{border-color:var(--accent);background:rgba(255,255,255,.09)}
+button{width:100%;margin-top:20px;padding:12px;border:0;border-radius:12px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:700;cursor:pointer;transition:transform .15s,filter .2s}
+button:hover{filter:brightness(1.08)}
+button:active{transform:scale(.98)}
+button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+button:disabled{opacity:.55;cursor:wait}
+.link{background:none;color:var(--muted);font-weight:500;font-size:13px;margin-top:8px;padding:6px}
+.link:hover{color:var(--ink);filter:none}
+.qr{width:208px;height:208px;margin:18px auto 6px;padding:10px;border-radius:18px;background:#fff;display:grid;place-items:center;color:#555;font-size:13px}
+.qr svg{width:100%;height:100%;display:block}
+.choice{display:flex;gap:12px;align-items:flex-start;margin:12px 0 0;padding:12px 14px;background:var(--field);border:1px solid var(--line);border-radius:12px;cursor:pointer;color:var(--ink);font-size:14px;transition:border-color .2s}
+.choice:has(input:checked){border-color:var(--accent)}
+.choice input{margin-top:4px;accent-color:var(--accent)}
+.choice strong{display:block;font-weight:700}
+.choice small{color:var(--muted)}
+.note{font-size:12px;text-align:left;margin-top:8px}
+.error{color:var(--err);background:rgba(255,100,80,.12);border:1px solid rgba(255,120,100,.25);border-radius:10px;padding:8px 12px;margin-top:14px}
+[hidden]{display:none!important}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.card{background:rgba(16,16,22,.85)}}
+@media(max-width:480px){body{background-attachment:scroll}.card{padding:36px 22px 26px;border-radius:20px}.title{font-size:40px}}
+@media(prefers-reduced-motion:reduce){ #get_started{animation:none}*{transition:none!important}}
 </style>
-
-<style type="text/css">
-  body,
-  html {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0;
-  }
-
-  body {
-    transition: all 2s ease;
-    background: #16181d;
-  }
-
-
-
-  .title {
-    font-size: 50px;
-    font-family: Hubballi;
-    text-align: center;
-    color: #8155BA;
-    width: 100%;
-    z-index: 2;
-    position: relative;
-    height: 50px;
-    line-height: 50px;
-  }
-
-  .description {
-    font-size: 24px;
-    color: white;
-    text-align: center;
-    width: 100%;
-    z-index: 2;
-    position: relative;
-    padding-top: 20px;
-    line-height: 1.3;
-    font-family: Hubballi;
-  }
-
-  .wrapper {
-    background-color: #0a0a0a;
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    justify-content: center;
-    align-items: center;
-    display: flex;
-    flex-direction: column;
-  }
-
-
-
-  #root {
-    position: absolute;
-    top: 0;
-    right: 0;
-    left: 0;
-    bottom: 0;
-    margin: auto;
-  }
-
-
-  .main_content {
-    display: none;
-  }
-
-  .center {
-    justify-content: center;
-    align-items: center;
-    display: flex;
-    position: relative;
-    z-index: 2;
-    transition: 0.5s;
-    margin-top: 20px;
-  }
-
-  .blur {
-    padding: 4rem 10rem;
-    border-radius: 10px;
-    background-color: #111112;
-    border: 1px solid #333333;
-    position: relative;
-    z-index: 99;
-    -webkit-box-shadow: 4px 4px 44px 12px rgba(129, 85, 186, 0.2);
-    -moz-box-shadow: 4px 4px 44px 12px rgba(129, 85, 186, 0.2);
-    box-shadow: 4px 4px 44px 12px rgba(129, 85, 186, 0.2);
-    animation: shine 5s infinite ease-in-out;
-  }
-
-  @keyframes shine {
-    0% {
-      -webkit-box-shadow: 0 0 10px 0px rgba(129, 85, 186, 0.2);
-      -moz-box-shadow: 0 0 10px 0px rgba(129, 85, 186, 0.2);
-      box-shadow: 0 0 10px 0px rgba(129, 85, 186, 0.2);
-    }
-
-    50% {
-      -webkit-box-shadow: 0 0 20px 10px rgba(129, 85, 186, 0.2);
-      -moz-box-shadow: 0 0 20px 10px rgba(129, 85, 186, 0.2);
-      box-shadow: 0 0 20px 10px rgba(129, 85, 186, 0.2);
-    }
-
-    100% {
-      -webkit-box-shadow: 0 0 10px 0px rgba(129, 85, 186, 0.2);
-      -moz-box-shadow: 0 0 10px 0px rgba(129, 85, 186, 0.2);
-      box-shadow: 0 0 10px 0px rgba(129, 85, 186, 0.2);
-    }
-  }
-
-  .bg {
-    background-repeat: no-repeat;
-    background-size: contain;
-    width: 80vw;
-    height: 60vh;
-    position: absolute;
-    z-index: 1;
-    background-position: center;
-    display: none;
-  }
-
-
-  @media screen and (max-width: 736px) {
-    .blur {
-      width: 100%;
-      height: 100%;
-      padding: 2rem;
-      box-sizing: border-box;
-      border-radius: 0%;
-      border: 0px solid #111112;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .bg {
-      width: 100vh;
-      height: 100vw;
-      transform: rotate(90deg);
-    }
-  }
-
-  input {
-    background: transparent;
-    border: 1px solid #eee;
-    outline: none;
-    padding: 10px 15px;
-    border-radius: 10px;
-    color: #8155BA;
-    text-align: center;
-  }
-
-  label {
-    margin: 0 10px;
-    color: #eee;
-    user-select: none;
-  }
-
-  #continue_btn {
-    padding: 8.1px 12px;
-    background: transparent;
-    border-radius: 10px;
-    user-select: none;
-    color: #fff;
-    cursor: pointer;
-    text-align: center;
-    border: 1px solid #eee;
-    margin: 10px 0;
-    transition: all .3s ease;
-    margin-left: 5px;
-  }
-
-  #continue_btn:hover {
-    background-color: transparent;
-    color: #8155BA;
-  }
-
-  #continue_btn:active {
-    background-color: transparent;
-    color: #8155BA;
-  }
-
-  #continue_btn.error {
-    background-color: #c6282846;
-    transition: all .3s ease;
-  }
-
-  #continue_btn,
-  #block_api_id,
-  #block_api_hash,
-  #block_phone,
-  #block_2fa {
-    display: none;
-  }
-</style>
-{% endblock %}
-
-{% block content %}
-{% endblock %}
-
-{% block after %}
-<div class="wrapper">
-  <div class="blur">
-    <div class="title">Shizu</div>
-    <div class="description">Find <span style="color: #8155BA;">joy</span> in the little things.</div>
-    <div class="center">
-      <div class="button" id="get_started"><img class="vector" src="{{ static('Vector.svg') }}" alt=""></div>
-      <span id="block_api_id">
-        <label class="api_id" for="api_id">API ID: </label>
-        <input class="api_id" id="api_id" placeholder="..." style="width: 12em;">
-      </span>
-      <span id="block_api_hash">
-        <label class="api_hash" for="api_hash">API HASH: </label>
-        <input class="api_hash" id="api_hash" placeholder="..." style="width: 12em;">
-      </span>
-      <span id="block_phone">
-        <label class="phone" for="phone">Phone: </label>
-        <input class="phone" id="phone" placeholder="..." style="width: 12em;">
-      </span>
-      <span id="block_2fa">
-        <label class="_2fa" for="_2fa">2FA Password: </label>
-        <input class="_2fa" id="_2fa" placeholder="..." style="width: 12em;" type="password">
-      </span>
-      <div id="continue_btn">Next</div>
-
-    </div>
-  </div>
-  <div id="root">
-
-
-  </div>
-</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.rings.min.js"></script>
-<script type="text/javascript">
-
-  $(document).ready(function () {
-    $('.bg').hide().delay(2000).fadeIn(500);
-  });
-  $("#get_started").click(() => {
-    $("#get_started").fadeOut(500, () => {
-      cnt_btn.setAttribute('current-step', 'api_id');
-      $("#block_api_id").hide().fadeIn(500);
-      $("#continue_btn").hide().fadeIn(500);
-    });
-  });
-
-  function isInt(value) {
-    var x = parseFloat(value);
-    return !isNaN(value) && (x | 0) === x;
-  }
-
-  function isValidPhone(p) {
-    var phoneRe = /^[+]?\d{11,13}$/;
-    return phoneRe.test(p);
-  }
-
-  var _api_id = "", _api_hash = "", _phone = "", _2fa_pass = "", _tg_pass = "";
-
-  const cnt_btn = document.querySelector('#continue_btn');
-  cnt_btn.onclick = (e) => {
-    if (cnt_btn.disabled) return;
-
-    let step = cnt_btn.getAttribute('current-step');
-    if (step == "api_id") {
-      let api_id = document.querySelector('#api_id').value;
-      if (api_id.length < 4 || !isInt(api_id)) {
-        $(".bg").addClass("red_state");
-        cnt_btn.disabled = true;
-        setTimeout(() => {
-          cnt_btn.disabled = false;
-          $(".bg").removeClass("red_state");
-        }, 1000);
-        return;
-      }
-
-      _api_id = parseInt(api_id);
-      cnt_btn.setAttribute('current-step', 'api_hash');
-      $("#block_api_id").fadeOut(() => {
-        $("#block_api_hash").hide().fadeIn();
-      });
-    } else if (step == "api_hash") {
-      let api_hash = document.querySelector('#api_hash').value;
-      if (api_hash.length != 32) {
-        $(".bg").addClass("red_state");
-        cnt_btn.disabled = true;
-        setTimeout(() => {
-          cnt_btn.disabled = false;
-          $(".bg").removeClass("red_state");
-        }, 1000);
-        return;
-      }
-
-      _api_hash = api_hash;
-      fetch("/setApi", {
-        method: "PUT",
-        body: _api_hash + _api_id,
-        credentials: "include"
-      })
-        .then(function (response) {
-          if (!response.ok) {
-            Swal.fire({
-              'icon': 'error',
-              'title': 'Error occured while saving credentials'
-            });
-          } else {
-            cnt_btn.setAttribute('current-step', 'phone');
-            $("#block_api_hash").fadeOut(() => {
-              $("#block_phone").hide().fadeIn();
-            });
-          }
-        })
-        .catch(function (response) {
-          Swal.fire({
-            'icon': 'error',
-            'title': 'Error occured while saving credentials'
-          });
-        });
-    } else if (step == "phone" || step == "2fa") {
-      if (step == "phone") {
-        let phone = document.querySelector('#phone').value;
-        if (!isValidPhone(phone)) {
-          $(".bg").addClass("red_state");
-          cnt_btn.disabled = true;
-          setTimeout(() => {
-            cnt_btn.disabled = false;
-            $(".bg").removeClass("red_state");
-          }, 1000);
-          return;
-        }
-
-        _phone = phone;
-        console.log(_phone);
-        fetch("/sendTgCode", { method: "POST", body: _phone, credentials: "include" })
-          .then(function (response) {
-            if (!response.ok) {
-              Swal.fire({
-                'icon': 'error',
-                'title': 'Code send failed'
-              });
-            } else {
-              Swal.fire({
-                title: 'Enter received code',
-                input: 'text',
-                inputAttributes: {
-                  autocapitalize: 'off'
-                },
-                showCancelButton: false,
-                confirmButtonText: 'Confirm',
-                showLoaderOnConfirm: true,
-                preConfirm: (login) => {
-                  _tg_pass = login
-                  return fetch("/tgCode", { method: "POST", body: _tg_pass + "\n" + _phone + "\n" + _2fa_pass })
-                    .then(function (response) {
-                      if (!response.ok) {
-                        console.log(response);
-                        if (response.status == 403) {
-                          Swal.showValidationMessage('Code is incorrect!');
-                        } else if (response.status == 401) {
-                          cnt_btn.setAttribute('current-step', '2fa');
-                          $("#block_phone").fadeOut(() => {
-                            $("#block_2fa").hide().fadeIn();
-                          });
-                        } else if (response.status == 404) {
-                          // Code expired, must re-send code request. Close dialog and wait for user action.
-                          Swal.showValidationMessage('Code is expired!');
-                        } else {
-                          Swal.showValidationMessage('Internal server error');
-                        }
-                      } else {
-                        return fetch("/finishLogin", { method: "POST", body: "", credentials: "include" })
-                          .then(function (response) {
-                            if (!response.ok) {
-                              Swal.fire({
-                                'icon': 'error',
-                                'text': 'Login confirmation error'
-                              })
-                            } else {
-                              Swal.fire({
-                                'icon': 'success',
-                                'text': 'Auth successful!',
-                                'timer': 1000
-
-                              });
-                              setTimeout(() => {
-                                $(".description").html("Your account is now connected to Shizu. Enjoy!");
-                                $("#block_phone").fadeOut(() => {
-                                  $("#block_2fa").fadeOut(() => {
-                                    $("#continue_btn").fadeOut();
-                                  });
-                                });
-
-
-                              }, 1500);
-                            }
-                          })
-                          .catch(function (response) {
-                            Swal.fire({
-                              'icon': 'error',
-                              'text': 'Login confirmation error'
-                            })
-                          });
-                      }
-                    })
-                    .catch(error => {
-                      Swal.showValidationMessage(
-                        'Auth failed: ' + error.toString()
-                      )
-                    })
-                },
-                allowOutsideClick: () => !Swal.isLoading()
-              })
-            }
-          })
-          .catch(function (error) {
-            Swal.fire({
-              'icon': 'error',
-              'title': 'Code send failed'
-            });
-          });
-      } else {
-        let _2fa = document.querySelector('#_2fa').value;
-        _2fa_pass = _2fa;
-        fetch("/tgCode", { method: "POST", body: _tg_pass + "\n" + _phone + "\n" + _2fa_pass })
-          .then(function (response) {
-            if (!response.ok) {
-              console.log(response);
-              if (response.status == 403) {
-                Swal.showValidationMessage('Code is incorrect!');
-              } else if (response.status == 401) {
-                cnt_btn.setAttribute('current-step', '2fa');
-                $("#block_phone").fadeOut(() => {
-                  $("#block_2fa").hide().fadeIn();
-                });
-              } else if (response.status == 404) {
-                // Code expired, must re-send code request. Close dialog and wait for user action.
-                Swal.showValidationMessage('Code is expired!');
-              } else {
-                Swal.showValidationMessage('Internal server error');
-              }
-            } else {
-              fetch("/finishLogin", { method: "POST", body: '', credentials: "include" })
-                .then(function (response) {
-                  if (!response.ok) {
-                    Swal.fire({
-                      'icon': 'error',
-                      'text': 'Login confirmation error'
-                    })
-                  } else {
-                    Swal.fire({
-                      'icon': 'success',
-                      'text': 'Auth successful!',
-                      'timer': 1000
-                    });
-                    setTimeout(() => {
-                      $(".description").html("Your account is now connected to Shizu. Enjoy!");
-                      $("#block_phone").fadeOut(() => {
-                        $("#block_2fa").fadeOut(() => {
-                          $("#continue_btn").fadeOut();
-                        });
-                      });
-
-                    }, 1500);
-                  }
-                })
-                .catch(function (response) {
-                  Swal.fire({
-                    'icon': 'error',
-                    'text': 'Login confirmation error'
-                  })
-                });
-            }
-          })
-          .catch(error => {
-            Swal.showValidationMessage(
-              'Auth failed: ' + error.toString()
-            )
-          })
-      }
-    }
-  }
-</script>
-{% endblock %}
+</head>
+<body>
+<main class="card">
+<div class="mark">静 · SHIZU</div>
+<div class="title">Shizu</div>
+<div class="description" id="description">Find <span>joy</span> in the little things.</div>
+<button type="button" id="get_started" aria-label="Start setup"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+<form id="setup" hidden>
+<div class="progress" aria-hidden="true"><span></span><span></span><span></span></div>
+<div class="step" id="api"><h2>Telegram access</h2><p>App credentials from <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer">my.telegram.org</a></p><label for="api_id">API ID</label><input id="api_id" type="text" inputmode="numeric" placeholder="12345678" autocomplete="off"><label for="api_hash">API Hash</label><input id="api_hash" type="password" placeholder="32 characters" autocomplete="off"></div>
+<div class="step" id="phone" hidden><h2>Phone number</h2><p>Telegram will send you a login code</p><label for="phone_number">Phone</label><input id="phone_number" type="tel" placeholder="+998 90 123 45 67" autocomplete="tel"></div>
+<div class="step" id="code" hidden><h2>Login code</h2><p>Enter the code Telegram sent you</p><label for="login_code">Code</label><input id="login_code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="12345" maxlength="5"></div>
+<div class="step" id="qr" hidden><h2>Scan QR code</h2><p>Telegram → Settings → Devices → Link Desktop Device</p><div class="qr" id="qr_box">Loading…</div></div>
+<div class="step" id="password" hidden><h2>Two-step verification</h2><p>Enter your account cloud password</p><label for="twofa">Password</label><input id="twofa" type="password" autocomplete="current-password"></div>
+<div class="step" id="bot" hidden><h2>Bot</h2><p>Used for menus and inline features</p><label class="choice"><input type="radio" name="bot_mode" value="auto" checked><span><strong>Automatic</strong><small>Shizu finds or creates a bot via @BotFather.</small></span></label><label class="choice"><input type="radio" name="bot_mode" value="existing"><span><strong>My own bot</strong><small>Connect an existing bot by token.</small></span></label><div id="token_fields" hidden><label for="bot_token">Bot token</label><input id="bot_token" type="password" autocomplete="off" spellcheck="false" placeholder="123456789:AA…"><p class="note">@BotFather → /mybots → API Token. For inline mode enable /setinline and /setinlinefeedback.</p></div></div>
+<div class="step" id="done" hidden><p>Shizu is restarting. You can close this page.</p></div>
+<p id="error" class="error" role="alert" hidden></p>
+<button id="next" type="submit">Next</button>
+<button type="button" class="link" id="resend" hidden>Change phone number</button>
+<button type="button" class="link" id="use_qr" hidden>Log in with QR code</button>
+<button type="button" class="link" id="use_phone" hidden>Log in with phone number</button>
+</form>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let step = {{ ('qr' if api_done else 'api') | tojson }}, phone = '', code = '', qrMode = false, qrRun = 0;
+const steps = ['api','phone','qr','code','password','bot','done'];
+function show(next) { step=next; if(step==='qr'){qrMode=true; $('qr_box').textContent='Loading…';} if(step==='phone') qrMode=false; for(const id of steps) $(id).hidden=id!==step; $('error').hidden=true; $('next').hidden=step==='done'||step==='qr'; $('resend').hidden=step!=='code'; $('use_qr').hidden=step!=='phone'; $('use_phone').hidden=step!=='qr'; qrRun++; if(step==='qr') pollQr(qrRun); $('next').textContent=step==='bot'?'Launch Shizu':step==='phone'?'Send code':'Next'; if(step==='done') $('description').textContent='Your account is now connected to Shizu. Enjoy!'; document.querySelector('.progress').hidden=step==='done'; document.querySelectorAll('.progress span').forEach((el,i)=>el.classList.toggle('active',i===(step==='api'?0:['phone','qr','code','password'].includes(step)?1:2))); const input=$(step).querySelector('input'); if(input) input.focus(); }
+function fail(message){$('error').textContent=message; $('error').hidden=false;}
+async function send(url,method,body){return fetch(url,{method,body,credentials:'same-origin'});}
+const errors={400:'Check the entered data.',401:'Telegram password required.',403:'Wrong code or password. Try again.',404:'Code expired. Re-enter your number to get a new one.',421:'Too many attempts. Try again later.'};
+$('get_started').onclick=()=>{$('get_started').hidden=true; $('setup').hidden=false; show(step);};
+$('resend').onclick=()=>show('phone');
+$('use_qr').onclick=()=>show('qr');
+$('use_phone').onclick=()=>show('phone');
+async function pollQr(run){try{const r=await send('/qrLogin','POST',''); if(run!==qrRun)return; if(r.status===401)return show('password'); if(!r.ok)throw Error(errors[r.status]||'Could not get QR code (HTTP '+r.status+').'); const d=await r.json(); if(d.done)return show('bot'); $('qr_box').innerHTML=d.svg; $('error').hidden=true;}catch(e){if(run!==qrRun)return; fail(e instanceof TypeError?'No connection to the server. Retrying…':e.message);} setTimeout(()=>run===qrRun&&pollQr(run),2000);}
+document.querySelectorAll('[name=bot_mode]').forEach(el=>el.onchange=()=>{$('token_fields').hidden=el.value!=='existing'; $('bot_token').required=el.value==='existing';});
+$('setup').onsubmit=async event=>{event.preventDefault(); if($('next').disabled)return; $('next').disabled=true; $('resend').disabled=true; $('error').hidden=true;
+try {
+if(step==='api'){const id=$('api_id').value.trim(), hash=$('api_hash').value.trim(); if(!/^\d{4,}$/.test(id)||! /^[a-fA-F0-9]{32}$/.test(hash))throw Error('Enter a numeric API ID and a 32-character API Hash.'); const r=await send('/setApi','PUT',hash+id); if(!r.ok)throw Error(errors[r.status]||'Could not save API credentials (HTTP '+r.status+').'); $('api_hash').value=''; show('qr');}
+else if(step==='phone'){phone=$('phone_number').value.replace(/[\s()-]/g,''); if(!/^\+?\d{7,15}$/.test(phone))throw Error('Enter the number with country code.'); const r=await send('/sendTgCode','POST',phone); if(!r.ok)throw Error(errors[r.status]||'Could not send the code. Try again (HTTP '+r.status+').'); show('code');}
+else if(step==='password'&&qrMode){const password=$('twofa').value; if(!password)throw Error('Enter your Telegram password.'); const r=await send('/qrPassword','POST',password); if(!r.ok)throw Error(errors[r.status]||'Could not sign in to Telegram (HTTP '+r.status+').'); $('twofa').value=''; show('bot');}
+else if(step==='code'||step==='password'){if(step==='code')code=$('login_code').value.trim(); if(!/^\d{5}$/.test(code))throw Error('Enter the 5-digit code.'); const password=step==='password'?$('twofa').value:''; if(step==='password'&&!password)throw Error('Enter your Telegram password.'); const r=await send('/tgCode','POST',code+'\n'+phone+'\n'+password); if(r.status===401){show('password');}else if(!r.ok){throw Error(errors[r.status]||'Could not sign in to Telegram (HTTP '+r.status+').');}else{$('twofa').value=''; $('login_code').value=''; code=''; show('bot');}}
+else if(step==='bot'){const existing=document.querySelector('[name=bot_mode]:checked').value==='existing'; const token=existing?$('bot_token').value.trim():''; if(existing&&!/^\d+:[A-Za-z0-9_-]{30,}$/.test(token))throw Error('Enter the full bot token from @BotFather.'); const r=await send('/finishLogin','POST',token); if(!r.ok){let data={}; try{data=await r.json();}catch{} throw Error(data.error||errors[r.status]||'Could not finish setup (HTTP '+r.status+').');} $('bot_token').value=''; show('done');}
+}catch(e){fail(e instanceof TypeError?'No connection to the server. Check it and try again.':e.message);}finally{$('next').disabled=false; $('resend').disabled=false;}};
+</script></body></html>
