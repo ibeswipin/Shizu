@@ -986,7 +986,21 @@ class Events(Item):
                 return
 
             button = self._custom_map[query.data]
-            await button["handler" if "handler" in button else "_callback"](query)
+            if "handler" in button:
+                return await button["handler"](query)
+            query.edit = functools.partial(edit, self=self, query=query)
+            try:
+                await button["_callback"](
+                    query,
+                    *button.get("args", []),
+                    **button.get("kwargs", {}),
+                )
+            except Exception:
+                logger.exception("Error on running callback watcher!")
+                await query.answer(
+                    "An error occurred while processing the request. See the logs for details",
+                    show_alert=True,
+                )
             return
 
     async def _chosen_inline_handler(
