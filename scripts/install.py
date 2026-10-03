@@ -5,6 +5,7 @@ import getpass
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 PYTHON = ROOT / ".venv/bin/python"
 SERVICE = "shizu.service"
+UNIT_PATH = Path("/etc/systemd/system") / SERVICE
+DESCRIPTION = "Description=Shizu Telegram userbot"
 
 
 def ask(question):
@@ -36,9 +39,27 @@ def unit_quote(value):
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
 
 
+def unit_value(value):
+    # User= and WorkingDirectory= take the raw value: quotes would become part of it.
+    value = str(value)
+    if any(ord(c) < 32 for c in value):
+        raise ValueError("The path contains control characters")
+    return value.replace("%", "%%")
+
+
+def own_unit():
+    try:
+        text = UNIT_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return DESCRIPTION in text and str(ROOT) in text
+
+
 def service_text(username):
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*\$?", username):
+        raise ValueError(f"Unsupported user name for systemd: {username!r}")
     return f"""[Unit]
-Description=Shizu Telegram userbot
+{DESCRIPTION}
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=120
@@ -46,8 +67,8 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User={unit_quote(username)}
-WorkingDirectory={unit_quote(ROOT)}
+User={username}
+WorkingDirectory={unit_value(ROOT)}
 ExecStart={unit_quote(PYTHON)} -u -m shizu --no-web
 Environment=PYTHONUNBUFFERED=1
 Environment={unit_quote('PATH=' + str(PYTHON.parent) + ':' + os.defpath)}
@@ -108,7 +129,7 @@ def main():
     if use_service:
         if privileged and not shutil.which("sudo"):
             raise RuntimeError("sudo was not found. Choose manual start or set up sudo")
-        if Path("/etc/systemd/system/shizu.service").exists():
+        if UNIT_PATH.exists() and not own_unit():
             raise RuntimeError("shizu.service already exists and is not overwritten. Use it, or start manually with bash start.sh")
         if privileged:
             run("sudo", "-v")
@@ -122,11 +143,13 @@ def main():
         with tempfile.TemporaryDirectory(prefix="shizu-service-") as folder:
             unit = Path(folder) / SERVICE
             unit.write_text(service_text(username), encoding="utf-8")
-            run(*privileged, "install", "-m", "644", str(unit), "/etc/systemd/system/shizu.service")
+            run(*privileged, "install", "-m", "644", str(unit), str(UNIT_PATH))
         run(*privileged, "systemctl", "daemon-reload")
         run(*privileged, "systemctl", "enable", "--now", SERVICE)
+        if subprocess.run(["systemctl", "is-active", "--quiet", SERVICE]).returncode != 0:
+            subprocess.run(["systemctl", "--no-pager", "status", SERVICE])
+            raise RuntimeError("The Shizu service did not start. See the log: journalctl -u shizu -e")
         print("\nShizu runs as a service and starts on boot.\n  Logs:    journalctl -u shizu -f\n  Restart: sudo systemctl restart shizu\n  Stop:    sudo systemctl stop shizu\nOpen your bot and send /panel to control Shizu from Telegram.\n", flush=True)
-        run("systemctl", "--no-pager", "status", SERVICE)
     else:
         print("\nStarting Shizu. Press Ctrl+C to stop. Next time start it with: bash start.sh", flush=True)
         os.execv(str(PYTHON), [str(PYTHON), "-u", "-m", "shizu", "--no-web"])

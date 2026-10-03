@@ -236,6 +236,16 @@ async def invite_bot(app: Client, chat):
     await app.add_chat_members(chat, (await app.bot.get_me()).username)
 
 
+async def ensure_bot_in_chat(app: Client, chat) -> None:
+    """Add the inline bot to a chat it was removed from or never joined"""
+    from aiogram.utils.exceptions import BotKicked, ChatNotFound
+
+    try:
+        await app.bot.get_chat(chat)
+    except (ChatNotFound, BotKicked):
+        await invite_bot(app, chat)
+
+
 async def create_chat(
     app: Client,
     title: str = None,
