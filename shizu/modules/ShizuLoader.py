@@ -33,6 +33,7 @@
 
 
 
+import inspect
 import io
 import logging
 import os
@@ -263,18 +264,19 @@ class Loader(loader.Module):
         bot_username = (await self.bot.bot.get_me()).username
         prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
         command_descriptions = "\n".join(
-            f"{dop_help} <code>{prefix + command}</code> - {module.command_handlers[command].__doc__ or 'No description'}"
+            f"{dop_help} <code>{utils.escape_html(prefix + command)}</code> - {utils.escape_html(module.command_handlers[command].__doc__ or 'No description')}"
             for command in module.command_handlers
         )
         inline_descriptions = "\n".join(
-            f"{dop_help} <code>@{bot_username} {command}</code> - {module.inline_handlers[command].__doc__ or 'No description'}"
+            f"{dop_help} <code>@{utils.escape_html(bot_username)} {utils.escape_html(command)}</code> - {utils.escape_html(module.inline_handlers[command].__doc__ or 'No description')}"
             for command in module.inline_handlers
         )
         header = self.strings("loaded").format(
-            str(module.name).capitalize(), module.__doc__ or "No description"
+            utils.escape_html(str(module.name).capitalize()),
+            utils.escape_html(module.__doc__ or "No description")
         )
         footer = (
-            f"<emoji id=5190458330719461749>🧑‍💻</emoji> <code>{module.author}</code>"
+            f"<emoji id=5190458330719461749>🧑‍💻</emoji> <code>{utils.escape_html(str(module.author))}</code>"
             if getattr(module, "author", None)
             else ""
         )
@@ -443,3 +445,80 @@ class Loader(loader.Module):
         )
 
         utils.restart()
+
+    CORE_DIR = os.path.realpath("shizu")
+
+    def _source(self, module) -> bytes:
+        mod = inspect.getmodule(module)
+        name = getattr(mod, "__name__", "")
+        if source := self.all_modules.raw_modules.get(name):
+            return source.encode("utf-8")
+        origin = self._origin(module)
+        if os.path.isfile(origin):
+            with open(origin, "rb") as file:
+                return file.read()
+        loader_ = getattr(getattr(mod, "__spec__", None), "loader", None)
+        if data := getattr(loader_, "data", None):
+            return data if isinstance(data, bytes) else data.encode("utf-8")
+        return inspect.getsource(mod).encode("utf-8")
+
+    @staticmethod
+    def _origin(module) -> str:
+        spec = getattr(inspect.getmodule(module), "__spec__", None)
+        return getattr(spec, "origin", None) or "<string>"
+
+    @classmethod
+    def _core_file(cls, name: str):
+        path = os.path.realpath(os.path.join(cls.CORE_DIR, name.removesuffix(".py") + ".py"))
+        if not path.startswith(cls.CORE_DIR + os.sep) or not os.path.isfile(path):
+            return None
+        return path
+
+    @loader.command()
+    async def ml(self, app: Client, message: types.Message):
+        """Get a module's link or file. Usage: ml <module name or command> | -c <core file, e.g. loader or web/core> to get a core file"""
+
+        args = message.get_args_raw().strip()
+
+        if not args:
+            return await message.answer(
+                self.strings("what_"),
+            )
+
+        if args == "-c" or args.startswith("-c "):
+            name = args[2:].strip()
+            if not name or not (path := self._core_file(name)):
+                return await message.answer(
+                    self.strings("nope_"),
+                )
+
+            with open(path, "rb") as file:
+                source_code = io.BytesIO(file.read())
+            source_code.name = os.path.basename(path)
+
+            return await message.answer(
+                source_code, doc=True, caption=self.strings("core_file").format(utils.escape_html(name))
+            )
+
+        if not (module := self.all_modules.get_module(args, True, True)):
+            return await message.answer(
+                self.strings("nope_"),
+            )
+
+        try:
+            source = self._source(module)
+        except Exception:
+            return await message.answer("❌ Source unavailable for this module!")
+
+        source_code = io.BytesIO(source)
+        source_code.name = f"{module.name}.py"
+
+        origin = self._origin(module)
+        caption = (
+            f'<emoji id=5260730055880876557>⛓</emoji> <a href="{utils.escape_html(origin)}">Link</a> of <code>{module.name}</code> module:\n\n'
+            f"<b>{utils.escape_html(origin)}</b>"
+            if origin.startswith(("http://", "https://"))
+            else f"<emoji id=5870528606328852614>📁</emoji> <b>File of <code>{module.name}</code></b>"
+        )
+
+        return await message.answer(source_code, doc=True, caption=caption)

@@ -60,6 +60,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     InlineQueryResultPhoto,
+    InlineQueryResultCachedPhoto,
     InlineQueryResultVideo,
     InlineQueryResultAudio,
     InlineQueryResultGif,
@@ -515,7 +516,21 @@ class Events(Item):
                             cache_time=0,
                             is_personal=True,
                         )
-                if self._forms[query].get("photo", None):
+                photo = self._forms[query].get("photo", None)
+                if photo and not str(photo).startswith(("http://", "https://")):
+                    return await inline_query.answer(
+                        [
+                            InlineQueryResultCachedPhoto(
+                                id=utils.random_id(),
+                                photo_file_id=photo,
+                                caption=self._forms[query].get("text", None),
+                                parse_mode="HTML",
+                                reply_markup=self._generate_markup(query, for_inline_query=True),
+                            )
+                        ],
+                        cache_time=0,
+                    )
+                if photo:
                     return await inline_query.answer(
                         [
                             InlineQueryResultPhoto(

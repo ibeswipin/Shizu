@@ -65,6 +65,7 @@ class ShizuPermissions(loader.Module):
                 },
             ],
             [
+                {"text": self.strings("button_owners"), "callback": self.inline__owners},
                 {"text": self.strings("button_close"), "callback": self.inline__close},
             ],
         ]
@@ -74,6 +75,100 @@ class ShizuPermissions(loader.Module):
             await call.answer(text, reply_markup=markup)
         else:
             await call.edit(text, reply_markup=markup)
+
+    def _set_owner(self, user_id: int, add: bool) -> None:
+        owners = set(self.db.get("shizu.me", "owners", []))
+        owners = owners | {user_id} if add else owners - {user_id}
+        self.db.set("shizu.me", "owners", sorted(owners))
+
+    async def _owners_view(self):
+        status = self.db.get("shizu.owner", "status", False)
+        mentions = []
+        for user_id in self.db.get("shizu.me", "owners", []):
+            try:
+                mentions.append(f"• {(await self.app.get_users(user_id)).mention}")
+            except Exception:
+                mentions.append(f"• <code>{user_id}</code>")
+        text = self.strings("owner_on" if status else "owner_off") + "\n\n" + (
+            self.strings("owners").format("\n".join(mentions)) if mentions else self.strings("owner_no_owners")
+        )
+        markup = [
+            [
+                {
+                    "text": self.strings("owner_button_off" if status else "owner_button_on"),
+                    "callback": self.inline__owner_mode,
+                    "args": (not status,),
+                },
+                {"text": self.strings("owner_advanced_security"), "callback": self.inline__owner_manage},
+            ],
+            [
+                {"text": self.strings("button_back"), "callback": self.inline__main_menu},
+                {"text": self.strings("button_close"), "callback": self.inline__close},
+            ],
+        ]
+        return text, markup
+
+    async def inline__owners(self, call: CallbackQuery) -> None:
+        text, markup = await self._owners_view()
+        await call.edit(text, reply_markup=markup)
+
+    async def inline__owner_mode(self, call: CallbackQuery, status: bool) -> None:
+        self.db.set("shizu.owner", "status", status)
+        await self.inline__owners(call)
+
+    async def inline__owner_manage(self, call: CallbackQuery) -> None:
+        cid = call.inline_message_id
+        await call.edit(
+            self.strings("owner_advanced_security"),
+            reply_markup=[
+                [
+                    {
+                        "text": self.strings("owner_add_owner"),
+                        "input": self.strings("owner_enter_id"),
+                        "handler": self.inline__owner_input,
+                        "args": (cid, True),
+                    },
+                    {
+                        "text": self.strings("owner_del_owner"),
+                        "input": self.strings("owner_enter_id"),
+                        "handler": self.inline__owner_input,
+                        "args": (cid, False),
+                    },
+                ],
+                [
+                    {"text": self.strings("button_back"), "callback": self.inline__owners},
+                    {"text": self.strings("button_close"), "callback": self.inline__close},
+                ],
+            ],
+        )
+
+    async def inline__owner_input(self, call: CallbackQuery, query: str, cid: str, add: bool) -> None:
+        try:
+            user_id = (await self.app.get_users(query.strip())).id
+        except Exception:
+            return await call.edit(
+                self.strings("owner_who"),
+                reply_markup=[[{"text": self.strings("button_back"), "callback": self.inline__owners}]],
+                inline_message_id=cid,
+            )
+        self._set_owner(user_id, add)
+        text, markup = await self._owners_view()
+        await call.edit(text, reply_markup=markup, inline_message_id=cid)
+
+    @loader.command(aliases=["owners", "ownermod", "addowner", "delowner"])
+    async def owner(self, app: Client, message: Message):
+        """[user] - Owners panel, or add / remove the user as an owner"""
+        args = utils.get_args_raw(message).strip()
+        if not args:
+            text, markup = await self._owners_view()
+            return await message.answer(text, reply_markup=markup)
+        try:
+            user = await app.get_users(args)
+        except Exception:
+            return await utils.answer(message, self.strings("owner_who"))
+        add = user.id not in self.db.get("shizu.me", "owners", [])
+        self._set_owner(user.id, add)
+        await utils.answer(message, self.strings("owner_done" if add else "owner_doned").format(user.mention))
 
     @loader.command(aliases=["perms"])
     async def permissions(self, app: Client, message: Message):

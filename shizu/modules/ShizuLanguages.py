@@ -25,19 +25,6 @@ class ShizuLanguages(loader.Module):
 
     strings = {}
 
-    async def setlangcmd(self, app, message):
-        """Change the default language"""
-        args = utils.get_args_raw(message)
-        if not args or any(len(i) != 2 for i in args.split(" ")):
-            await utils.answer(message, self.strings("incorrect_language"))
-            return
-
-        self.db.set("shizu.me", "lang", args.lower())
-
-        await message.answer(
-            self.strings("language_saved").format(utils.get_lang_flag(args.lower()))
-        )
-
     async def loadlgpackcmd(self, app, message):
         """Load a language pack (reply to a .json file with the language code)"""
         reply = message.reply_to_message
@@ -69,32 +56,37 @@ class ShizuLanguages(loader.Module):
 
         tr = translator.Translator(app, self.db)
         await tr.init()
-        await message.answer(
-            self.strings("language_saved").format(utils.get_lang_flag(args.lower()))
-        )
+        await message.answer(self.strings("language_saved").format(self._flag(args.lower())))
 
-    @loader.command()
-    async def langs(self, app, message):
-        """Available languages"""
-        langs = ["us", "ru", "kz", "ua", "uz", "jp", "kr"]
-        if os.path.exists(f"{utils.get_base_dir()}/langpacks"):
-            langs += [
-                i.split(".")[0]
-                for i in os.listdir(f"{utils.get_base_dir()}/langpacks")
-                if i.endswith(".json")
-            ]
+    FLAGS = {"en": "🇬🇧", "ru": "🇷🇺", "uz": "🇺🇿"}
+
+    def _flag(self, lang: str) -> str:
+        return self.FLAGS.get(lang) or utils.get_lang_flag(lang)
+
+    @staticmethod
+    def _available() -> list:
+        folder = f"{utils.get_base_dir()}/langpacks"
+        if not os.path.isdir(folder):
+            return ["en"]
+        return sorted(name[:-5] for name in os.listdir(folder) if name.endswith(".json"))
+
+    @loader.command(aliases=["setlang", "langs"])
+    async def lang(self, app, message):
+        """[code] - Choose the language, or set it by its code"""
+        args = utils.get_args_raw(message).strip().lower()
+        if args:
+            if any(len(code) != 2 for code in args.split()):
+                return await utils.answer(message, self.strings("incorrect_language"))
+            self.db.set("shizu.me", "lang", args)
+            return await message.answer(self.strings("language_saved").format(self._flag(args.split()[0])))
+
+        langs = self._available()
         await message.answer(
             "🌍 <b>Available languages:</b>\n"
-            + "\n".join(
-                f"{utils.get_lang_flag(lang)} <code>{lang}</code>" for lang in langs
-            ),
+            + "\n".join(f"{self._flag(lang)} <code>{lang}</code>" for lang in langs),
             reply_markup=utils.chunks(
                 [
-                    {
-                        "text": f"{utils.get_lang_flag(lang)} {lang}",
-                        "callback": self.setlang_cb,
-                        "args": (lang,),
-                    }
+                    {"text": f"{self._flag(lang)} {lang}", "callback": self.setlang_cb, "args": (lang,)}
                     for lang in langs
                 ],
                 3,
@@ -103,4 +95,4 @@ class ShizuLanguages(loader.Module):
 
     async def setlang_cb(self, app, lang):
         self.db.set("shizu.me", "lang", lang)
-        await app.edit(self.strings("language_saved").format(utils.get_lang_flag(lang)))
+        await app.edit(self.strings("language_saved").format(self._flag(lang)))

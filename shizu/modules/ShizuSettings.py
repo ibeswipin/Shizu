@@ -71,66 +71,37 @@ class ShizuSettings(loader.Module):
         prefixes = ", ".join(f"<code>{prefix}</code>" for prefix in args)
         return await message.answer(self.strings("prefix_changed").format(prefixes))
 
-    @loader.command()
-    async def addalias(self, app: Client, message: types.Message):
-        """Add an alias. Usage: addalias (new alias) (command)"""
+    @loader.command(aliases=["addalias", "delalias", "aliases"])
+    async def alias(self, app: Client, message: types.Message):
+        """[alias] [command] - Show aliases, add one (alias and command) or delete one (just the alias)"""
+        args = utils.get_args_raw(message).lower().split()
+        aliases = self.all_modules.aliases
 
-        args = utils.get_args_raw(message)
+        if not args:
+            if not aliases:
+                return await message.answer(self.strings("no_such_alias"))
+            return await message.answer(
+                "🗄 List of all aliases:\n"
+                + "\n".join(f"• <code>{alias}</code> ➜ {command}" for alias, command in aliases.items())
+            )
 
-        if not (args := args.lower().split(maxsplit=1)):
-            return await message.answer(self.strings("which_alias"))
+        if len(args) == 1:
+            if args[0] not in aliases:
+                return await message.answer(self.strings("no_such_alias"))
+            del aliases[args[0]]
+            self.db.set("shizu.loader", "aliases", aliases)
+            return await message.answer(self.strings("alias_removed").format(args[0]))
 
         if len(args) != 2:
             return await message.answer(self.strings("inc_args"))
-
-        aliases = self.all_modules.aliases
         if args[0] in aliases:
             return await message.answer(self.strings("alias_already"))
-
         if not self.all_modules.command_handlers.get(args[1]):
             return await message.answer(self.strings("no_command"))
 
         aliases[args[0]] = args[1]
         self.db.set("shizu.loader", "aliases", aliases)
-
-        return await message.answer(
-            self.strings("alias_done").format(
-                args[0],
-                args[1],
-            )
-        )
-
-    @loader.command()
-    async def delalias(self, app: Client, message: types.Message):
-        """Delete an alias. Usage: delalias (alias)"""
-
-        args = utils.get_args_raw(message)
-
-        if not (args := args.lower()):
-            return await message.answer(self.strings("which_delete"))
-
-        aliases = self.all_modules.aliases
-        if args not in aliases:
-            return await message.answer(self.strings("no_such_alias"))
-
-        del aliases[args]
-        self.db.set("shizu.loader", "aliases", aliases)
-
-        return await message.answer(self.strings("alias_removed").format(args))
-
-    @loader.command()
-    async def aliases(self, app: Client, message: types.Message):
-        """Show all aliases"""
-        if aliases := self.all_modules.aliases:
-            return await message.answer(
-                "🗄 List of all aliases:\n"
-                + "\n".join(
-                    f"• <code>{alias}</code> ➜ {command}"
-                    for alias, command in aliases.items()
-                ),
-            )
-        else:
-            return await message.answer(self.strings("no_such_alias"))
+        return await message.answer(self.strings("alias_done").format(args[0], args[1]))
 
     async def yes(self, call, purpose):
         if purpose == "enabletlmode":
@@ -251,8 +222,8 @@ class ShizuSettings(loader.Module):
 
         await message.answer(self.strings["already_enabled"])
 
-    @loader.command()
-    async def stopshizu(self, app, message):
+    @loader.command(aliases=["stopshizu"])
+    async def stop(self, app, message):
         """Turn off the bot"""
 
         await message.answer(
