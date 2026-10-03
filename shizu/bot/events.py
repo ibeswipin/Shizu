@@ -131,6 +131,8 @@ async def edit(
         logger.error("Invalid type for `text`")
         return False
 
+    text = Events.sanitise_text(text)
+
     if form:
         if isinstance(reply_markup, list):
             form["buttons"] = reply_markup
