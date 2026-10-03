@@ -147,8 +147,23 @@ class ShizuConfig(loader.Module):
             {"text": self.strings("close"), "callback": self.inline__close},
         ]
 
-    def _global_view(self, page: int = 0):
-        mods = [m.name for m in self.all_modules.modules if getattr(m, "config", None)]
+    SECTIONS = ("internal", "external")
+
+    def _section_of(self, module) -> str:
+        return "internal" if module.name in self.all_modules.cmodules else "external"
+
+    def _configurable(self) -> dict:
+        sections = {section: [] for section in self.SECTIONS}
+        for module in sorted(self.all_modules.modules, key=lambda m: m.name.lower()):
+            if getattr(module, "config", None):
+                sections[self._section_of(module)].append(module.name)
+        return sections
+
+    def _global_view(self, section: str = None, page: int = 0):
+        sections = self._configurable()
+        if section not in sections:
+            section = "external" if sections["external"] else "internal"
+        mods = sections[section]
         pages = max(1, -(-len(mods) // self.MODULES_PER_PAGE))
         page = min(page, pages - 1)
         chunk = mods[page * self.MODULES_PER_PAGE : (page + 1) * self.MODULES_PER_PAGE]
@@ -158,8 +173,17 @@ class ShizuConfig(loader.Module):
             3,
         )
         markup += self.bot.build_pagination(
-            self.inline__global_config, pages, current_page=page + 1
+            self.inline__global_config, pages, current_page=page + 1, args=(section,)
         )
+        if all(sections.values()):
+            markup.append([
+                {
+                    "text": ("• " if name == section else "") + f"{self.strings(name + '_title')} · {len(sections[name])}",
+                    "callback": self.inline__global_config,
+                    "args": (name, 0),
+                }
+                for name in self.SECTIONS
+            ])
         markup += [[{"text": self.strings("close"), "callback": self.inline__close}]]
         return self.strings("configure"), markup
 
@@ -183,7 +207,7 @@ class ShizuConfig(loader.Module):
         markup += self.bot.build_pagination(
             self.inline__configure, pages, current_page=page + 1, args=(module.name,)
         )
-        markup += [self._close_row(self.inline__global_config)]
+        markup += [self._close_row(self.inline__global_config, self._section_of(module))]
         return self.strings("configuring_mod").format(utils.escape_html(module.name)), markup
 
     def _option_view(self, module, option, inline_message_id: str, note: str = ""):
@@ -419,9 +443,9 @@ class ShizuConfig(loader.Module):
             await self._show(call, *self._module_view(module, page))
 
     async def inline__global_config(
-        self, call: Union[Message, CallbackQuery], page: int = 0
+        self, call: Union[Message, CallbackQuery], section: str = None, page: int = 0
     ) -> None:
-        await self._show(call, *self._global_view(page))
+        await self._show(call, *self._global_view(section, page))
 
     async def configcmd(self, app, message: Message) -> None:
         """[module] - Configure modules"""

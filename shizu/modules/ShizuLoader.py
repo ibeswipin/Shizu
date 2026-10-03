@@ -33,6 +33,7 @@
 
 
 
+import io
 import logging
 import os
 import re
@@ -83,7 +84,6 @@ class Loader(loader.Module):
 
         args = message.get_args_raw()
 
-        bot_username = (await self.bot.bot.get_me()).username
         dop_help = "<emoji id=5100652175172830068>▫️</emoji>"
         modules_repo = self.config["repo"]
         private = self.config["private_repo"], self.config["private_token"]
@@ -188,9 +188,10 @@ class Loader(loader.Module):
             module_name = await self.all_modules.load_module(r.text, "<string>")
             is_private = True
 
+        if module_name == "PENDING":
+            return await self._review(message, r.text, dop_help)
+
         try:
-            if module_name == "PENDING":
-                error_text = self.strings("pending")
             if module_name == "DENIED":
                 error_text = self.strings("denied")
             if module_name == "NFA":
@@ -230,28 +231,7 @@ class Loader(loader.Module):
 
         await self.all_modules.call_hook(module, "on_dlmod")
 
-        prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
-        command_descriptions = "\n".join(
-            f"{dop_help} <code>{prefix + command}</code> - {module.command_handlers[command].__doc__ or 'No description'}"
-            for command in module.command_handlers
-        )
-        inline_descriptions = "\n".join(
-            f"{dop_help} <code>@{bot_username} {command}</code> - {module.inline_handlers[command].__doc__ or 'No description'}"
-            for command in module.inline_handlers
-        )
-        modname = str(module.name).capitalize()
-
-        header = self.strings("loaded").format(
-            modname, module.__doc__ or "No description"
-        )
-        footer = (
-            f"<emoji id=5190458330719461749>🧑‍💻</emoji> <code>{module.author}</code>"
-            if module.author
-            else ""
-        )
-        return await message.answer(
-            header + command_descriptions + "\n" + inline_descriptions + "\n" + footer,
-        )
+        return await message.answer(await self._loaded_text(module, dop_help))
 
     async def get_git_raw_link(self, repo_url: str, token: str = None):
         match = GIT_REGEX.search(repo_url)
@@ -279,11 +259,80 @@ class Loader(loader.Module):
 
         return f"https://raw.githubusercontent.com{repo_path}/{branch}{path or ''}/"
 
+    async def _loaded_text(self, module, dop_help: str) -> str:
+        bot_username = (await self.bot.bot.get_me()).username
+        prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
+        command_descriptions = "\n".join(
+            f"{dop_help} <code>{prefix + command}</code> - {module.command_handlers[command].__doc__ or 'No description'}"
+            for command in module.command_handlers
+        )
+        inline_descriptions = "\n".join(
+            f"{dop_help} <code>@{bot_username} {command}</code> - {module.inline_handlers[command].__doc__ or 'No description'}"
+            for command in module.inline_handlers
+        )
+        header = self.strings("loaded").format(
+            str(module.name).capitalize(), module.__doc__ or "No description"
+        )
+        footer = (
+            f"<emoji id=5190458330719461749>🧑‍💻</emoji> <code>{module.author}</code>"
+            if getattr(module, "author", None)
+            else ""
+        )
+        return header + command_descriptions + "\n" + inline_descriptions + "\n" + footer
+
+    def _besafe(self):
+        return getattr(self.all_modules.load_guard, "__self__", None)
+
+    async def _review(self, message, source: str, dop_help: str):
+        besafe = self._besafe()
+        digest = besafe.digest(source) if besafe else None
+        if digest not in getattr(besafe, "pending", {}):
+            return await message.answer(self.strings("pending"))
+
+        name = besafe.pending[digest]["name"]
+        return await message.answer(
+            self.strings("review").format(utils.escape_html(name)),
+            reply_markup=[
+                [
+                    {"text": self.strings("install"), "callback": self.inline__review, "args": (digest, True, dop_help)},
+                    {"text": self.strings("deny"), "callback": self.inline__review, "args": (digest, False, dop_help)},
+                ],
+                [{"text": self.strings("code"), "callback": self.inline__review_code, "args": (digest,)}],
+            ],
+            force_me=True,
+        )
+
+    async def inline__review(self, call, digest: str, allow: bool, dop_help: str):
+        besafe = self._besafe()
+        if not besafe or digest not in besafe.pending:
+            return await call.answer(self.strings("review_gone"), show_alert=True)
+
+        await call.answer()
+        item, result = await besafe.decide(digest, allow)
+        name = utils.escape_html(item["name"])
+        if not allow:
+            return await call.edit(besafe.strings("denied").format(name))
+        if result is True:
+            return await call.edit(self.strings("dep_installed_req_res"))
+        if isinstance(result, str) and (module := self.all_modules.find_module_strict(result)):
+            return await call.edit(await self._loaded_text(module, dop_help))
+        await call.edit(besafe.strings("approved_only").format(name, utils.escape_html(str(result))))
+
+    async def inline__review_code(self, call, digest: str):
+        besafe = self._besafe()
+        if not besafe or digest not in besafe.pending:
+            return await call.answer(self.strings("review_gone"), show_alert=True)
+
+        await call.answer()
+        item = besafe.pending[digest]
+        file = io.BytesIO(item["source"].encode("utf-8"))
+        file.name = f"{item['name']}.py"
+        await self.app.send_document(call.form["chat"], file)
+
     @loader.command(aliases=["lm"])
     async def loadmod(self, app: Client, message: types.Message):
         """Load a module from a file. Usage: reply to the file"""
         reply = message.reply_to_message
-        bot_username = (await self.bot.bot.get_me()).username
         dop_help = (
             "<emoji id=5100652175172830068>🔸</emoji>"
             if message.from_user.is_premium
@@ -317,7 +366,7 @@ class Loader(loader.Module):
             return await message.answer(self.strings("dep_installed_req_res"))
 
         if module_name == "PENDING":
-            return await message.answer(self.strings("pending"))
+            return await self._review(message, module_source, dop_help)
 
         if module_name == "DENIED":
             return await message.answer(self.strings("denied"))
@@ -345,28 +394,7 @@ class Loader(loader.Module):
 
         await self.all_modules.call_hook(module, "on_dlmod")
 
-        prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
-        command_descriptions = "\n".join(
-            f"{dop_help} <code>{prefix + command}</code> - {module.command_handlers[command].__doc__ or 'No description'}"
-            for command in module.command_handlers
-        )
-        inline_descriptions = "\n".join(
-            f"{dop_help} <code>@{bot_username} {command}</code> - {module.inline_handlers[command].__doc__ or 'No description'}"
-            for command in module.inline_handlers
-        )
-        modname = str(module.name).capitalize()
-
-        header = self.strings("loaded").format(
-            modname, module.__doc__ or "No description"
-        )
-        footer = (
-            f"<emoji id=5190458330719461749>🧑‍💻</emoji> <code>{module.author}</code>"
-            if module.author
-            else ""
-        )
-        return await message.answer(
-            header + command_descriptions + "\n" + inline_descriptions + "\n" + footer,
-        )
+        return await message.answer(await self._loaded_text(module, dop_help))
 
     @loader.command()
     async def unloadmod(self, app: Client, message: types.Message):
