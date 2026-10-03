@@ -237,7 +237,7 @@ class BeSafe(loader.Module):
         ).startswith(modules_dir + os.sep)
 
     async def guard(self, source: str, origin: str):
-        digest = hashlib.sha256(source.encode()).hexdigest()
+        digest = self.digest(source)
         if digest in self._get("approved", {}):
             return True
         if digest in self._get("denied", {}):
@@ -325,41 +325,51 @@ class BeSafe(loader.Module):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(source)
 
-    async def _allow(self, digest: str, call: CallbackQuery):
-        if not (item := await self._owner_item(call, digest)):
-            return
-        del self.pending[digest]
+    @staticmethod
+    def digest(source: str) -> str:
+        return hashlib.sha256(source.encode()).hexdigest()
+
+    async def decide(self, digest: str, allow: bool):
+        """Approve or deny a pending module, update its card; returns (item, load result)"""
+        item = self.pending.pop(digest)
         self._save_pending()
-        self._approve(digest, item["source"], item["origin"], item["name"], "allow")
-        await call.answer()
-        result = await self.all_modules.load_module(item["source"], item["origin"])
         name = utils.escape_html(item["name"])
-        if result is True:
-            text = self.strings("approved_restart").format(name)
-        elif isinstance(result, str) and result not in ("NFA", "OTL", "PENDING", "DENIED"):
-            self._persist(result, item["source"], item["origin"])
-            if module := self.all_modules.find_module_strict(result):
-                await self.all_modules.call_hook(module, "on_dlmod")
-            text = self.strings("loaded").format(utils.escape_html(result))
+        result = None
+        if allow:
+            self._approve(digest, item["source"], item["origin"], item["name"], "allow")
+            result = await self.all_modules.load_module(item["source"], item["origin"])
+            if result is True:
+                text = self.strings("approved_restart").format(name)
+            elif isinstance(result, str) and result not in ("NFA", "OTL", "PENDING", "DENIED"):
+                self._persist(result, item["source"], item["origin"])
+                if module := self.all_modules.find_module_strict(result):
+                    await self.all_modules.call_hook(module, "on_dlmod")
+                text = self.strings("loaded").format(utils.escape_html(result))
+            else:
+                text = self.strings("approved_only").format(name, utils.escape_html(str(result)))
         else:
-            text = self.strings("approved_only").format(name, utils.escape_html(str(result)))
-        await call.message.edit_text(text)
+            self._record("denied", digest, item["name"], item["origin"])
+            self._log("deny", digest, item["name"], item["origin"])
+            modules = self.db.get("shizu.loader", "modules", [])
+            if item["origin"] in modules:
+                self.db.set(
+                    "shizu.loader", "modules", [m for m in modules if m != item["origin"]]
+                )
+            text = self.strings("denied").format(name)
+        if card := item.get("card"):
+            with contextlib.suppress(Exception):
+                await self.bot.bot.edit_message_text(text, *card)
+        return item, result
+
+    async def _allow(self, digest: str, call: CallbackQuery):
+        if await self._owner_item(call, digest):
+            await call.answer()
+            await self.decide(digest, True)
 
     async def _deny(self, digest: str, call: CallbackQuery):
-        if not (item := await self._owner_item(call, digest)):
-            return
-        del self.pending[digest]
-        self._save_pending()
-        self._record("denied", digest, item["name"], item["origin"])
-        self._log("deny", digest, item["name"], item["origin"])
-        modules = self.db.get("shizu.loader", "modules", [])
-        if item["origin"] in modules:
-            self.db.set(
-                "shizu.loader", "modules", [m for m in modules if m != item["origin"]]
-            )
-        await call.message.edit_text(
-            self.strings("denied").format(utils.escape_html(item["name"]))
-        )
+        if await self._owner_item(call, digest):
+            await call.answer()
+            await self.decide(digest, False)
 
     async def _send_file(self, call: CallbackQuery, data: str, filename: str):
         await call.answer()

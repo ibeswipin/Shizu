@@ -37,6 +37,83 @@ class Help(loader.Module):
             lambda m: self.strings("custom_module_emoji"),
         )
 
+    PAGE_LIMIT = 3500
+    SECTIONS = ("internal", "external")
+
+    def _line(self, module):
+        prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
+        commands = [
+            f"<code>{utils.escape_html(prefix + command)}</code>"
+            for command in module.command_handlers
+            if command not in self.hidden
+        ]
+        inline = [f"<code>{utils.escape_html(command)}</code>" for command in module.inline_handlers]
+        if not commands and not inline:
+            return None
+
+        if getattr(module, "m__telethon", False):
+            emoji = "🪢"
+        elif module.name in self.cmodules:
+            emoji = self.config["core_modules"]
+        else:
+            emoji = self.config["custom_modules"]
+
+        line = f"{emoji} <b>{utils.escape_html(module.name)}</b> — " + "  ".join(commands)
+        if inline:
+            line += (" · " if commands else "") + "🤖 " + "  ".join(inline)
+        return line
+
+    def _sections(self) -> dict:
+        sections = {section: [] for section in self.SECTIONS}
+        for module in sorted(self.all_modules.modules, key=lambda mod: mod.name.lower()):
+            if line := self._line(module):
+                sections["internal" if module.name in self.cmodules else "external"].append(line)
+        return sections
+
+    def _pages(self, lines: list) -> list:
+        pages, page, size = [], [], 0
+        for line in lines:
+            if page and size + len(line) > self.PAGE_LIMIT:
+                pages.append(page)
+                page, size = [], 0
+            page.append(line)
+            size += len(line) + 1
+        return pages + [page] if page or not pages else pages
+
+    def _overview(self, sections: dict, section: str, page: int = 0):
+        pages = self._pages(sections[section])
+        page = min(page, len(pages) - 1)
+        prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
+        text = self.strings("available").format(
+            "<emoji id=6334457642064283339>🐙</emoji>",
+            self.strings(section + "_title"),
+            len(sections[section]),
+            "\n" + "\n".join(pages[page]) + "\n",
+            utils.escape_html(prefix),
+        )
+
+        markup = []
+        if all(sections.values()):
+            markup.append([
+                {
+                    "text": ("• " if name == section else "") + f"{self.strings(name + '_title')} · {len(sections[name])}",
+                    "callback": self.inline__help_page,
+                    "args": (name, 0),
+                }
+                for name in self.SECTIONS
+            ])
+        markup += self.bot.build_pagination(
+            self.inline__help_page, len(pages), current_page=page + 1, args=(section,)
+        )
+        markup.append([{"text": self.strings("close"), "callback": self.inline__help_close}])
+        return text, markup
+
+    async def inline__help_page(self, call, section: str, page: int = 0):
+        await call.edit(*self._overview(self._sections(), section, page))
+
+    async def inline__help_close(self, call):
+        await call.delete()
+
     @loader.command()
     async def help(self, app=None, message=None):
         """Show help - <code>.help [module]</code> or <code>.help search &lt;query&gt;</code>"""
@@ -107,47 +184,9 @@ class Help(loader.Module):
         )
 
         if not args:
-            text = ""
-            for module in sorted_modules:
-                commands = inline = ""
-                commands += " <b>|</b> ".join(
-                    f"{command}"
-                    for command in module.command_handlers
-                    if command not in self.hidden
-                )
-
-                if module.inline_handlers:
-                    if commands:
-                        inline += " <b><emoji id=5258093637450866522>🤖</emoji></b> "
-                    else:
-                        inline += "<b><emoji id=5258093637450866522>🤖</emoji></b>: "
-
-                inline += " <b>|</b> ".join(
-                    f"{inline_command}" for inline_command in module.inline_handlers
-                )
-
-                if commands or inline:
-                    if hasattr(module, "m__telethon") and module.m__telethon:
-                        module_emoji = "🪢"
-                    elif module.name in self.cmodules:
-                        module_emoji = self.config["core_modules"]
-                    else:
-                        module_emoji = self.config["custom_modules"]
-
-                    text += (
-                        f"\n<b>{module_emoji} {module.name}</b> - [ "
-                        + (commands or "")
-                        + (inline or "")
-                        + " ]"
-                    )
-
-            help_emoji = "<emoji id=6334457642064283339>🐙</emoji>"
-
-            return await send_response(
-                self.strings("available").format(
-                    help_emoji, len(self.all_modules.modules) - 1, text
-                )
-            )
+            sections = self._sections()
+            section = "external" if sections["external"] else "internal"
+            return await message.answer(*self._overview(sections, section))
 
         if not (module := self.all_modules.get_module(args.lower(), True, True)):
             return await send_response(
@@ -155,21 +194,24 @@ class Help(loader.Module):
             )
 
         def describe(doc):
-            return " ".join(re.sub(r"<[^>]+>", "", doc or "No description").split())
+            tags = r"</?(?:b|i|u|s|code|pre|a|blockquote|emoji|tg-emoji|tg-spoiler)\b[^>]*>"
+            return " ".join(re.sub(tags, "", doc or "No description").split())
 
-        rows = [
-            (prefix + command, describe(module.command_handlers[command].__doc__))
+        lines = [
+            f"▫️ <code>{utils.escape_html(prefix + command)}</code> — "
+            f"{utils.escape_html(describe(module.command_handlers[command].__doc__))}"
             for command in module.command_handlers
         ]
-        rows += [
-            (f"@{bot_username} {command}", describe(module.inline_handlers[command].__doc__))
+        lines += [
+            f"🤖 <code>@{bot_username} {utils.escape_html(command)}</code> — "
+            f"{utils.escape_html(describe(module.inline_handlers[command].__doc__))}"
             for command in module.inline_handlers
         ]
 
-        title = f"{module.name} — {describe(module.__doc__)}".strip(" —")
-        return await utils.send_table(
-            message, rows, header=["Command", "Description"], title=title
-        )
+        header = f"<b>{utils.escape_html(module.name)}</b>"
+        if module.__doc__:
+            header += f" — {utils.escape_html(describe(module.__doc__))}"
+        return await send_response(header + "\n\n" + "\n".join(lines))
 
     async def help_inline_handler(self, app, inline_query, args):
         """Modules and their commands - help [query]"""
