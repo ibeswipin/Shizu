@@ -70,6 +70,22 @@ class ShizuUpdateNotifier(loader.Module):
             )
         return "\n".join(lines)
 
+    async def _missing_commits(self, owner: str, repo_name: str, branch_name: str):
+        """Latest remote commit and the commits the running checkout does not have yet"""
+        latest = await self._get_latest_commit(owner, repo_name, branch_name)
+        if not latest or not latest.get("sha"):
+            return None, []
+        try:
+            repo = git.Repo()
+            local = repo.head.commit.hexsha
+            if latest["sha"] == local or repo.is_ancestor(latest["sha"], local):
+                return latest, []
+        except Exception as e:
+            logging.warning("Could not compare with the local checkout: %s", e)
+            return latest, []
+        commits = await self._get_commits_since(owner, repo_name, branch_name, local)
+        return latest, commits or [latest]
+
     @staticmethod
     def _fetch(git_repo: "git.Repo", branch_name: str):
         """Fetch origin without ever prompting for credentials"""
@@ -166,35 +182,16 @@ class ShizuUpdateNotifier(loader.Module):
         repo_name = self.config["repo_name"]
         branch_name = str(branch) if branch else "beta"
 
-        commit = await self._get_latest_commit(owner, repo_name, branch_name)
-        if not commit:
+        latest, commits = await self._missing_commits(owner, repo_name, branch_name)
+        if not latest:
             return
 
-        commit_sha = commit.get("sha", "")
-        if not commit_sha:
-            return
-
-        last_sha = self.db.get("shizu.update_notifier", "last_commit_sha", "")
-
-        if not last_sha:
-            logging.info(
-                f"First run, saving commit {commit_sha[:7]} without notification"
-            )
+        commit_sha = latest["sha"]
+        if not commits:
             self.db.set("shizu.update_notifier", "last_commit_sha", commit_sha)
             return
-
-        if commit_sha == last_sha:
+        if commit_sha == self.db.get("shizu.update_notifier", "last_commit_sha", ""):
             return
-
-        logging.info(
-            f"New commit detected: {commit_sha[:7]} (last was: {last_sha[:7]})"
-        )
-        commits = await self._get_commits_since(owner, repo_name, branch_name, last_sha)
-        if not commits:
-            logging.warning(
-                f"Git returned no commits, using latest commit instead"
-            )
-            commits = [commit]
 
         logging.info(f"Found {len(commits)} new commit(s), sending notification")
         try:
@@ -292,27 +289,16 @@ class ShizuUpdateNotifier(loader.Module):
         repo_name = self.config["repo_name"]
         branch_name = str(branch) if branch else "beta"
 
-        commit = await self._get_latest_commit(owner, repo_name, branch_name)
-        if not commit:
+        latest, commits = await self._missing_commits(owner, repo_name, branch_name)
+        if not latest:
             return await utils.answer(message, self.strings("fetch_error"))
 
-        commit_sha = commit.get("sha", "")
-        last_sha = self.db.get("shizu.update_notifier", "last_commit_sha", "")
+        if not commits:
+            return await utils.answer(message, self.strings("latest_version"))
 
-        if commit_sha == last_sha:
-            await utils.answer(message, self.strings("latest_version"))
-        else:
-            if last_sha:
-                commits = await self._get_commits_since(
-                    owner, repo_name, branch_name, last_sha
-                )
-            else:
-                commits = [commit]
-
-            if commits:
-                text = self.strings("update_available_manual").format(
-                    commits_list=self._commits_list(commits, 3000),
-                    count=len(commits),
-                    branch=utils.escape_html(str(branch)),
-                )
-                await utils.answer(message, text, disable_web_page_preview=True)
+        text = self.strings("update_available_manual").format(
+            commits_list=self._commits_list(commits, 3000),
+            count=len(commits),
+            branch=utils.escape_html(str(branch)),
+        )
+        await utils.answer(message, text, disable_web_page_preview=True)

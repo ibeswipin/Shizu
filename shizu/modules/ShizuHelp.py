@@ -39,6 +39,7 @@ class Help(loader.Module):
 
     PAGE_LIMIT = 3500
     SECTIONS = ("internal", "external")
+    SECTION_EMOJI = {"internal": "🛠", "external": "🧩"}
 
     def _line(self, module):
         prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
@@ -85,7 +86,7 @@ class Help(loader.Module):
         page = min(page, len(pages) - 1)
         prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
         text = self.strings("available").format(
-            "<emoji id=6334457642064283339>🐙</emoji>",
+            self.SECTION_EMOJI[section],
             self.strings(section + "_title"),
             len(sections[section]),
             "\n" + "\n".join(pages[page]) + "\n",
@@ -96,7 +97,8 @@ class Help(loader.Module):
         if all(sections.values()):
             markup.append([
                 {
-                    "text": ("• " if name == section else "") + f"{self.strings(name + '_title')} · {len(sections[name])}",
+                    "text": ("• " if name == section else "")
+                    + f"{self.SECTION_EMOJI[name]} {self.strings(name + '_title')} · {len(sections[name])}",
                     "callback": self.inline__help_page,
                     "args": (name, 0),
                 }
@@ -186,7 +188,8 @@ class Help(loader.Module):
         if not args:
             sections = self._sections()
             section = "external" if sections["external"] else "internal"
-            return await message.answer(*self._overview(sections, section))
+            text, markup = self._overview(sections, section)
+            return await message.answer(text, reply_markup=markup)
 
         if not (module := self.all_modules.get_module(args.lower(), True, True)):
             return await send_response(
