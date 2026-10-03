@@ -238,6 +238,23 @@ class Events(Item):
         """Custom state of a user talking to the bot, False when unset"""
         return self._states.get(user_id, False)
 
+    @property
+    def _units(self) -> dict:
+        """Hikka name for the forms storage"""
+        return self._forms
+
+    @staticmethod
+    def _call_accepted(func, *args):
+        """Call `func` with as many of `args` as it accepts: Hikka callbacks often take none"""
+        try:
+            params = list(inspect.signature(func).parameters.values())
+        except (TypeError, ValueError):
+            return func(*args)
+        if any(p.kind is p.VAR_POSITIONAL for p in params):
+            return func(*args)
+        positional = [p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+        return func(*args[: len(positional)])
+
     @staticmethod
     def sanitise_text(text: str) -> str:
         """Make userbot HTML safe for the Bot API: custom emoji tags become plain emoji"""
@@ -326,7 +343,7 @@ class Events(Item):
             return pool.pop(0) if pool else None
 
         def caption_for(index: int) -> str:
-            text = caption(history[index]) if callable(caption) else caption
+            text = self._call_accepted(caption, history[index]) if callable(caption) else caption
             return self.sanitise_text(text)
 
         first = await fetch()
@@ -1039,7 +1056,15 @@ class Events(Item):
 
                 rich_message
                         Raw InputRichMessage payload for Telegram Bot API 10.2+
+
+                disable_security, manual_security, silent
+                        Hikka options: anyone may press the buttons / no loading message
         """
+        disable_security = kwargs.pop("disable_security", False)
+        manual_security = kwargs.pop("manual_security", False)
+        silent = kwargs.pop("silent", False)
+        if disable_security or manual_security:
+            force_me = False
 
         if reply_markup is None:
             reply_markup = []
@@ -1125,7 +1150,7 @@ class Events(Item):
             **({"rich_message": rich_message} if rich_message else {}),
         }
 
-        if isinstance(message, pyrogram.types.Message) and prev:
+        if isinstance(message, pyrogram.types.Message) and prev and not silent:
             if message.from_user.id != self._me:
                 soo = await message.reply("🐙 Loading inline form...")
             else:

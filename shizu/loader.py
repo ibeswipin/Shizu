@@ -17,6 +17,8 @@ import contextlib
 import copy
 import functools
 import inspect
+import importlib
+import site
 import asyncio
 import logging
 import os
@@ -46,6 +48,29 @@ VALID_PIP_PACKAGES = re.compile(
     r"^\s*# requi(?:red|res):(?: ?)((?:{url} )*(?:{url}))\s*$".format(url=VALID_URL),
     re.MULTILINE,
 )
+
+
+MODULE_DEPENDENCIES = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    ".module_dependencies",
+)
+if os.path.isdir(MODULE_DEPENDENCIES):
+    site.addsitedir(MODULE_DEPENDENCIES)
+
+
+async def _install_requirements(requirements):
+    """Install dependencies into the venv or a project-local directory."""
+    local = sys.prefix == sys.base_prefix
+    await utils.run_sync(
+        subprocess.run,
+        [sys.executable, "-m", "pip", "install",
+         *(["--target", MODULE_DEPENDENCIES] if local else []),
+         *requirements],
+        check=True,
+    )
+    if local:
+        site.addsitedir(MODULE_DEPENDENCIES)
+    importlib.invalidate_caches()
 
 
 def module(
@@ -453,6 +478,19 @@ def loop(
         return InfiniteLoop(func, interval, autostart, wait_before, time)
 
     return wrapped
+
+
+def debug_method(*args, **kwargs):
+    """Hikka compatibility: marks a debug method. Shizu has no debug runner, the method stays a plain method"""
+
+    def decorator(func):
+        func.is_debug_method = True
+        func.debug_method_name = kwargs.get("name", func.__name__)
+        return func
+
+    if len(args) == 1 and callable(args[0]) and not kwargs:
+        return decorator(args[0])
+    return decorator
 
 
 def iter_attrs(obj: typing.Any, /) -> typing.List[typing.Tuple[str, typing.Any]]:
@@ -1376,10 +1414,15 @@ class ModulesManager:
             )
 
         except ImportError:
-            pass
+            logging.exception("Failed to import module %s", module_name)
 
             if did_requirements:
-                return True
+                await self.bot_manager.bot.send_message(
+                    self._db.get("shizu.chat", "logs", None),
+                    "🚫 Dependencies were installed, but the module still cannot be imported. "
+                    "See the application log for details.",
+                )
+                return False
             try:
                 requirements = [
                     x
@@ -1400,19 +1443,15 @@ class ModulesManager:
             )
 
             try:
-                subprocess.run(
-                    [
-                        sys.executable,
-                        "-m",
-                        "pip",
-                        "install",
-                        *(["--user"] if sys.prefix == sys.base_prefix else []),
-                        *requirements,
-                    ],
-                    check=True,
+                await _install_requirements(requirements)
+            except (subprocess.CalledProcessError, OSError):
+                logging.exception("Failed to install module dependencies: %s", requirements)
+                await self.bot_manager.bot.send_message(
+                    self._db.get("shizu.chat", "logs", None),
+                    "🚫 Failed to install module dependencies. See the application log "
+                    "for the pip error; restarting will not fix the installation failure.",
                 )
-            except subprocess.CalledProcessError:
-                pass
+                return False
 
             return await self.load_module(original_source, origin, True)
         except Exception as error:
@@ -1606,13 +1645,13 @@ class ModulesManager:
             match = VALID_PIP_PACKAGES.search(source)
             if retried or not match:
                 raise LoadError(f"Library {url} failed to import: {error}") from error
-            await utils.run_sync(
-                subprocess.run,
-                [sys.executable, "-m", "pip", "install",
-                 *(["--user"] if sys.prefix == sys.base_prefix else []),
-                 *match[1].split()],
-                check=False,
-            )
+            try:
+                await _install_requirements([
+                    item for item in match[1].split()
+                    if item[0] not in ("-", "_", ".")
+                ])
+            except (subprocess.CalledProcessError, OSError) as install_error:
+                raise LoadError(f"Could not install dependencies for library {url}: {install_error}") from install_error
             return await self._exec_library(url, code, source, True)
 
         classes = [
