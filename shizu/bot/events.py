@@ -1130,6 +1130,13 @@ class Events(Item):
             logger.error("Invalid type for `ttl`")
             return False
 
+        chat_id = message if isinstance(message, int) else getattr(message, "chat_id", None)
+        if chat_id is None:
+            chat_id = getattr(getattr(message, "chat", None), "id", None)
+        if chat_id is None:
+            logger.error("Cannot determine chat for inline form")
+            return False
+
         form_uid = utils.rand(30)
 
         self._forms[form_uid] = {
@@ -1160,7 +1167,7 @@ class Events(Item):
         try:
             results = await self._inline_results(form_uid)
             q = await self._app.send_inline_bot_result(
-                getattr(message, "chat_id", None) or message.chat.id,
+                chat_id,
                 results.query_id,
                 results.results[0].id,
                 reply_to_message_id=msg_id or None,
@@ -1188,10 +1195,10 @@ class Events(Item):
             if hasattr(message, "chat_id") and hasattr(message, "respond"):
                 await (message.edit if message.out else message.respond)(msg)
             else:
-                await self._app.send_message(message.chat.id, msg)
+                await self._app.send_message(chat_id, msg)
 
             return False
-        self._forms[form_uid]["chat"] = message.chat.id
+        self._forms[form_uid]["chat"] = chat_id
         self._forms[form_uid]["message_id"] = q.id
 
         if isinstance(message, Message):
