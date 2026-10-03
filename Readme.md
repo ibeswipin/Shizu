@@ -1,102 +1,112 @@
 <div align="center">
-<h1>Shizu - Your Ultimate Telegram Companion</h1>
-<img src="https://0x0.st/HOA2.jpg">
-<p>Elevate your Telegram experience with smart automation. Get ready for a whole new level of convenience and enjoyment.</p>
-    
-    
-<a href="https://github.com/AmoreForever/Shizu" style="text-decoration:none">
-<img src="https://img.shields.io/github/stars/AmoreForever/Shizu?style=social" alt="GitHub Stars">
-</a>
-<a href="https://github.com/AmoreForever/Shizu/issues" style="text-decoration:none">
-<img src="https://img.shields.io/github/issues/AmoreForever/Shizu?style=flat" alt="GitHub Issues">
-</a>
-<a href="https://github.com/AmoreForever/Shizu/blob/main/LICENSE" style="text-decoration:none">
-<img src="https://img.shields.io/github/license/AmoreForever/Shizu?style=flat" alt="GitHub License">
-</a>
+
+<img src="assets/shizubanner.jpg" alt="Shizu">
+
+<h1>Shizu</h1>
+
+<p><b>Telegram userbot. Find joy in the little things.</b></p>
+
+<a href="https://github.com/ibeswipin/Shizu/stargazers"><img src="https://img.shields.io/github/stars/ibeswipin/Shizu?style=flat" alt="Stars"></a>
+<a href="https://github.com/ibeswipin/Shizu/issues"><img src="https://img.shields.io/github/issues/ibeswipin/Shizu?style=flat" alt="Issues"></a>
+<a href="LICENSE"><img src="https://img.shields.io/github/license/ibeswipin/Shizu?style=flat" alt="License"></a>
+<a href="https://t.me/shizu_talks"><img src="https://img.shields.io/badge/chat-@shizu__talks-2CA5E0?style=flat&logo=telegram" alt="Support chat"></a>
+
 </div>
 
-<h2>Table of Contents</h2>
-<ul>
-    <li><a href="#installation">Installation</a></li>
-    <li><a href="#basic-commands">Basic Commands</a></li>
-    <li><a href="#support">Support</a></li>
-    <li><a href="#developer">Developer</a></li>
-    <li><a href="#advantages">Advantages</a></li>
-</ul>
+## Features
 
-<hr>
-<h2 id="installation"><img src="https://cdn-icons-png.flaticon.com/512/4961/4961662.png" alt="" style="width: 40px;" > Installation</h2>
-<p>Let's get Shizu up and running:</p>
-<ol>
-<li>Update and upgrade your system packages:</li>
-<pre><code>sudo apt update && sudo apt upgrade -y</code></pre>
+- **Modules**: load from a link or a file, unload, configure. Built-in modules cover help, backups, updates, languages and more.
+- **Web setup**: first launch opens a web page. Log in with a QR code, or with your phone number and 2FA password, then pick your bot.
+- **Bot control panel**: send `/panel` to your bot to restart or stop Shizu, change the prefix or the bot token.
+- **BeSafe**: third-party modules load only after you review and approve them. Approval cards arrive in a separate chat.
+- **Service chats**: Shizu creates `Shizu-logs`, `Shizu-backup` and `Shizu-besafe`, and puts them with your bot into a **Shizu** chat folder.
+- **Inline bot**: inline forms, galleries and buttons for modules.
+- **Web terminal and systemd control**: manage the server from Telegram.
+- **Languages**: English, Russian, Uzbek.
 
-<li>Install Git:</li>
-<pre><code>sudo apt install git -y</code></pre>
+## Installation
 
-<li>Clone the Shizu repository:</li>
-<pre><code>git clone https://github.com/AmoreForever/Shizu</code></pre>
+### Automatic (Linux, macOS)
 
-<li>Change your working directory to Shizu:</li>
-<pre><code>cd Shizu</code></pre>
+```bash
+git clone https://github.com/ibeswipin/Shizu
+cd Shizu
+bash install.sh
+```
 
-<li>Install the required Python packages:</li>
-<pre><code>pip install -r requirements.txt</code></pre>
+The installer gets Python 3.11 with [uv](https://docs.astral.sh/uv/), creates `.venv`, installs dependencies and walks you through the Telegram login. On Linux with systemd it offers to install a service that runs as your user. The service is enabled only after a successful login, and installing it needs `sudo`.
 
-<li>Run Shizu: </li>
-<pre><code>python3 -m shizu</code></pre>
-</ol>
-<p>Congratulations! Shizu is now ready to serve you.</p>
-<hr>
-<h2 id="basic-commands"><img src="https://cdn-icons-png.flaticon.com/512/4007/4007683.png" alt="" style="width: 40px;" > Basic Commands</h2>
-<p>Enhance your Telegram experience with these commands:</p>
-<ul>
-    <li><code>.help</code>: Get a list of available commands. </li>
-    <li><code>.loadmod</code>: Load a module from a file.</li>
-    <li><code>.dlmod</code>: Load a module from a link.</li>
-    <li><code>.unloadmod</code>: Unload specified module. </li>
-    <li><code>.support</code>: Get the link to the support chat. </li>
-    <li><code>.langs</code>: Set the language of Shizu. </li>
-    <li><code>.restart</code>: Restart Shizu. </li>
-    <li><code>.update</code>: Update Shizu. </li>
-</ul>
+Run the installer as your normal user. Existing config and sessions are reused. You need `git` and `curl` or `wget`. If a dependency has to be compiled, install your build tools (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS).
 
-<hr>
-<h2 id="support"><img src="https://cdn-icons-png.flaticon.com/512/1948/1948375.png" alt="" style="width: 40px;" > Support</h2>
-<p>We're here to help! Join our <a href="https://t.me/shizu_talks">support chat</a> for any questions or assistance.</p>
+```bash
+bash install.sh --no-start   # install dependencies only, no login or systemd
+bash start.sh                # run manually
+sudo systemctl restart shizu # restart the service
+journalctl -u shizu -f       # follow the service logs
+```
 
-<hr>
-<h2 id="developer"><img src="https://cdn-icons-png.flaticon.com/512/7069/7069922.png" alt="" style="width: 40px;" > Developer</h2>
-<p>Shizu is developed by <a href="https://t.me/hikamoru">@hikamoru</a>. Feel free to reach out with your inquiries or suggestions.</p>
+An existing `shizu.service` is never overwritten. After creating the service, keep the project at the same path.
 
-<hr>
-<h2 id="advantages"><img src="https://cdn-icons-png.flaticon.com/512/5277/5277630.png" alt="" style="width: 40px;" > Advantages of Shizu</h2>
-<ul>
-    <li><img src="https://cdn-icons-png.flaticon.com/512/4983/4983190.png" alt="" style="width: 20px;"> <strong>Convenience and User-Friendliness:</strong> Shizu prioritizes convenience and offers an easy-to-use interface for users. </li>
-    <li><img src="https://cdn-icons-png.flaticon.com/512/11803/11803127.png" alt="" style="width: 20px;"> <strong>Efficient Resource Utilization:</strong> Shizu is designed with low resource consumption in mind, ensuring smooth performance on various systems.</li>
-    <li><img src="https://cdn-icons-png.flaticon.com/512/2997/2997576.png" alt="" style="width: 20px;"> <strong>Extensive Library of Pre-built Modules:</strong> Shizu provides a wide range of readily available modules, expanding your Telegram experience. </li>
-    <li><img src="https://cdn-icons-png.flaticon.com/512/1673/1673848.png" alt="" style="width: 20px;"> <strong>Well-Structured Module Architecture:</strong> Each module in Shizu is meticulously crafted, ensuring a well-organized and efficient structure. </li>
-    <li><img src="https://cdn-icons-png.flaticon.com/512/10215/10215628.png" alt="" style="width: 20px;"> <strong>Asynchronous Task Execution:</strong> Shizu executes tasks asynchronously, allowing for swift and efficient task processing. </li>
-    <li><img src="https://cdn-icons-png.flaticon.com/512/3281/3281295.png" alt="" style="width: 20px;"> <strong>Effortless Module Management:</strong> Shizu simplifies module loading and unloading, making customization a breeze. </li>
-    <li><img src="https://cdn-icons-png.flaticon.com/512/3558/3558860.png" alt="" style="width: 20px;"> <strong>Inline Bot Integration:</strong> Shizu seamlessly integrates an inline bot feature for enhanced functionality. </li>
-    <li><img src="https://cdn-icons-png.flaticon.com/512/12868/12868443.png" alt="" style="width: 20px;"> <strong>Simple and Automated Installation:</strong> Installing Shizu is straightforward and automated, reducing setup complexities. </li>
-    <li><img src="https://cdn-icons-png.flaticon.com/512/10426/10426132.png" alt="" style="width: 20px;"> <strong>Multilingual Support:</strong> Shizu offers support for multiple languages, including:</li>
-        <ul>
-            <li><img src="https://cdn-icons-png.flaticon.com/512/206/206626.png" alt="us-flag" style="width: 20px;"> English (us)</li>
-            <li><img src="https://cdn-icons-png.flaticon.com/512/330/330437.png" alt="us-flag" style="width: 20px;"> Russian (ru)</li>
-            <li><img src="https://cdn-icons-png.flaticon.com/512/206/206778.png" alt="us-flag" style="width: 20px;"> Kazakh (kz)</li>
-            <li><img src="https://cdn-icons-png.flaticon.com/512/3373/3373317.png" alt="us-flag" style="width: 20px;"> Ukrainian (ua)</li>
-            <li><img src="https://cdn-icons-png.flaticon.com/512/206/206662.png" alt="us-flag" style="width: 20px;"> Uzbek (uz)</li>
-            <li><img src="https://cdn-icons-png.flaticon.com/512/555/555646.png" alt="us-flag" style="width: 20px;"> Japanese (jp)</li>
-            <li><img src="https://cdn-icons-png.flaticon.com/512/206/206758.png" alt="us-flag" style="width: 20px;"> Korean (kr)</li>
-        </ul>
-</ul>
+### Manual
 
-<hr>
-<p>Thank you for choosing Shizu as your ultimate Telegram companion! We hope you enjoy the enhanced convenience and features it provides. If you encounter any issues or have suggestions, please let us know in the support chat or by creating an issue on GitHub.</p>
+```bash
+sudo apt update && sudo apt install -y git python3.11 python3.11-venv
+git clone https://github.com/ibeswipin/Shizu
+cd Shizu
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install .
+python -m shizu
+```
 
-<div align="center">
-    <a href="https://github.com/AmoreForever/Shizu" style="text-decoration:none">
-        <img src="https://img.shields.io/badge/GitHub-Repository-blue?style=flat" alt="GitHub Repo">
-    </a>
-</div>
+## First launch
+
+Shizu prints a link to the setup page in the console, for example `https://….lhr.life`. The link is published through a [localhost.run](https://localhost.run) tunnel.
+
+1. Enter your **API ID** and **API Hash** from [my.telegram.org/apps](https://my.telegram.org/apps).
+2. Scan the QR code in Telegram (**Settings → Devices → Link Desktop Device**), or choose **Log in with phone number**.
+3. Enter your 2FA password if your account has one.
+4. Let Shizu create a bot for you, or paste the token of your own bot.
+
+Shizu restarts and sends a start message to `Shizu-logs`.
+
+| Flag | What it does |
+| --- | --- |
+| `--no-web` | Log in from the console instead of the web page |
+| `--port 8080` | Port for the setup page |
+| `--setup-only` | Log in and exit without starting the userbot |
+
+## Commands
+
+The default prefix is `.`. Change it with `.setprefix` or from `/panel`.
+
+| Command | What it does |
+| --- | --- |
+| `.help` | List modules and commands |
+| `.dlmod <link>` | Load a module from a link |
+| `.loadmod` | Load a module from a replied file |
+| `.unloadmod <name>` | Unload a module |
+| `.restart` / `.update` | Restart / update Shizu |
+| `.setprefix <prefix>` | Change the prefix |
+| `.setbot <token>` | Change the bot token and restart |
+| `.langs` | Choose the language |
+| `.backupdb` / `.restoredb` | Back up / restore the database |
+| `.besafe` | BeSafe status, decisions and journal |
+| `.info` | Info card about your Shizu |
+| `.support` | Link to the support chat |
+
+In your bot:
+
+| Command | What it does |
+| --- | --- |
+| `/panel` | Control panel: restart, stop, prefix, bot token |
+
+## Support
+
+Questions and bug reports: [@shizu_talks](https://t.me/shizu_talks) or [GitHub issues](https://github.com/ibeswipin/Shizu/issues). News: [@shizuhub](https://t.me/shizuhub).
+
+Developer: [@hikamoru](https://t.me/hikamoru).
+
+## License
+
+[GNU GPLv3](LICENSE).

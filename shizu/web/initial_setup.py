@@ -34,19 +34,24 @@
 
 
 import asyncio
+import base64
 import collections
 import os
 import string
+import time
 
 import aiohttp_jinja2
 import pyrogram
+import qrcode
+import qrcode.image.svg
 
 import configparser as cp
 from aiohttp import web
 
-from pyrogram import errors
+from pyrogram import errors, raw
 
 from shizu import utils
+from shizu.bot import token_manager
 
 BASE_DIR =  os.path.dirname(utils.get_base_dir())
 
@@ -61,10 +66,15 @@ class Web:
         self.app.router.add_post("/sendTgCode", self.send_tg_code)
         self.app.router.add_post("/tgCode", self.tg_code)
         self.app.router.add_post("/finishLogin", self.finish_login)
+        self.app.router.add_post("/qrLogin", self.qr_login)
+        self.app.router.add_post("/qrPassword", self.qr_password)
         self.api_set = asyncio.Event()
         self.sign_in_clients = {}
         self.clients = []
         self.client = None
+        self.authenticated = False
+        self.phone_code_hash = None
+        self.qr = None
         self.clients_set = asyncio.Event()
         self.root_redirected = asyncio.Event()
 
@@ -119,23 +129,94 @@ class Web:
         phone = await request.text()
         if not phone:
             return web.Response(status=400)
+        if self.api_token is None or self.authenticated:
+            return web.Response(status=400)
+        client = await self.new_client()
+        while True:
+            phone_hash = (await self.client.send_code(phone)).phone_code_hash
+            self.phone_code_hash = phone_hash
+            self.sign_in_clients[phone] = client
+            return web.Response()
         
-        client = pyrogram.client.Client(
+    async def new_client(self):
+        if self.client is not None:
+            await self.client.disconnect()
+        self.sign_in_clients.clear()
+        self.qr = None
+        self.client = pyrogram.client.Client(
             name="../shizu",
             api_id=self.api_token.ID,
             api_hash=self.api_token.HASH,
             device_model=utils.get_random_smartphone(),
         )
-
-        self.client = client
-
         await self.client.connect()
-        while True:
-            phone_hash = (await self.client.send_code(phone)).phone_code_hash
-            self.api_token = collections.namedtuple("api_token", ("phone_hash"))(phone_hash=phone_hash)
-            self.sign_in_clients[phone] = client
-            return web.Response()
-        
+        return self.client
+
+    async def migrate_dc(self, dc_id):
+        client = self.client
+        dc_option = await client.get_dc_option(dc_id, ipv6=client.ipv6)
+        await client.session.stop()
+        client.session = await client.get_session(
+            dc_id=dc_id,
+            server_address=dc_option.ip_address,
+            port=dc_option.port,
+            export_authorization=False,
+            temporary=True,
+        )
+        await client.storage.dc_id(dc_id)
+        await client.storage.server_address(dc_option.ip_address)
+        await client.storage.port(dc_option.port)
+        await client.storage.auth_key(client.session.auth_key)
+
+    async def qr_authorized(self, user_id):
+        await self.client.storage.user_id(user_id)
+        await self.client.storage.is_bot(False)
+        self.qr = None
+        self.authenticated = True
+        return web.json_response({"done": True})
+
+    async def qr_login(self, request):
+        if self.api_token is None or self.authenticated:
+            return web.Response(status=400)
+        if self.qr is None:
+            await self.new_client()
+            self.qr = {"expires": 0}
+        try:
+            r = await self.client.invoke(
+                raw.functions.auth.ExportLoginToken(
+                    api_id=int(self.api_token.ID), api_hash=self.api_token.HASH, except_ids=[]
+                )
+            )
+            if isinstance(r, raw.types.auth.LoginTokenMigrateTo):
+                await self.migrate_dc(r.dc_id)
+                r = await self.client.invoke(raw.functions.auth.ImportLoginToken(token=r.token))
+        except errors.exceptions.SessionPasswordNeeded:
+            self.qr["password"] = True
+            return web.Response(status=401)
+        except errors.exceptions.FloodWait:
+            return web.Response(status=421)
+        if isinstance(r, raw.types.auth.LoginTokenSuccess):
+            return await self.qr_authorized(r.authorization.user.id)
+        if self.qr["expires"] - time.time() < 5:
+            url = "tg://login?token=" + base64.urlsafe_b64encode(r.token).decode().rstrip("=")
+            svg = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, border=1)
+            self.qr = {"expires": r.expires, "svg": svg.to_string(encoding="unicode")}
+        return web.json_response({"svg": self.qr["svg"]})
+
+    async def qr_password(self, request):
+        if self.authenticated or not (self.qr or {}).get("password"):
+            return web.Response(status=400)
+        password = await request.text()
+        if not password:
+            return web.Response(status=400)
+        try:
+            user = await self.client.check_password(password)
+        except errors.exceptions.PasswordHashInvalid:
+            return web.Response(status=403)
+        except errors.exceptions.FloodWait:
+            return web.Response(status=421)
+        return await self.qr_authorized(user.id)
+
     async def tg_code(self, request):
         text = await request.text()
         if len(text) < 6:
@@ -145,7 +226,9 @@ class Web:
             return web.Response(status=400)
         code = split[0]
         phone = split[1]
-        password = split[2]
+        password = split[2] if len(split) == 3 else ""
+        if self.client is None or phone not in self.sign_in_clients:
+            return web.Response(status=400)
         if (
             (len(code) != 5 and not password)
             or any(c not in string.digits for c in code)
@@ -154,7 +237,7 @@ class Web:
             return web.Response(status=400)
         if not password:
             try:
-                await self.client.sign_in(phone, phone_code=code, phone_code_hash=self.api_token.phone_hash)
+                await self.client.sign_in(phone, phone_code=code, phone_code_hash=self.phone_code_hash)
             except errors.exceptions.SessionPasswordNeeded:
                 return web.Response(status=401)  # Requires 2FA login
             except errors.exceptions.PhoneCodeExpired:
@@ -166,15 +249,26 @@ class Web:
         else:
             try:
                 await self.client.check_password(password)
-                await self.client.sign_in(phone, phone_code_hash=self.api_token.phone_hash, phone_code=code)
             except errors.exceptions.PasswordHashInvalid:
                 return web.Response(status=403)  # Invalid 2FA password
             except errors.exceptions.FloodWait as e:
                 return web.Response(status=421)
         del self.sign_in_clients[phone]
+        self.authenticated = True
         
         return web.Response()
 
     async def finish_login(self, request):
+        if self.clients_set.is_set():
+            return web.Response(status=409)
+        if not self.authenticated:
+            return web.Response(status=401)
+        token = (await request.text()).strip()
+        if token:
+            try:
+                username = await token_manager.check_token(token)
+            except ValueError as e:
+                return web.json_response({"error": str(e)}, status=400)
+            token_manager.save_token(token, username)
         self.clients_set.set()
         return web.Response()

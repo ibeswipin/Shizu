@@ -33,6 +33,11 @@ async def main():
 
     me, app, tapp = await auth.Auth().authorize()
 
+    if auth.args.setup_only:
+        await app.disconnect()
+        logging.info("Account authorization completed. Shizu is ready to start.")
+        return True
+
     await app.initialize()
 
     db = database.db

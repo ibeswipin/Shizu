@@ -20,7 +20,7 @@ import os
 from datetime import datetime
 
 import git
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InputFile
 from pyrogram import Client, types
 
 from shizu import loader, utils
@@ -49,6 +49,26 @@ class ShizuUpdateNotifier(loader.Module):
             "Shizu",
             lambda m: self.strings("cfg_doc_repo_name"),
         )
+
+    def _commits_list(self, commits: list, limit: int) -> str:
+        """Newest commits first, the rest folded so the text fits Telegram limits"""
+        owner = self.config["repo_owner"]
+        repo_name = self.config["repo_name"]
+        lines, used = [], 0
+        for commit in reversed(commits):
+            sha = commit.get("sha", "")
+            message = commit.get("commit", {}).get("message", "No message").split("\n")[0]
+            if len(message) > 80:
+                message = message[:79] + "…"
+            used += len(message) + 12
+            if used > limit and lines:
+                lines.append(f"… +{len(commits) - len(lines)}")
+                break
+            lines.append(
+                f"• <a href='https://github.com/{owner}/{repo_name}/commit/{sha}'>{sha[:7]}</a>"
+                f" {utils.escape_html(message)}"
+            )
+        return "\n".join(lines)
 
     @staticmethod
     def _fetch(git_repo: "git.Repo", branch_name: str):
@@ -189,23 +209,11 @@ class ShizuUpdateNotifier(loader.Module):
     async def _send_update_notification(self, bot: "bot.BotManager", commits: list):
         """Send notification about new update"""
         try:
-            owner = self.config["repo_owner"]
-            repo_name = self.config["repo_name"]
-
-            commits_text = []
-            for commit in commits:
-                commit_sha = commit.get("sha", "")
-                commit_sha_short = commit_sha[:7]
-                commit_message = commit.get("commit", {}).get("message", "No message")
-                commit_link = f"https://github.com/{owner}/{repo_name}/commit/{commit_sha}"
-
-                message_line = utils.escape_html(commit_message.split(chr(10))[0])
-                commits_text.append(
-                    f"▫️ <a href='{commit_link}'>{commit_sha_short}</a> - {message_line}"
-                )
-
-            commits_list = "\n\n".join(commits_text)
-            text = self.strings("update_available").format(commits_list=commits_list)
+            text = self.strings("update_available").format(
+                commits_list=self._commits_list(commits, 800),
+                count=len(commits),
+                branch=utils.escape_html(str(branch)),
+            )
 
             markup = self.bot._generate_markup(
                 [
@@ -222,16 +230,12 @@ class ShizuUpdateNotifier(loader.Module):
                 ]
             )
 
-            await self.bot.bot.send_animation(
+            await self.bot.bot.send_photo(
                 self.me.id,
-                "https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/update.mp4",
+                InputFile("assets/update.jpg"),
                 caption=text,
                 reply_markup=markup,
             )
-            # else:
-            #     await self.bot.bot.send_message(
-            #         self.me.id, text, reply_markup=markup, disable_web_page_preview=True
-                # )
 
         except Exception as e:
             logging.exception("Error sending update notification: %s", e)
@@ -306,27 +310,9 @@ class ShizuUpdateNotifier(loader.Module):
                 commits = [commit]
 
             if commits:
-                owner = self.config["repo_owner"]
-                repo_name = self.config["repo_name"]
-
-                commits_text = []
-                for commit_item in commits:
-                    commit_sha_item = commit_item.get("sha", "")
-                    commit_sha_short = commit_sha_item[:7]
-                    commit_message = commit_item.get("commit", {}).get(
-                        "message", "No message"
-                    )
-                    commit_link = (
-                        f"https://github.com/{owner}/{repo_name}/commit/{commit_sha_item}"
-                    )
-
-                    message_line = utils.escape_html(commit_message.split(chr(10))[0])
-                    commits_text.append(
-                        f"▫️ <a href='{commit_link}'>{commit_sha_short}</a> - {message_line}"
-                    )
-
-                commits_list = "\n\n".join(commits_text)
                 text = self.strings("update_available_manual").format(
-                    commits_list=commits_list
+                    commits_list=self._commits_list(commits, 3000),
+                    count=len(commits),
+                    branch=utils.escape_html(str(branch)),
                 )
                 await utils.answer(message, text, disable_web_page_preview=True)

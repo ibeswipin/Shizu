@@ -42,7 +42,7 @@ class InformationMod(loader.Module):
             {"text": "🤝 Support", "url": "https://t.me/shizu_talks"},
             lambda: self.strings("custom_button"),
             "photo_url",
-            "https://github.com/AmoreForever/shizuassets/blob/master/shizubanner.jpg?raw=true",
+            "https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/shizubanner.jpg",
             lambda: self.strings("photo_url"),
         )
 

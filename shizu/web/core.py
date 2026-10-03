@@ -50,12 +50,12 @@ class TunnelManager:
         self.process = None
 
     async def open_tunnel(self, port):
-        ssh_command = f"ssh -o StrictHostKeyChecking=no -R 80:localhost:{port} nokey@localhost.run"
+        ssh_command = f"ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -R 80:localhost:{port} nokey@localhost.run"
         process = await asyncio.create_subprocess_shell(
             ssh_command,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
         )
         self.process = process
 
@@ -64,25 +64,17 @@ class TunnelManager:
         return self.url
 
     async def _extract_tunnel_url(self, stdout):
-        event = asyncio.Event()
-        url = None
+        async for line in stdout:
+            match = re.search(r"tunneled.*?(https:\/\/.+)", line.decode())
+            if match:
+                self._drain_task = asyncio.ensure_future(self._drain(stdout))
+                return match[1].strip()
+        return None
 
-        async def read_output():
-            nonlocal url
-            while True:
-                line = await stdout.readline()
-                if not line:
-                    break
-                decoded_line = line.decode()
-                match = re.search(r"tunneled.*?(https:\/\/.+)", decoded_line)
-                if match:
-                    url = match[1]
-                    break
-            event.set()
-
-        await read_output()
-        await event.wait()
-        return url
+    @staticmethod
+    async def _drain(stdout):
+        async for _ in stdout:
+            pass
 
 
 class Web(initial_setup.Web, TunnelManager):

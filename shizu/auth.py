@@ -75,6 +75,7 @@ def argument_parser() -> argparse.ArgumentParser:
         "--no-web", action="store_false", help="Disable web interface", dest="web"
     )
     parser.add_argument("--port", type=int, help="Port for web interface", dest="port")
+    parser.add_argument("--setup-only", action="store_true", help="Authorize the account and exit")
 
     return parser.parse_args()
 
@@ -166,6 +167,7 @@ class Auth:
             if args.web and web_available:
                 await self.web_auth()
             await self.handle_auth_key_unregistered()
+            me = await self.app.get_me()
         except errors.SessionRevoked:
             await self.handle_session_revoked()
             return sys.exit(64)
@@ -179,8 +181,8 @@ class Auth:
         cfg = cp.ConfigParser()
         cfg.read("config.ini")
 
-        api_id = colored_input("Enter API ID: ")
-        api_hash = colored_input("Enter API hash: ")
+        api_id = cfg.get("pyrogram", "api_id", fallback="") or colored_input("Enter API ID: ")
+        api_hash = cfg.get("pyrogram", "api_hash", fallback="") or colored_input("Enter API hash: ")
 
         cfg["pyrogram"] = {
             "api_id": api_id,
@@ -191,8 +193,8 @@ class Auth:
         with open("config.ini", "w", encoding="utf-8") as file:
             cfg.write(file)
 
-        qr = colored_input("Log in with a QR code? y/n").lower().split()
-        if qr[0] == "y":
+        qr = colored_input("Log in with a QR code? y/n: ").strip().lower()
+        if qr in ("y", "yes"):
             await self.login_with_qr_code(cfg)
         else:
             phone, phone_code_hash = await self.send_code()

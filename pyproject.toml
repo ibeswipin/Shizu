@@ -1,7 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["shizu", "shizu.*"]
+
 [project]
 name = "shizu"
 version = "1.0.4"
-requires-python = "==3.11.15"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "aiogram==2.25.1",
     "aiohttp==3.8.6",
