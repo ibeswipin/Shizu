@@ -34,27 +34,26 @@ from shizu import fsm, loader, utils
 from shizu.version import __version__, branch
 
 
-AVATARS_VERSION = 2
-
-SERVICE_CHATS = (
-    ("logs", "Shizu-logs", "📫 Shizu logs. Do not delete this group, or the bot will break", "assets/logs.jpg"),
-    ("backup", "Shizu-backup", "📫 Shizu backups. Do not delete this group, or the bot will break", "assets/backups.jpg"),
-    ("besafe", "Shizu-besafe", "🛡 Shizu BeSafe confirmations. Do not delete this group, or the bot will break", "assets/besafe.jpg"),
-)
-
-
 @loader.module(name="ShizuOnload", author="hikamoru")
 class ShizuOnload(loader.Module):
     """Handles Shizu startup events"""
 
     strings = {}
 
+    AVATARS_VERSION = 2
+
+    SERVICE_CHATS = (
+        ("logs", "Shizu-logs", "📫 Shizu logs. Do not delete this group, or the bot will break", "assets/logs.jpg"),
+        ("backup", "Shizu-backup", "📫 Shizu backups. Do not delete this group, or the bot will break", "assets/backups.jpg"),
+        ("besafe", "Shizu-besafe", "🛡 Shizu BeSafe confirmations. Do not delete this group, or the bot will break", "assets/besafe.jpg"),
+    )
+
     async def on_load(self, app: Client):
         with contextlib.suppress(Exception):
             async for _ in app.get_dialogs():
                 pass
 
-        for key, *_ in SERVICE_CHATS:
+        for key, *_ in self.SERVICE_CHATS:
             chat_id = self.db.get("shizu.chat", key)
             if not chat_id:
                 continue
@@ -64,7 +63,7 @@ class ShizuOnload(loader.Module):
                 logging.warning("Service chat %s (%s) is gone, recreating", key, chat_id)
                 self.db.pop("shizu.chat", key)
 
-        if missing := [chat for chat in SERVICE_CHATS if not self.db.get("shizu.chat", chat[0])]:
+        if missing := [chat for chat in self.SERVICE_CHATS if not self.db.get("shizu.chat", chat[0])]:
             logging.info("Trying to create service chats")
             app.me = await app.get_me()
             for key, title, description, _ in missing:
@@ -73,7 +72,7 @@ class ShizuOnload(loader.Module):
             logging.info("Service chats created")
             utils.restart()
 
-        chats = {key: self.db.get("shizu.chat", key) for key, *_ in SERVICE_CHATS}
+        chats = {key: self.db.get("shizu.chat", key) for key, *_ in self.SERVICE_CHATS}
 
         for key, chat_id in chats.items():
             try:
@@ -84,12 +83,12 @@ class ShizuOnload(loader.Module):
         avatars = self.db.get("shizu.chat", "avatars")
         if not isinstance(avatars, dict):
             avatars = {}
-        for key, _, _, photo in SERVICE_CHATS:
-            if avatars.get(str(chats[key])) == AVATARS_VERSION:
+        for key, _, _, photo in self.SERVICE_CHATS:
+            if avatars.get(str(chats[key])) == self.AVATARS_VERSION:
                 continue
             try:
                 await app.set_chat_photo(chat_id=chats[key], photo=photo)
-                avatars[str(chats[key])] = AVATARS_VERSION
+                avatars[str(chats[key])] = self.AVATARS_VERSION
             except Exception:
                 logging.exception("Could not set the photo of service chat %s", key)
         self.db.set("shizu.chat", "avatars", avatars)

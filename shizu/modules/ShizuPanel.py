@@ -22,16 +22,14 @@ from aiogram.types import CallbackQuery
 from pyrogram import Client, types
 
 from shizu import loader, utils
-from shizu.bot import token_manager
-
-PREFIX = "shizu_panel:"
-
+from shizu.bot.token_manager import TokenManager
 
 @loader.module("ShizuPanel", "hikamoru")
 class ShizuPanel(loader.Module):
     """Control Shizu from the bot with /panel"""
 
     strings = {}
+    PREFIX = "shizu_panel:"
 
     def _text(self):
         prefixes = ", ".join(
@@ -46,7 +44,7 @@ class ShizuPanel(loader.Module):
 
     def _markup(self, *rows):
         return self.bot._generate_markup(
-            [[{"text": text, "data": PREFIX + action} for text, action in row] for row in rows]
+            [[{"text": text, "data": self.PREFIX + action} for text, action in row] for row in rows]
         )
 
     def _panel(self):
@@ -59,8 +57,8 @@ class ShizuPanel(loader.Module):
         return self._markup([("Cancel", "back")])
 
     async def _set_token(self, token):
-        username = await token_manager.check_token(token)
-        token_manager.save_token(token, username)
+        username = await TokenManager.check_token(token)
+        TokenManager.save_token(token, username)
         return username
 
     @loader.on_bot(
@@ -77,11 +75,11 @@ class ShizuPanel(loader.Module):
     @loader.on_bot(
         lambda self, app, m: m.chat.type == "private"
         and m.text != "/panel"
-        and str(self.bot.gs(m.from_user.id)).startswith(PREFIX)
+        and str(self.bot.gs(m.from_user.id)).startswith(self.PREFIX)
     )
     async def panel_input_message_handler(self, app, message):
         user, chat = message.from_user.id, message.chat.id
-        action = self.bot.gs(user)[len(PREFIX):]
+        action = self.bot.gs(user)[len(self.PREFIX):]
         text = (message.text or "").strip()
 
         if action == "prefix":
@@ -113,12 +111,12 @@ class ShizuPanel(loader.Module):
         utils.restart()
 
     async def panel_callback_handler(self, call: CallbackQuery):
-        if not (call.data or "").startswith(PREFIX):
+        if not (call.data or "").startswith(self.PREFIX):
             return
         if not self.bot._is_owner(call.from_user.id):
             return await call.answer("🚫 You are not allowed to press this button!")
 
-        action = call.data[len(PREFIX):]
+        action = call.data[len(self.PREFIX):]
         self.bot.ss(call.from_user.id, False)
         await call.answer()
 
@@ -145,13 +143,13 @@ class ShizuPanel(loader.Module):
             await call.message.edit_text("⏹ <b>Shizu stopped.</b>")
             sys.exit(0)
         elif action == "prefix":
-            self.bot.ss(call.from_user.id, PREFIX + action)
+            self.bot.ss(call.from_user.id, self.PREFIX + action)
             await call.message.edit_text(
                 "✏️ Send the new prefix. For several prefixes, separate them with spaces.",
                 reply_markup=self._cancel(),
             )
         elif action == "token":
-            self.bot.ss(call.from_user.id, PREFIX + action)
+            self.bot.ss(call.from_user.id, self.PREFIX + action)
             await call.message.edit_text(
                 "🤖 Send the new bot token from @BotFather.\nShizu will restart with the new bot.",
                 reply_markup=self._cancel(),
