@@ -22,6 +22,7 @@ from telethon import events
 
 from shizu import utils
 from shizu.dispatcher import security_manager
+from shizu.health import reporter
 
 if TYPE_CHECKING:
     from shizu.loader import ModulesManager
@@ -220,5 +221,6 @@ class TelethonDispatcherManager:
                     continue
                 try:
                     await watcher(message)
-                except Exception:
+                except Exception as error:
                     logger.exception("Watcher of module %s failed", module.name)
+                    reporter.failure(f"{module.name} · watcher", error, module.name)

@@ -23,6 +23,7 @@ from pyrogram import Client
 
 from typing import Union, NoReturn
 
+from shizu.health import reporter
 from shizu.bot.events import Events
 from shizu.bot.token_manager import TokenManager
 
@@ -80,6 +81,11 @@ class BotManager(Events, TokenManager):
         except (exceptions.ValidationError, exceptions.Unauthorized):
             if self._db.get("shizu.bot", "manual_token", False):
                 logging.error("The supplied bot token is invalid. Update shizu.bot.token in db.json and restart Shizu.")
+                reporter.bind(self._app, None)
+                await reporter.send(
+                    reporter.BOT_TOKEN.format("Shizu stopped because it cannot start the bot."),
+                    prefer_userbot=True,
+                )
                 session = await self.bot.get_session()
                 await session.close()
                 return sys.exit(1)

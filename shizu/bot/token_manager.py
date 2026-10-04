@@ -16,7 +16,6 @@
 import asyncio
 import logging
 import re
-import time
 from typing import Union
 from typing import Tuple
 
@@ -85,11 +84,11 @@ class TokenManager(Item):
             await conv.get_response()
             await conv.ask("/mybots")
 
-            time.sleep(1)
+            await asyncio.sleep(1)
 
             r = await conv.get_response()
 
-            time.sleep(1)
+            await asyncio.sleep(1)
 
             if not r.reply_markup:
                 return False
@@ -153,7 +152,7 @@ class TokenManager(Item):
                     seconds = response.text.split()[-2]
                     logger.error(f"Please repeat in {seconds} seconds")
 
-            time.sleep(1)
+            await asyncio.sleep(1)
 
             await conv.ask(
                 f"🐙 Shizu UserBot of {utils.get_display_name(self._all_modules.me)[:45]}"
@@ -163,7 +162,7 @@ class TokenManager(Item):
             bot_username = f"shizu_{utils.random_id(6)}_bot"
 
             await conv.ask(bot_username)
-            time.sleep(1)
+            await asyncio.sleep(1)
             response = await conv.get_response()
 
             search = re.search(r"(?<=<code>)(.*?)(?=</code>)", response.text.html)
@@ -183,7 +182,7 @@ class TokenManager(Item):
 
             await conv.ask_media("assets/bot.jpg", media_type="photo")
 
-            time.sleep(1)
+            await asyncio.sleep(1)
 
             await conv.get_response()
 
@@ -196,7 +195,7 @@ class TokenManager(Item):
             await conv.ask("shizu>>")
             await conv.get_response()
 
-            time.sleep(1)
+            await asyncio.sleep(1)
 
             await conv.ask("/setinlinefeedback")
             await conv.get_response()
@@ -204,7 +203,7 @@ class TokenManager(Item):
             await conv.ask(f"@{bot_username}")
             await conv.get_response()
 
-            time.sleep(1)
+            await asyncio.sleep(1)
 
             await conv.ask("1/1000")
             await conv.get_response()
@@ -212,7 +211,7 @@ class TokenManager(Item):
             await conv.ask("/setinlinefeedback")
             await conv.get_response()
 
-            time.sleep(1)
+            await asyncio.sleep(1)
 
             await conv.ask(f"@{bot_username}")
             await conv.get_response()

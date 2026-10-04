@@ -33,21 +33,47 @@ class BackupMod(loader.Module):
 
     strings = {}
 
-    @loader.command()
-    async def backupdb(self, app: Client, message: types.Message):
-        """Create a database backup [sent to the backups chat]"""
+    def __init__(self):
+        self.config = loader.ModuleConfig(
+            "auto_backup",
+            True,
+            lambda m: self.strings("cfg_auto_backup"),
+            "backup_time",
+            "03:00",
+            lambda m: self.strings("cfg_backup_time"),
+        )
+
+    async def _send_backup(self, app: Client, caption_key: str = "backup") -> None:
         txt = io.BytesIO(json.dumps(self.db).encode("utf-8"))
         txt.name = f"shizu-{datetime.now().strftime('%d-%m-%Y-%H-%M')}.json"
-        chat = app.db.get("shizu.chat", "backup")
+        chat = self.db.get("shizu.chat", "backup")
         await utils.ensure_bot_in_chat(app, chat)
         await app.inline_bot.send_document(
             chat,
             document=txt,
-            caption=self.strings("backup").format(
-                datetime.now().strftime("%d-%m-%Y %H:%M")
-            ),
+            caption=self.strings(caption_key).format(datetime.now().strftime("%d-%m-%Y %H:%M")),
         )
+
+    @loader.loop(time="backup_time", autostart=True)
+    async def auto_backup_loop(self):
+        """Daily database backup to the backups chat"""
+        if self.config["auto_backup"]:
+            await self._send_backup(self.app, "auto_backup")
+
+    @loader.command()
+    async def backupdb(self, app: Client, message: types.Message):
+        """Create a database backup [sent to the backups chat]"""
+        await self._send_backup(app)
         await message.answer(self.strings("done"))
+
+    @loader.command()
+    async def autobackup(self, app: Client, message: types.Message):
+        """Turn the daily backup on or off. Set its time with .config ShizuBackuper"""
+        self.config["auto_backup"] = not self.config["auto_backup"]
+        text = self.strings("enabled" if self.config["auto_backup"] else "disabled")
+        if self.config["auto_backup"]:
+            text += self.strings("at_time").format(utils.escape_html(str(self.config["backup_time"])))
+        await message.answer(text)
 
     @loader.command()
     async def restoredb(self, app: Client, message: types.Message):

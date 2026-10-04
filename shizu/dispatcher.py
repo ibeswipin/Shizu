@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 import random
 import contextlib
 import sys
@@ -25,6 +26,7 @@ from types import FunctionType
 from pyrogram import Client, filters, types
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
+from shizu.health import reporter
 from shizu import loader, utils, database, logger as lo
 from shizu.security import SecurityManager
 
@@ -195,17 +197,18 @@ class DispatcherManager:
                 if getattr(func, "watcher_no_forwards", getattr(watcher, "watcher_no_forwards", False)) and (message.forward_from or message.forward_from_chat):
                     continue
                 
+                module_name = getattr(getattr(watcher, "__self__", None), "name", None)
                 try:
-                    await watcher(app, message)
-                except TypeError as e:
-                    error_msg = str(e)
-                    if "takes" in error_msg and "positional arguments" in error_msg:
-                        try:
-                            await watcher(message)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
+                    try:
+                        await watcher(app, message)
+                    except TypeError as e:
+                        error_msg = str(e)
+                        if not ("takes" in error_msg and "positional arguments" in error_msg):
+                            raise
+                        await watcher(message)
+                except Exception as error:
+                    logging.exception("Watcher of module %s failed", module_name)
+                    reporter.failure(f"{module_name or 'Shizu'} · watcher", error, module_name)
             except Exception:
                 continue
         

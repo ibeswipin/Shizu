@@ -166,12 +166,22 @@ async def edit(
             form,
             form_uid,
             inline_message_id,
+            disable_web_page_preview,
         )
     except aiogram.utils.exceptions.MessageIdInvalid:
         with contextlib.suppress(aiogram.utils.exceptions.InvalidQueryID):
             await query.answer(
                 "Couldn't edit the message because it was deleted :("
             )
+    except aiogram.utils.exceptions.BadRequest as error:
+        if "no text in the message" not in str(error).lower():
+            raise
+        await self.bot.edit_message_caption(
+            inline_message_id=inline_message_id or query.inline_message_id,
+            caption=text,
+            parse_mode="HTML",
+            reply_markup=self._generate_markup(reply_markup),
+        )
 
 
 async def answer(
@@ -222,6 +232,9 @@ class Events(Item):
         "FLOOD_WAIT_X": "⏳ <b>Telegram asks to slow down.</b>\nTry again in {value} s.",
     }
 
+    CALLBACK_ID_SIZE = 30
+    CUSTOM_MAP_LIMIT = 5000
+
     def __init__(self):
         self._forms = {}
         self._custom_map = {}
@@ -243,6 +256,38 @@ class Events(Item):
     def _units(self) -> dict:
         """Hikka name for the forms storage"""
         return self._forms
+
+    def _expire(self, form_uid: str) -> None:
+        """Drop a form and its buttons once its ttl has passed"""
+        form = self._forms.pop(form_uid, None) or {}
+        buttons = form.get("buttons", [])
+        if isinstance(buttons, list):
+            for button in array_sum(buttons):
+                self._custom_map.pop(button.get("_callback_data"), None)
+
+    def _input_buttons(self, switch_query: str):
+        """Input button with this switch query: from a form first, then from refreshed markups"""
+        for form in self._forms.copy().values():
+            buttons = form.get("buttons", [])
+            if isinstance(buttons, list):
+                for button in array_sum(buttons):
+                    if button.get("_switch_query") == switch_query and "input" in button:
+                        yield form, button
+                        return
+        button = self._custom_map.get(switch_query)
+        if button and "input" in button:
+            yield {}, button
+
+    def _tr(self, key: str, default: str) -> str:
+        """Bot text from the language pack, `default` when it is missing"""
+        try:
+            return Translator(self._app, self._db).getkey(f"shizu.bot.{key}") or default
+        except Exception:
+            return default
+
+    @staticmethod
+    async def _no_answer(*args, **kwargs) -> None:
+        """Input results have no callback query to answer"""
 
     @staticmethod
     def _call_accepted(func, *args):
@@ -352,11 +397,27 @@ class Events(Item):
             return False
         history.append(first)
         position = {"index": 0}
+        lock = asyncio.Lock()
+
+        async def extend() -> bool:
+            async with lock:
+                url = await fetch()
+                if url:
+                    history.append(url)
+                return bool(url)
+
+        async def warm():
+            with contextlib.suppress(Exception):
+                while preload and len(history) < position["index"] + 1 + preload:
+                    if not await extend():
+                        return
         extra = reply_markup or []
         if isinstance(extra, dict):
             extra = [[extra]]
         elif extra and isinstance(extra[0], dict):
             extra = [extra]
+
+        open_to_all = disable_security or manual_security or not force_me
 
         def keyboard():
             row = []
@@ -367,15 +428,15 @@ class Events(Item):
             row.append({"text": "🔻", "callback": close})
             buttons = [row, *extra]
             for button in (b for r in buttons for b in r):
-                button["force_me"] = force_me and not disable_security
+                button["force_me"] = not open_to_all
             return buttons
 
         allowed = set(always_allow or [])
 
         async def guard(call) -> bool:
-            if disable_security or not force_me or self._is_owner(call.from_user.id) or call.from_user.id in allowed:
+            if open_to_all or self._is_owner(call.from_user.id) or call.from_user.id in allowed:
                 return True
-            await call.answer("🚫 You are not allowed to press this button!")
+            await call.answer(self._tr("not_allowed", "🚫 You are not allowed to press this button!"))
             return False
 
         async def navigate(step: int, call):
@@ -384,12 +445,11 @@ class Events(Item):
             target = position["index"] + step
             if target < 0:
                 return await call.answer()
-            if target >= len(history):
-                url = await fetch()
-                if not url:
-                    return await call.answer("No more items", show_alert=False)
-                history.append(url)
+            while target >= len(history):
+                if not await extend():
+                    return await call.answer(self._tr("no_more_items", "No more items"), show_alert=False)
             position["index"] = target
+            asyncio.ensure_future(warm())
             media_cls = aiogram.types.InputMediaAnimation if gif else aiogram.types.InputMediaPhoto
             await self.bot.edit_message_media(
                 media=media_cls(history[target], caption=caption_for(target), parse_mode="HTML"),
@@ -410,26 +470,30 @@ class Events(Item):
             else:
                 await call.message.delete()
 
-        return await self.form(
+        result = await self.form(
             caption_for(0),
             message,
             reply_markup=keyboard(),
-            force_me=force_me,
+            force_me=not open_to_all,
             always_allow=list(allowed),
             ttl=ttl,
+            silent=silent,
             **({"gif": first} if gif else {"photo": first}),
         )
+        if result:
+            asyncio.ensure_future(warm())
+        return result
 
     def _inline_error_text(self, error: Exception) -> str:
-        if template := self.INLINE_ERRORS.get(getattr(error, "ID", None)):
-            return template.format(
+        error_id = getattr(error, "ID", None)
+        if template := self.INLINE_ERRORS.get(error_id):
+            return self._tr(f"error_{error_id}", template).format(
                 bot=getattr(self, "bot_username", "bot"), value=getattr(error, "value", "")
             )
-        return (
-            "🚫 <b>The inline bot could not show this message.</b>\n"
-            "Details are in the logs chat.\n\n"
-            f"<code>{utils.escape_html(str(error))}</code>"
-        )
+        return self._tr(
+            "error_inline_failed",
+            "🚫 <b>The inline bot could not show this message.</b>\nDetails are in the logs chat.",
+        ) + f"\n\n<code>{utils.escape_html(str(error))}</code>"
 
     async def _inline_results(self, query: str):
         username = (await self._app.inline_bot.get_me()).username
@@ -538,6 +602,7 @@ class Events(Item):
                                 title="Shizu",
                                 description="🐙 Shizu Userbot",
                                 caption=self._forms[query].get("text", None),
+                                parse_mode="HTML",
                                 photo_url=self._forms[query].get("photo", None),
                                 thumb_url=self._forms[query].get("photo", None),
                                 reply_markup=self._generate_markup(query, for_inline_query=True),
@@ -553,6 +618,7 @@ class Events(Item):
                                 title="Shizu",
                                 description="🐙 Shizu Userbot",
                                 caption=self._forms[query].get("text", None),
+                                parse_mode="HTML",
                                 video_url=self._forms[query].get("video", None),
                                 thumb_url=self._forms[query].get("video", None),
                                 reply_markup=self._generate_markup(query, for_inline_query=True),
@@ -568,6 +634,7 @@ class Events(Item):
                                 id=utils.random_id(),
                                 title="Shizu",
                                 caption=self._forms[query].get("text", None),
+                                parse_mode="HTML",
                                 gif_url=self._forms[query].get("gif", None),
                                 thumb_url=self._forms[query].get("gif", None),
                                 reply_markup=self._generate_markup(query, for_inline_query=True),
@@ -583,6 +650,7 @@ class Events(Item):
                                 title=self._forms[query].get("audio_title") or "Shizu",
                                 performer=self._forms[query].get("audio_performer"),
                                 caption=self._forms[query].get("text", None),
+                                parse_mode="HTML",
                                 audio_url=self._forms[query].get("audio", None),
                                 reply_markup=self._generate_markup(query, for_inline_query=True),
                             )
@@ -641,35 +709,28 @@ class Events(Item):
                     cache_time=60,
                 )
         except KeyError:
-            for form in self._forms.copy().values():
-                for button in array_sum(form.get("buttons", [])):
-                    if (
-                        "_switch_query" in button
-                        and "input" in button
-                        and button["_switch_query"] == query.split()[0]
-                        and inline_query.from_user.id
-                        in [self._me]
-                        + form["always_allow"]
-                        + self._db.get("shizu.me", "owners", []) + [self._me]
-                    ):
-                        await inline_query.answer(
-                            [
-                                InlineQueryResultArticle(
-                                    id=utils.rand(20),
-                                    title=button["input"],
-                                    description="⚠️ Please do not remove the identifier!",
-                                    input_message_content=InputTextMessageContent(
-                                        "🔄 <b>Just ignore this message...</b>\n"
-                                        "<i>This message will be deleted...</i>",
-                                        "HTML",
-                                        disable_web_page_preview=True,
-                                    ),
-                                )
-                            ],
-                            cache_time=60,
-                        )
+            for form, button in self._input_buttons(query.split()[0]):
+                if inline_query.from_user.id in [self._me] + form.get("always_allow", []) + self._db.get(
+                    "shizu.me", "owners", []
+                ):
+                    await inline_query.answer(
+                        [
+                            InlineQueryResultArticle(
+                                id=utils.rand(20),
+                                title=button["input"],
+                                description="⚠️ Please do not remove the identifier!",
+                                input_message_content=InputTextMessageContent(
+                                    "🔄 <b>Just ignore this message...</b>\n"
+                                    "<i>This message will be deleted...</i>",
+                                    "HTML",
+                                    disable_web_page_preview=True,
+                                ),
+                            )
+                        ],
+                        cache_time=60,
+                    )
 
-                        return
+                    return
 
             return await self._answer_inline_commands(inline_query, cmd)
 
@@ -689,8 +750,25 @@ class Events(Item):
                 result = await func(self._app, inline_query, args)
             else:
                 result = await func(self._app, inline_query)
-        except Exception:
+        except Exception as error:
             logger.exception("Inline handler %s failed", getattr(func, "__name__", func))
+            with contextlib.suppress(Exception):
+                await inline_query.answer(
+                    [
+                        InlineQueryResultArticle(
+                            id=utils.random_id(),
+                            title=self._tr("inline_error_title", "🚫 Error"),
+                            description=str(error)[:100],
+                            input_message_content=InputTextMessageContent(
+                                self._tr("inline_command_failed", "🚫 <b>Inline command failed:</b>")
+                                + f" <code>{utils.escape_html(str(error))}</code>",
+                                "HTML",
+                            ),
+                        )
+                    ],
+                    cache_time=0,
+                    is_personal=True,
+                )
             return
         if result:
             await self._answer_results(inline_query, result)
@@ -821,8 +899,11 @@ class Events(Item):
                     )
 
                 if "callback" in button and "_callback_data" not in button:
-                    button["_callback_data"] = utils.rand(30)
+                    button["_callback_data"] = utils.rand(self.CALLBACK_ID_SIZE)
                     self._custom_map[button["_callback_data"]] = button
+                    if len(self._custom_map) > self.CUSTOM_MAP_LIMIT:
+                        for stale in list(self._custom_map)[: self.CUSTOM_MAP_LIMIT // 2]:
+                            del self._custom_map[stale]
 
                 if "handler" in button and not isinstance(button["handler"], str):
                     func = button["handler"]
@@ -841,6 +922,7 @@ class Events(Item):
 
                 if "input" in button and "_switch_query" not in button:
                     button["_switch_query"] = utils.rand(10)
+                    self._custom_map[button["_switch_query"]] = button
 
         for row in (
             self._forms[form_uid]["buttons"] if isinstance(form_uid, str) else form_uid
@@ -944,7 +1026,7 @@ class Events(Item):
                         )
                     ):
                         await query.answer(
-                            "🚫 You are not allowed to press this button!"
+                            self._tr("not_allowed", "🚫 You are not allowed to press this button!")
                         )
                         return
 
@@ -982,54 +1064,70 @@ class Events(Item):
                 and query.from_user.id != self._me
                 and query.from_user.id not in self._db.get("shizu.me", "owners", []) + [self._me] 
             ):
-                await query.answer("🚫 You are not allowed to press this button!")
+                await query.answer(self._tr("not_allowed", "🚫 You are not allowed to press this button!"))
                 return
 
             button = self._custom_map[query.data]
-            await button["handler" if "handler" in button else "_callback"](query)
+            if "handler" in button:
+                return await button["handler"](query)
+            query.edit = functools.partial(edit, self=self, query=query)
+            try:
+                await button["_callback"](
+                    query,
+                    *button.get("args", []),
+                    **button.get("kwargs", {}),
+                )
+            except Exception:
+                logger.exception("Error on running callback watcher!")
+                await query.answer(
+                    "An error occurred while processing the request. See the logs for details",
+                    show_alert=True,
+                )
             return
+
+        data = query.data or ""
+        if len(data) == self.CALLBACK_ID_SIZE and data.isalnum():
+            with contextlib.suppress(Exception):
+                await query.answer(self._tr("button_expired", "⌛️ This button has expired"))
 
     async def _chosen_inline_handler(
         self, chosen_inline_query: aiogram.types.ChosenInlineResult
     ) -> None:
         query = chosen_inline_query.query
 
-        for form_uid, form in self._forms.copy().items():
-            for button in array_sum(form.get("buttons", [])):
-                if (
-                    "_switch_query" in button
-                    and "input" in button
-                    and button["_switch_query"] == query.split()[0]
-                    and chosen_inline_query.from_user.id
-                    in [self._me]
-                    + form["always_allow"]
-                    + self._db.get("shizu.me", "owners", []) + [self._me]
-                ):
-                    query = query.split(maxsplit=1)[1] if len(query.split()) > 1 else ""
+        for form, button in self._input_buttons(query.split()[0] if query.split() else ""):
+            if chosen_inline_query.from_user.id in [self._me] + form.get("always_allow", []) + self._db.get(
+                "shizu.me", "owners", []
+            ):
+                query = query.split(maxsplit=1)[1] if len(query.split()) > 1 else ""
 
-                    call = InlineCall()
-                    call.inline_message_id = chosen_inline_query.inline_message_id
+                call = InlineCall()
+                call.inline_message_id = chosen_inline_query.inline_message_id
+                call.answer = self._no_answer
 
-                    call.edit = functools.partial(
-                        edit,
-                        self=self,
-                        query=chosen_inline_query,
-                        form=form,
-                        form_uid=form_uid,
-                    )
+                call.edit = functools.partial(
+                    edit,
+                    self=self,
+                    query=chosen_inline_query,
+                    form=form,
+                    form_uid=form.get("uid"),
+                )
 
-                    for module in self._all_modules.modules:
-                        if module.__class__.__name__ == button["handler"].split(".")[
-                            0
-                        ] and hasattr(module, button["handler"].split(".")[1]):
-                            return await getattr(
-                                module, button["handler"].split(".")[1]
-                            )(
+                owner_name, method_name = button["handler"].split(".")
+                for module in self._all_modules.modules:
+                    if module.__class__.__name__ == owner_name and hasattr(module, method_name):
+                        try:
+                            return await getattr(module, method_name)(
                                 call,
                                 query,
                                 *button.get("args", []),
                                 **button.get("kwargs", {}),
                             )
+                        except Exception:
+                            logger.exception("Input handler %s failed", button["handler"])
+                            with contextlib.suppress(Exception):
+                                await call.edit(self._tr("input_failed", "🚫 <b>Could not process the input.</b> See the logs for details."))
+                            return
 
     async def form(
         self,
@@ -1102,6 +1200,8 @@ class Events(Item):
         if not isinstance(text, str):
             logger.error("Invalid type for `text`")
             return False
+
+        text = self.sanitise_text(text)
 
         if not isinstance(reply_markup, list):
             logger.error("Invalid type for `reply_markup`")
@@ -1202,12 +1302,15 @@ class Events(Item):
 
                 log_message = "🚫 <b>Inline bot invoke failed!</b>\n\n" + f"{(exc)}"
 
-                await self._app.bot.send_message(
-                    self._db.get("shizu.chat", "logs", None), log_message
-                )
+                with contextlib.suppress(Exception):
+                    await self._app.bot.send_message(
+                        self._db.get("shizu.chat", "logs", None), log_message
+                    )
 
             del self._forms[form_uid]
-            if hasattr(message, "chat_id") and hasattr(message, "respond"):
+            if soo:
+                await soo.edit(msg)
+            elif hasattr(message, "chat_id") and hasattr(message, "respond"):
                 await (message.edit if message.out else message.respond)(msg)
             else:
                 await self._app.send_message(chat_id, msg)
@@ -1215,6 +1318,8 @@ class Events(Item):
             return False
         self._forms[form_uid]["chat"] = chat_id
         self._forms[form_uid]["message_id"] = q.id
+        if ttl:
+            asyncio.get_running_loop().call_later(ttl, self._expire, form_uid)
 
         if isinstance(message, Message):
             await message.delete()
@@ -1303,7 +1408,7 @@ class Events(Item):
             "uid": unit_id,
             "chat": None,
             "message_id": None,
-            "strings": strings,
+            "strings": [self.sanitise_text(string) for string in strings],
             "current_index": 0,
             "custom_buttons": custom_buttons or [],
             "force_me": bool(force_me) and not disable_security,
@@ -1311,9 +1416,12 @@ class Events(Item):
         }
         self._forms[unit_id]["buttons"] = self._list_buttons(unit_id)
 
-        chat_id = message if isinstance(message, int) else message.chat.id
+        chat_id = message if isinstance(message, int) else getattr(message, "chat_id", None)
+        if chat_id is None:
+            chat_id = message.chat.id
+        is_pyrogram = isinstance(message, pyrogram.types.Message)
 
-        if isinstance(message, Message) and prev and not silent:
+        if is_pyrogram and prev and not silent:
             with contextlib.suppress(Exception):
                 await message.edit("🐙 Loading inline list...")
 
@@ -1330,8 +1438,10 @@ class Events(Item):
             msg = self._inline_error_text(e)
 
             del self._forms[unit_id]
-            if isinstance(message, Message):
+            if is_pyrogram:
                 await (message.edit if message.outgoing else message.reply)(msg)
+            elif hasattr(message, "respond"):
+                await (message.edit if message.out else message.respond)(msg)
             else:
                 await self._app.send_message(chat_id, msg)
 
@@ -1340,7 +1450,7 @@ class Events(Item):
         self._forms[unit_id]["chat"] = chat_id
         self._forms[unit_id]["message_id"] = q.id
 
-        if isinstance(message, Message):
+        if (is_pyrogram and message.outgoing) or getattr(message, "out", False):
             with contextlib.suppress(Exception):
                 await message.delete()
 

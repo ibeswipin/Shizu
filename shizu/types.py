@@ -25,6 +25,7 @@ from logging import getLogger
 from pyrogram import Client, types
 
 from shizu import database
+from shizu.health import reporter
 
 logger = getLogger(__name__)
 
@@ -184,8 +185,10 @@ class InfiniteLoop:
             await self.func(self.module_instance, *args, **kwargs)
         except StopLoop:
             return False
-        except Exception:
+        except Exception as error:
             logger.exception("Error running loop!")
+            module = getattr(self.module_instance, "name", None)
+            reporter.failure(f"{module or 'Shizu'} · {self.func.__name__}", error, module)
         return True
 
     async def actual_loop(self, *args, **kwargs):

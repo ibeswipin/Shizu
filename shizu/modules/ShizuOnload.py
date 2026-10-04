@@ -21,16 +21,23 @@ import logging
 from pyrogram import Client, enums
 from pyrogram.raw import functions, types as typ
 from pyrogram.errors import (
+    AuthKeyDuplicated,
+    AuthKeyUnregistered,
     MessageIdInvalid,
     BadRequest,
     ChannelInvalid,
     ChannelPrivate,
     PeerIdInvalid,
+    SessionExpired,
+    SessionRevoked,
+    UserDeactivated,
+    UserDeactivatedBan,
 )
 
-from aiogram.utils.exceptions import ChatNotFound
+from aiogram.utils.exceptions import ChatNotFound, Unauthorized
 
 from shizu import fsm, loader, utils
+from shizu.health import reporter
 from shizu.version import __version__, branch
 
 
@@ -135,6 +142,34 @@ class ShizuOnload(loader.Module):
         if self.config["status"]:
             text = self.config["custom text"] or self.START_TEXT
             await self.bot.bot.send_message(message.chat.id, text, reply_markup=markup)
+
+    DEAD_SESSION = (
+        AuthKeyUnregistered,
+        AuthKeyDuplicated,
+        SessionRevoked,
+        SessionExpired,
+        UserDeactivated,
+        UserDeactivatedBan,
+    )
+
+    @loader.loop(interval=300, autostart=True, wait_before=True)
+    async def health_loop(self):
+        """Check that the Telegram session and the bot token still work"""
+        try:
+            await self.app.get_me()
+        except self.DEAD_SESSION:
+            await reporter.send(reporter.SESSION_ENDED + "\n\nShizu restarts to start the login.")
+            utils.restart()
+            return
+        except Exception:
+            return
+
+        try:
+            await self._bot.get_me()
+        except Unauthorized as error:
+            reporter.problem("bot_token", reporter.BOT_TOKEN.format(utils.escape_html(str(error))))
+        except Exception:
+            return
 
     async def on_load(self, app: Client):
         self.adopt_config("ShizuStart")
