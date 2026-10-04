@@ -30,11 +30,11 @@ from pyrogram import Client, errors, types, raw
 from pyrogram.session.session import Session
 from pyrogram.raw.functions.auth.export_login_token import ExportLoginToken
 
-from telethon import TelegramClient
-
 from qrcode.main import QRCode
-from shizu import utils
-from shizu.health import Reporter
+from shizu import database, utils
+from shizu.health import Reporter, reporter
+from shizu.telegram.exceptions import TelegramConnectionError
+from shizu.telegram.services import TelegramConnectionService
 
 try:
     from .web import core
@@ -105,17 +105,27 @@ class Auth:
             device_model=device_model,
         )
 
-        if utils.is_tl_enabled():
-            self.tapp = TelegramClient(
-                "shizu-tl",
-                api_id=cfg.get("pyrogram", "api_id"),
-                api_hash=cfg.get("pyrogram", "api_hash"),
-                device_model="MacBook Pro",
-                app_version="11.12.0",
-                system_version="14.0",
-                lang_code="en",
-                system_lang_code="en-US"
+        self.tapp = None
+        self.connections = None
+
+    async def _telethon_invalidated(self, user_id: int) -> None:
+        """Handle a user rejecting the separate device, without signing in silently."""
+        database.db.set("shizu.telethon", "enabled", False)
+        database.db.set("shizu.telethon", "status", "invalid")
+        self.app.is_tl_enabled = False
+        reporter.problem("telethon_revoked", "Telethon отключён в Telegram. Для переподключения используйте <code>.enabletlmode</code>.")
+
+    async def restore_telethon(self, user_id: int) -> None:
+        """Restore only an existing encrypted authorization during startup."""
+        try:
+            self.connections = TelegramConnectionService.from_environment(
+                self.app.api_id, self.app.api_hash, on_invalid=self._telethon_invalidated,
             )
+            self.tapp = await self.connections.restore(user_id)
+            self.app.telethon_connections = self.connections
+        except TelegramConnectionError as error:
+            logging.warning("Telethon startup: %s", error.status)
+            await self._telethon_invalidated(user_id)
 
     def _check_api_tokens(self) -> bool:
         cfg = cp.ConfigParser()
@@ -180,9 +190,8 @@ class Auth:
             return sys.exit(64)
 
         if utils.is_tl_enabled():
-            return me, self.app, self.tapp
-
-        return me, self.app, None
+            await self.restore_telethon(me.id)
+        return me, self.app, self.tapp
 
     async def handle_auth_key_unregistered(self) -> None:
         cfg = cp.ConfigParser()

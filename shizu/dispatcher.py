@@ -27,6 +27,7 @@ from pyrogram import Client, filters, types
 from pyrogram.handlers import MessageHandler, EditedMessageHandler
 
 from shizu.health import reporter
+from shizu.besafe import BeSafe
 from shizu import loader, utils, database, logger as lo
 from shizu.security import SecurityManager
 
@@ -105,7 +106,7 @@ class DispatcherManager:
         command_lower = command.lower()
         func = self.modules.command_handlers.get(command_lower)
 
-        if not func:
+        if not func or not BeSafe.allow_handler(func, message):
             return
 
         if hasattr(func, "__self__"):
@@ -159,6 +160,8 @@ class DispatcherManager:
                 if is_telethon:
                     continue
             
+            if not BeSafe.allow_handler(watcher, message):
+                continue
             try:
                 if hasattr(watcher, "__self__"):
                     module = watcher.__self__

@@ -30,6 +30,7 @@ from aiogram.types import CallbackQuery, InputFile
 from pyrogram import Client, types
 
 from shizu import loader, utils
+from shizu.besafe import BeSafe as BeSafeGuard
 
 URL_RE = re.compile(r"https?://[^\s'\"<>)\]]+")
 NAME_RE = re.compile(r"class\s+(\w+)\s*\(")
@@ -86,10 +87,17 @@ class BeSafe(loader.Module):
             "📚 <b>Imports:</b> {imports}\n"
             "📥 <b>Installs packages:</b> {requires}\n"
             "🔗 <b>Addresses in code:</b> {hosts}\n"
+            "{risks}"
             "{changed}\n"
             "<i>Open the code and read it before approving. An approved module gets full access to the account.</i>"
         ),
         "changed": "⚠️ <b>The code differs from the previously approved version of this source</b>\n",
+        "risks": "\n🚨 <b>Suspicious code:</b>\n{}\n",
+        "risk_session": "• reads the session or its auth key",
+        "risk_codes": "• touches the Telegram login codes chat (777000)",
+        "risk_takeover": "• calls account takeover methods: {}",
+        "risk_dynamic": "• runs code built at runtime (exec / eval / compile / __import__)",
+        "risk_obfuscated": "• decodes and runs hidden code",
         "unparsable": "the code could not be parsed",
         "none": "none",
         "file": "file",
@@ -137,10 +145,17 @@ class BeSafe(loader.Module):
             "📚 <b>Импорты:</b> {imports}\n"
             "📥 <b>Установит пакеты:</b> {requires}\n"
             "🔗 <b>Адреса в коде:</b> {hosts}\n"
+            "{risks}"
             "{changed}\n"
             "<i>Открой код и прочитай его перед одобрением. Одобренный модуль получает полный доступ к аккаунту.</i>"
         ),
         "changed": "⚠️ <b>Код отличается от ранее одобренной версии из этого источника</b>\n",
+        "risks": "\n🚨 <b>Подозрительный код:</b>\n{}\n",
+        "risk_session": "• читает сессию или её auth key",
+        "risk_codes": "• лезет в чат с кодами входа Telegram (777000)",
+        "risk_takeover": "• вызывает методы захвата аккаунта: {}",
+        "risk_dynamic": "• выполняет код, собранный на ходу (exec / eval / compile / __import__)",
+        "risk_obfuscated": "• расшифровывает и выполняет скрытый код",
         "unparsable": "код не разбирается",
         "none": "нет",
         "file": "файл",
@@ -179,6 +194,14 @@ class BeSafe(loader.Module):
         "too_many": "BeSafe: слишком много ожидающих модулей, запрос {} пропущен",
     }
 
+    SESSION_NAMES = {"auth_key", "export_session_string", "session_string", "StringSession"}
+    DYNAMIC_NAMES = {"exec", "eval", "compile", "__import__"}
+    DECODER_NAMES = {
+        "b64decode", "b32decode", "b85decode", "a85decode", "decompress",
+        "marshal", "fromhex", "unhexlify",
+    }
+    CODES_CHAT = 777000
+
     def __init__(self):
         self.pending = {}
         self.bootstrap = False
@@ -197,6 +220,47 @@ class BeSafe(loader.Module):
                 await self._send_card(digest)
             except Exception:
                 logging.exception("BeSafe could not resend card %s", digest[:16])
+
+    @classmethod
+    def risks(cls, source: str) -> dict:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return {}
+        names, risks = set(), {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                names.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, ast.alias):
+                names.update(node.name.split("."))
+            elif isinstance(node, ast.Constant):
+                if node.value in (cls.CODES_CHAT, str(cls.CODES_CHAT)):
+                    risks["codes"] = True
+                elif isinstance(node.value, str) and ".session" in node.value:
+                    risks["session"] = True
+        if names & cls.SESSION_NAMES:
+            risks["session"] = True
+        takeover = sorted(
+            {n.removesuffix("Request") for n in names} & BeSafeGuard.BLOCKED
+        )
+        if takeover:
+            risks["takeover"] = takeover
+        if names & cls.DYNAMIC_NAMES:
+            risks["obfuscated" if names & cls.DECODER_NAMES else "dynamic"] = True
+        return risks
+
+    def _risk_text(self, risks: dict) -> str:
+        if not risks:
+            return ""
+        lines = [
+            self.strings("risk_" + key).format(self._code_list(value))
+            if key == "takeover"
+            else self.strings("risk_" + key)
+            for key, value in risks.items()
+        ]
+        return self.strings("risks").format("\n".join(lines))
 
     def _get(self, key: str, default):
         return self.db.get(self.name, key, default)
@@ -254,7 +318,9 @@ class BeSafe(loader.Module):
             if len(self.pending) >= PENDING_LIMIT:
                 logging.warning(self.strings("too_many").format(info["name"]))
                 return "PENDING"
-            self.pending[digest] = {"source": source, "origin": origin, **info}
+            self.pending[digest] = {
+                "source": source, "origin": origin, "risks": self.risks(source), **info
+            }
             self._save_pending()
             await self._send_card(digest)
         return "PENDING"
@@ -279,6 +345,7 @@ class BeSafe(loader.Module):
             imports=imports,
             requires=self._code_list(item.get("requires", [])) or none,
             hosts=self._code_list(item["hosts"]) or none,
+            risks=self._risk_text(item.get("risks", {})),
             changed=self.strings("changed") if previous else "",
         )
         def button(key, handler):

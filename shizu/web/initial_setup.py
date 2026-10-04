@@ -37,6 +37,7 @@ import asyncio
 import base64
 import collections
 import os
+import secrets
 import string
 import time
 
@@ -52,6 +53,7 @@ from pyrogram import errors, raw
 
 from shizu import utils
 from shizu.bot.token_manager import TokenManager
+from shizu.web.telethon_setup import TelethonSetupController
 
 BASE_DIR =  os.path.dirname(utils.get_base_dir())
 
@@ -68,6 +70,14 @@ class Web:
         self.app.router.add_post("/finishLogin", self.finish_login)
         self.app.router.add_post("/qrLogin", self.qr_login)
         self.app.router.add_post("/qrPassword", self.qr_password)
+        self.telethon = TelethonSetupController(self)
+        self.app.router.add_post("/telethonPrepare", self.telethon.prepare)
+        self.app.router.add_post("/telethonConnect", self.telethon.connect)
+        self.app.router.add_post("/telethonSkip", self.telethon.skip)
+        self.app.router.add_post("/telethonDisconnect", self.telethon.disconnect)
+        self.app.on_cleanup.append(self.telethon.close)
+        self.telethon_choice = None
+        self.setup_owner = None
         self.api_set = asyncio.Event()
         self.sign_in_clients = {}
         self.clients = []
@@ -87,9 +97,12 @@ class Web:
 
     @aiohttp_jinja2.template("initial_root.jinja2")
     async def initial_setup(self, request):
+        if self.authenticated and request.cookies.get("shizu_setup") != self.setup_owner:
+            raise web.HTTPForbidden()
         return {
             "api_done": self.api_token is not None,
-            "tg_done": bool(self.client_data),
+            "tg_done": self.authenticated or bool(self.client_data),
+            "telethon_done": self.telethon_choice is not None,
         }
 
     def wait_for_api_token_setup(self):
@@ -99,6 +112,8 @@ class Web:
         return self.clients_set.wait()
 
     async def set_tg_api(self, request):
+        if self.authenticated:
+            return web.Response(status=409)
         text = await request.text()
         if len(text) < 36:
             return web.Response(status=400)
@@ -168,12 +183,18 @@ class Web:
         await client.storage.port(dc_option.port)
         await client.storage.auth_key(client.session.auth_key)
 
-    async def qr_authorized(self, user_id):
+    def _authorize_browser(self, response, request=None):
+        """Bind subsequent setup writes to the browser that completed login."""
+        self.setup_owner = secrets.token_urlsafe(32)
+        response.set_cookie("shizu_setup", self.setup_owner, httponly=True, samesite="Strict", secure=bool(getattr(request, "secure", False) or str(getattr(self, "url", "")).startswith("https://")))
+        return response
+
+    async def qr_authorized(self, user_id, request=None):
         await self.client.storage.user_id(user_id)
         await self.client.storage.is_bot(False)
         self.qr = None
         self.authenticated = True
-        return web.json_response({"done": True})
+        return self._authorize_browser(web.json_response({"done": True}), request)
 
     async def qr_login(self, request):
         if self.api_token is None or self.authenticated:
@@ -196,7 +217,7 @@ class Web:
         except errors.exceptions.FloodWait:
             return web.Response(status=421)
         if isinstance(r, raw.types.auth.LoginTokenSuccess):
-            return await self.qr_authorized(r.authorization.user.id)
+            return await self.qr_authorized(r.authorization.user.id, request)
         if self.qr["expires"] - time.time() < 5:
             url = "tg://login?token=" + base64.urlsafe_b64encode(r.token).decode().rstrip("=")
             svg = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, border=1)
@@ -215,7 +236,7 @@ class Web:
             return web.Response(status=403)
         except errors.exceptions.FloodWait:
             return web.Response(status=421)
-        return await self.qr_authorized(user.id)
+        return await self.qr_authorized(user.id, request)
 
     async def tg_code(self, request):
         text = await request.text()
@@ -255,14 +276,17 @@ class Web:
                 return web.Response(status=421)
         del self.sign_in_clients[phone]
         self.authenticated = True
-        
-        return web.Response()
+        return self._authorize_browser(web.Response(), request)
 
     async def finish_login(self, request):
         if self.clients_set.is_set():
             return web.Response(status=409)
         if not self.authenticated:
             return web.Response(status=401)
+        if getattr(self, "setup_owner", None) and request.cookies.get("shizu_setup") != self.setup_owner:
+            return web.Response(status=401)
+        if getattr(self, "telethon_choice", False) is None:
+            return web.json_response({"error": "Choose whether to connect Telethon first."}, status=409)
         token = (await request.text()).strip()
         if token:
             try:

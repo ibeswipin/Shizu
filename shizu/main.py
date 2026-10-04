@@ -24,7 +24,8 @@ import pyrogram
 from pyrogram import types
 from pyrogram.methods.utilities.idle import idle
 
-from shizu import auth, database, loader, utils
+from shizu import auth, database, loader
+from shizu.besafe import BeSafe
 from shizu.ratelimit import ApiLimiter
 from shizu.version import __version__
 
@@ -35,30 +36,44 @@ async def main():
     me, app, tapp = await auth.Auth().authorize()
 
     if auth.args.setup_only:
+        if tapp is not None:
+            await tapp.disconnect()
         await app.disconnect()
         logging.info("Account authorization completed. Shizu is ready to start.")
         return True
 
-    await app.initialize()
+    try:
+        await app.initialize()
+        db = database.db
+        ApiLimiter(db).attach(app)
+        modules = loader.ModulesManager(app, db, me)
+        guard = BeSafe()
+        await guard.protect_secrets(app, tapp)
+        guard.install()
+        guard.attach(app, "invoke", 0)
 
-    db = database.db
-    ApiLimiter(db).attach(app)
+        if tapp is not None:
+            guard.attach(tapp, "_call", 1)
+            app.tl = tapp
+        else:
+            app.tl = "Not enabled"
 
-    modules = loader.ModulesManager(app, db, me)
+        await modules.load(app)
 
-    if utils.is_tl_enabled():
-        asyncio.ensure_future(tapp.start())
-        app.tl = tapp
-    else:
-        app.tl = "Not enabled"
+        if not db.get("shizu.me", "me", None):
+            id_ = (await app.get_me()).id
+            db.set("shizu.me", "me", id_)
 
-    await modules.load(app)
-
-    if not db.get("shizu.me", "me", None):
-        id_ = (await app.get_me()).id
-        db.set("shizu.me", "me", id_)
-
-    await idle()
+        await idle()
+    finally:
+        if tapp is not None:
+            await tapp.disconnect()
+        if getattr(app, "telethon_connections", None):
+            await app.telethon_connections.close()
+        if app.is_initialized:
+            await app.stop()
+        elif app.is_connected:
+            await app.disconnect()
 
     logging.info("Shizu is shutting down...")
     return True

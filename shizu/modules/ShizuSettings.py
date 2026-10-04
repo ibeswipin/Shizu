@@ -13,8 +13,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import re
-import os
 
 import sys
 
@@ -22,9 +20,8 @@ from loguru import logger
 from shizu import loader, utils
 from pyrogram import Client, types
 
-from telethon import TelegramClient
-from telethon.errors import FloodWaitError, SessionPasswordNeededError
-from telethon.errors.rpcerrorlist import UpdateAppToLoginError
+from shizu.telegram.exceptions import TelegramConnectionError
+from shizu.telegram.services import TelegramConnectionService, TelegramDisconnectService
 
 
 @loader.module(name="ShizuSettings", author="shizu")
@@ -56,8 +53,49 @@ class ShizuSettings(loader.Module):
             ]
         ]
 
-    async def close(self, call, _):
+    async def close(self, call, purpose):
+        if purpose == "enabletlmode" and getattr(self, "_connections", None):
+            await self._connections.cancel((await self.app.get_me()).id)
         await call.delete()
+
+    def _telethon_service(self) -> TelegramConnectionService:
+        """Use one service per process so an outstanding 2FA step can be resumed."""
+        if not getattr(self, "_connections", None):
+            self._connections = getattr(
+                self.app, "telethon_connections", None
+            ) or TelegramConnectionService.from_environment(
+                self.app.api_id, self.app.api_hash
+            )
+            self.app.telethon_connections = self._connections
+        return self._connections
+
+    async def _connected_telethon(self, result, call, inline_message_id=None):
+        try:
+            self.db.set("shizu.telethon", "enabled", True)
+            self.db.set("shizu.telethon", "status", "active")
+        finally:
+            await result.client.disconnect()
+        kwargs = {"inline_message_id": inline_message_id} if inline_message_id else {}
+        await call.edit(self.strings["congratulations"], **kwargs)
+
+    def _password_markup(self, inline_message_id):
+        return [
+            [
+                {
+                    "text": "🔐 2FA",
+                    "input": "Telegram cloud password",
+                    "handler": self.twofa_handler,
+                    "args": (inline_message_id,),
+                }
+            ],
+            [
+                {
+                    "text": self.strings["no_button"],
+                    "callback": self.close,
+                    "args": ("enabletlmode",),
+                }
+            ],
+        ]
 
     @loader.command()
     async def setprefix(self, app: Client, message: types.Message):
@@ -82,7 +120,10 @@ class ShizuSettings(loader.Module):
                 return await message.answer(self.strings("no_such_alias"))
             return await message.answer(
                 "🗄 List of all aliases:\n"
-                + "\n".join(f"• <code>{alias}</code> ➜ {command}" for alias, command in aliases.items())
+                + "\n".join(
+                    f"• <code>{alias}</code> ➜ {command}"
+                    for alias, command in aliases.items()
+                )
             )
 
         if len(args) == 1:
@@ -105,111 +146,61 @@ class ShizuSettings(loader.Module):
 
     async def yes(self, call, purpose):
         if purpose == "enabletlmode":
-            phone = phone = f"+{(await self.app.get_me()).phone_number}"
-            api_id = self.app.api_id
-            api_hash = self.app.api_hash
-
-            client = TelegramClient(
-                "shizu-tl",
-                api_id,
-                api_hash,
-                device_model="MacBook Pro",
-                app_version="11.12.0",
-                system_version="14.0",
-                lang_code="en",
-                system_lang_code="en-US",
-            )
-            await client.connect()
-
             try:
-                login = await client.send_code_request(phone=phone)
-                await client.disconnect()
-            except FloodWaitError as e:
-                await client.disconnect()
-                return await call.edit(f"Too many attempts, please wait  {e.seconds}")
-            except UpdateAppToLoginError:
-                await client.disconnect()
-                return await call.edit(
-                    "❌ <b>UpdateAppToLoginError</b>\n\n"
-                    "Telegram requires app update. Please:\n"
-                    "1. Update Telethon library: <code>pip install --upgrade telethon</code>\n"
-                    "2. Or try using official Telegram app to login first"
+                result = await self._telethon_service().connect(
+                    self.app, (await self.app.get_me()).id
                 )
-
-            async for message in self.app.get_chat_history(
-                777000, limit=1, offset_id=-1
-            ):
-                t = message.text
-
-            code = re.findall(r"(\d{5})", t)[0]
-
-            global _client
-            _client = TelegramClient(
-                "shizu-tl",
-                api_id,
-                api_hash,
-                device_model="MacBook Pro",
-                app_version="11.12.0",
-                system_version="14.0",
-                lang_code="en",
-                system_lang_code="en-US",
-            )
-
-            await _client.connect()
-
-            try:
-                await _client.sign_in(
-                    phone=f"+{(await self.app.get_me()).phone_number}",
-                    code=code,
-                    phone_code_hash=login.phone_code_hash,
-                )
-
-                await client.disconnect()
-
-                await call.edit(self.strings["congratulations"])
-
-            except SessionPasswordNeededError:
-                await call.edit(
-                    self.strings["enter_2fa"],
-                    reply_markup=[
-                        [
-                            {
-                                "text": "🔐 2FA",
-                                "input": "👓 Your 2FA code",
-                                "handler": self.twofa_handler,
-                                "args": (
-                                    login.phone_code_hash,
-                                    call.inline_message_id,
-                                ),
-                            },
-                        ],
-                    ],
-                )
+                if result.status == "need_2fa":
+                    return await call.edit(
+                        self.strings["enter_2fa"],
+                        reply_markup=self._password_markup(call.inline_message_id),
+                    )
+                await self._connected_telethon(result, call)
+            except TelegramConnectionError as error:
+                await call.edit("❌ " + utils.escape_html(str(error)))
 
         if purpose == "stopshizu":
             await call.edit(self.strings["shutted_down"])
             sys.exit(0)
 
-    async def twofa_handler(
-        self,
-        call: "aiogram.types.CallbackQuery",
-        query: str,
-        phone_code_hash: str,
-        inline_message_id: str,
-    ):
+    async def twofa_handler(self, call, query: str, inline_message_id: str):
+        """Resume the same QR login; never echo or persist the supplied password."""
         try:
-            await _client.sign_in(
-                phone=f"+{(await self.app.get_me()).phone_number}",
-                password=query,
-                phone_code_hash=phone_code_hash,
+            try:
+                result = await self._telethon_service().connect(
+                    self.app, (await self.app.get_me()).id, password=query
+                )
+                await self._connected_telethon(result, call, inline_message_id)
+            except TelegramConnectionError as error:
+                await call.edit(
+                    "❌ " + utils.escape_html(str(error)),
+                    inline_message_id=inline_message_id,
+                    reply_markup=self._password_markup(inline_message_id),
+                )
+        except Exception as error:
+            logger.warning("Telethon password handler failed: {}", type(error).__name__)
+        finally:
+            query = None
+
+    @loader.command()
+    async def disabletlmode(self, app: Client, message: types.Message):
+        """Revoke the separate Telethon authorization and remove its encrypted session."""
+        try:
+            live_client = getattr(app, "tl", None)
+            await TelegramDisconnectService(self._telethon_service()).disconnect(
+                (await app.get_me()).id,
+                client=live_client
+                if live_client not in (None, "Not enabled")
+                else None,
             )
-            await call.edit(
-                self.strings["congratulations"], inline_message_id=inline_message_id
-            )
-        except Exception as e:
-            await _client.disconnect()
-            os.remove("shizu-tl.session")
-            await call.edit(f"❌ {e}", inline_message_id=inline_message_id)
+        except TelegramConnectionError as error:
+            return await message.answer("❌ " + utils.escape_html(str(error)))
+        self.db.set("shizu.telethon", "enabled", False)
+        self.db.set("shizu.telethon", "status", "disabled")
+        app.is_tl_enabled = False
+        if getattr(app, "tl", None) not in (None, "Not enabled"):
+            await app.tl.disconnect()
+        await message.answer(self.strings["telethon_disabled"])
 
     @loader.command()
     async def enabletlmode(self, app, message):
@@ -309,9 +300,7 @@ class ShizuSettings(loader.Module):
                 break
 
             if not msg_to_delete:
-                await utils.answer(
-                    message, self.strings("no_message_to_delete")
-                )
+                await utils.answer(message, self.strings("no_message_to_delete"))
                 return
 
         await app.delete_messages(

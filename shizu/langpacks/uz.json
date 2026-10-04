@@ -115,14 +115,14 @@
   "shizu.modules.ShizuSettings.alias_done": "✅ Alias <code>{}</code> bu komanda uchun yaratildi <code>{}</code>",
   "shizu.modules.ShizuSettings.no_such_alias": "❌ Bu alias mavjud emas",
   "shizu.modules.ShizuSettings.alias_removed": "✅ Alias <code>{}</code> o'chirildi",
-  "shizu.modules.ShizuSettings.are_you_sure": "🚸 <b>Telethonni yoqingizga ishonchingiz komilmi? Biz sizning amallaringizdan javobgar emas, hatto agar siz bloklangansiz. Telethonni yoqish, noma'lum natijalarga yoki bizning siyosatimizni buzishga olib kelishi mumkin. Iltimos, ehtiyotkorlik bilan harakat qiling va ushbu xususiyatni siz mas'uliyat bilan va bizning ko'rsatmalarimizga muvofiq mas'ul foydalaning. Telethonni noto'g'ri foydalanish, hisobni to'xtatish yoki doimiy bloklanganligiga qadar shikoyatlarga olib kelishi mumkin.</b>",
-  "shizu.modules.ShizuSettings.yes_button": "✅ To'liq ishonch",
-  "shizu.modules.ShizuSettings.no_button": "❌ Yo'q",
+  "shizu.modules.ShizuSettings.are_you_sure": "🧩 <b>Telethonni ulaysizmi?</b>\nYangi kirish kodisiz 100+ qo‘shimcha mos modullardan foydalaning.\n\nTelegram <b>Shizu</b> qurilmasidan kirishni taniysizmi deb so‘raydi — «Ha» ni bosing.",
+  "shizu.modules.ShizuSettings.yes_button": "✅ Ulash",
+  "shizu.modules.ShizuSettings.no_button": "Hozir emas",
   "shizu.modules.ShizuSettings.congratulations": "🎉 <b>Tabriklaymiz! Siz telethonni muvaffaqiyatli yoqdingiz!</b>\n<i>Lekin o'zgarishlarni amalga oshirish uchun botni qayta ishga tushirishingiz kerak</i> ",
   "shizu.modules.ShizuSettings.already_enabled": "🧞 <b>Telethon allaqachon yoqingan</b>",
   "shizu.modules.ShizuSettings.are_sure_to_stop": "🤔 <b>Siz botni to'xtatishga ishonchingiz komilmi? Keyingi safar uni ozingiz yoqishingiz kerak bo'ladi</b>",
   "shizu.modules.ShizuSettings.shutted_down": "🩹 <b>Bot o'chirildi</b>",
-  "shizu.modules.ShizuSettings.enter_2fa": "🔐 <b>2FA kodingizni kiriting</b>",
+  "shizu.modules.ShizuSettings.enter_2fa": "🔐 <b>Telegram bulutli parolingizni kiriting</b>\nParol faqat kirishni yakunlash uchun ishlatiladi.",
   "shizu.modules.ShizuSettings.from_where": "❔ <b>Tozalashni boshlash uchun xabarga javob bering</b>",
   "shizu.modules.ShizuSettings.no_message_to_delete": "❌ <b>O'chirish uchun xabar yo'q</b>",
   "shizu.modules.ShizuTester.ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Telegramga javob tezligi:</b> <code>{}</code> <b>ms</b>",
@@ -337,5 +337,6 @@
   "shizu.modules.ShizuLoader.denied": "🛡 <b>This version of the module was denied.</b> Revoke the decision with <code>.bsforget</code> to review it again",
   "shizu.modules.ShizuPermissions.button_owners": "👑 Egalar",
   "shizu.modules.ShizuSettings.api_on": "🛡 <b>API himoyasi yoqildi.</b>\nShizu modullar akkauntni flud-banga olib kelmasligi uchun yuborish tezligini cheklaydi.",
-  "shizu.modules.ShizuSettings.api_off": "⚠️ <b>API himoyasi o‘chirildi.</b>\nModullar istalgancha tez yuborishi mumkin, flud-ban xavfi bor."
+  "shizu.modules.ShizuSettings.api_off": "⚠️ <b>API himoyasi o‘chirildi.</b>\nModullar istalgancha tez yuborishi mumkin, flud-ban xavfi bor.",
+  "shizu.modules.ShizuSettings.telethon_disabled": "Telethon uzildi va alohida avtorizatsiya bekor qilindi. Modullarni o‘chirish uchun Shizu’ni qayta ishga tushiring."
 }
