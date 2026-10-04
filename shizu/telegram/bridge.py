@@ -128,6 +128,16 @@ class ManagedTelegramClient(TelegramClient):
         try:
             result = await super()._call(sender, request, ordered, flood_sleep_threshold)
         except tl_errors.RPCError as error:
+            if (
+                isinstance(error, tl_errors.AuthKeyUnregisteredError)
+                and self.connection_state.user_id is None
+                and self.session_invalidated is None
+                and not self._logging_out
+            ):
+                # connect() probes get_me() before a fresh QR login. Telethon
+                # must receive UnauthorizedError itself so get_me() returns
+                # None and connection initialization can continue normally.
+                raise
             if TelegramErrorMapper.invalid_session(error):
                 self.connection_state.invalidated()
                 if self.session_invalidated is not None:
