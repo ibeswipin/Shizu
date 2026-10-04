@@ -30,6 +30,7 @@ from shizu.telegram.exceptions import (
     TwoFactorRequired,
 )
 from shizu.telegram.state import TelethonConnectionState
+from shizu.telegram.device import TelegramDeviceProfile
 
 logger = logging.getLogger(__name__)
 
@@ -162,9 +163,9 @@ class TelethonLoginBridge:
         api_id: int,
         api_hash: str,
         *,
-        device_model: str = "Shizu",
-        app_version: str = "1.0",
-        system_version: str = "Shizu service",
+        device_model: str = TelegramDeviceProfile.device_model,
+        app_version: str = TelegramDeviceProfile.app_version,
+        system_version: str = TelegramDeviceProfile.system_version,
         timeout: float = 30,
     ) -> None:
         self.api_id, self.api_hash = api_id, api_hash

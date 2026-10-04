@@ -26,6 +26,7 @@ from shizu.telegram.exceptions import (
     TelethonSessionInvalid,
 )
 from shizu.telegram.services import TelegramConnectionService, TelegramDisconnectService
+from shizu.telegram.device import TelegramDeviceProfile
 
 
 @loader.module(name="ShizuSettings", author="shizu")
@@ -225,7 +226,9 @@ class ShizuSettings(loader.Module):
                 app.is_tl_enabled = True
         if utils.is_tl_enabled(app) is False:
             return await message.answer(
-                self.strings["are_you_sure"],
+                self.strings["are_you_sure"].format(
+                    device=utils.escape_html(TelegramDeviceProfile.from_config().device_model)
+                ),
                 reply_markup=self.markup_("enabletlmode"),
             )
 

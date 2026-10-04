@@ -53,6 +53,7 @@ from pyrogram import errors, raw
 
 from shizu import utils
 from shizu.bot.token_manager import TokenManager
+from shizu.telegram.device import TelegramDeviceProfile
 from shizu.web.telethon_setup import TelethonSetupController
 
 BASE_DIR =  os.path.dirname(utils.get_base_dir())
@@ -162,7 +163,7 @@ class Web:
             name="../shizu",
             api_id=self.api_token.ID,
             api_hash=self.api_token.HASH,
-            device_model=utils.get_random_smartphone(),
+            **TelegramDeviceProfile.from_config().client_options(),
         )
         await self.client.connect()
         return self.client

@@ -30,7 +30,7 @@ from shizu.telegram.exceptions import (
     TwoFactorRequired,
 )
 from shizu.telegram.storage import SessionStorage
-from shizu.version import __version__
+from shizu.telegram.device import TelegramDeviceProfile
 
 
 logger = logging.getLogger(__name__)
@@ -74,9 +74,9 @@ class TelegramConnectionService:
     def from_environment(
         cls, api_id: int, api_hash: str, **kwargs: Any
     ) -> "TelegramConnectionService":
-        """Use Shizu's device label and the operator-supplied encryption key."""
+        """Use the same configured device profile as the primary client."""
         bridge = TelethonLoginBridge(
-            int(api_id), api_hash, app_version=".".join(map(str, __version__))
+            int(api_id), api_hash, **TelegramDeviceProfile.from_config().client_options()
         )
         return cls(bridge, SessionStorage.from_environment(), **kwargs)
 

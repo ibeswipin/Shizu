@@ -121,7 +121,7 @@
   "shizu.modules.ShizuSettings.alias_done": "✅ Alias <code>{}</code> for the command <code>{}</code> has been added",
   "shizu.modules.ShizuSettings.no_such_alias": "❌ There is no such alias",
   "shizu.modules.ShizuSettings.alias_removed": "✅ Alias <code>{}</code> has been deleted",
-  "shizu.modules.ShizuSettings.are_you_sure": "🧩 <b>Connect Telethon?</b>\nAccess 100+ additional compatible modules, without another phone code.\n\nTelegram will ask whether you recognize the login from <b>Shizu</b> — tap “Yes”.",
+  "shizu.modules.ShizuSettings.are_you_sure": "🧩 <b>Connect Telethon?</b>\nAccess 100+ additional compatible modules, without another phone code.\n\nTelegram will ask whether you recognize the login from <b>{device}</b> — tap “Yes”.",
   "shizu.modules.ShizuSettings.yes_button": "✅ Connect",
   "shizu.modules.ShizuSettings.no_button": "Not now",
   "shizu.modules.ShizuSettings.congratulations": "🎉 <b>Congratulations! You have successfully enabled Telethon!</b>\n<i>Restart the bot to apply the changes</i>",

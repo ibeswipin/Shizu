@@ -33,6 +33,7 @@ from pyrogram.raw.functions.auth.export_login_token import ExportLoginToken
 from qrcode.main import QRCode
 from shizu import database, utils
 from shizu.health import Reporter, reporter
+from shizu.telegram.device import TelegramDeviceProfile
 from shizu.telegram.exceptions import (
     AccountMismatch,
     TelegramConnectionError,
@@ -96,9 +97,7 @@ class Auth:
         cfg = cp.ConfigParser()
         cfg.read("./config.ini")
 
-        device_model = cfg.get(
-            "pyrogram", "device_model", fallback=utils.get_random_smartphone()
-        )
+        device = TelegramDeviceProfile.from_config(cfg)
         api_id = cfg.get("pyrogram", "api_id", fallback="123")
         api_hash = cfg.get("pyrogram", "api_hash", fallback="hash")
 
@@ -106,7 +105,7 @@ class Auth:
             name=session_name,
             api_id=api_id,
             api_hash=api_hash,
-            device_model=device_model,
+            **device.client_options(),
         )
 
         self.tapp = None
@@ -208,11 +207,12 @@ class Auth:
         api_id = cfg.get("pyrogram", "api_id", fallback="") or colored_input("Enter API ID: ")
         api_hash = cfg.get("pyrogram", "api_hash", fallback="") or colored_input("Enter API hash: ")
 
-        cfg["pyrogram"] = {
-            "api_id": api_id,
-            "api_hash": api_hash,
-            "device_model": utils.get_random_smartphone(),
-        }
+        if not cfg.has_section("pyrogram"):
+            cfg.add_section("pyrogram")
+        cfg.set("pyrogram", "api_id", api_id)
+        cfg.set("pyrogram", "api_hash", api_hash)
+        if not cfg.get("pyrogram", "device_model", fallback="").strip():
+            cfg.set("pyrogram", "device_model", self.app.device_model)
 
         with open("config.ini", "w", encoding="utf-8") as file:
             cfg.write(file)
