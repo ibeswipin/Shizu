@@ -8,7 +8,7 @@ include = ["shizu", "shizu.*"]
 [project]
 name = "shizu"
 version = "1.0.4"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.10,<3.12"
 dependencies = [
     "aiogram==2.25.1",
     "aiohttp==3.8.6",
@@ -22,7 +22,6 @@ dependencies = [
     "loguru>=0.7.3",
     "meval>=2.5",
     "psutil>=7.2.2",
-    "pykeyboard>=0.1.5",
     "pyyaml>=6.0.3",
     "qrcode>=8.2",
     "requests>=2.34.2",
@@ -32,7 +31,6 @@ dependencies = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "RUF006"]

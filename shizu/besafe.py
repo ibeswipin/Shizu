@@ -24,7 +24,6 @@ from concurrent.futures import ProcessPoolExecutor
 from urllib.parse import unquote
 
 from pyrogram import Client
-from pyrogram.methods.messages.inline_session import get_session
 from pyrogram.session import Session
 from pyrogram.storage.sqlite_storage import SQLiteStorage
 from pyrogram.storage.storage import Storage
@@ -543,7 +542,6 @@ class BeSafe:
 
         self._media_codes = {
             Client.get_session.__code__,
-            get_session.__code__,
             TelegramBaseClient._create_exported_sender.__code__,
         }
 
