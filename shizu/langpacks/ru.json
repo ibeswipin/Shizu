@@ -118,7 +118,7 @@
   "shizu.modules.ShizuSettings.alias_done": "✅ Алиас <code>{}</code> для команды <code>{}</code> добавлен",
   "shizu.modules.ShizuSettings.no_such_alias": "❌ Такого алиаса не существует",
   "shizu.modules.ShizuSettings.alias_removed": "✅ Алиас <code>{}</code> удалён",
-  "shizu.modules.ShizuSettings.are_you_sure": "🧩 <b>Подключить Telethon?</b>\nЭто откроет доступ к 100+ дополнительным совместимым модулям без нового кода входа.\n\nTelegram спросит, узнаёте ли вы вход с устройства <b>Shizu</b> — нажмите «Да».",
+  "shizu.modules.ShizuSettings.are_you_sure": "🧩 <b>Подключить Telethon?</b>\nЭто откроет доступ к 100+ дополнительным совместимым модулям без нового кода входа.\n\nTelegram спросит, узнаёте ли вы вход с устройства <b>{device}</b> — нажмите «Да».",
   "shizu.modules.ShizuSettings.yes_button": "✅ Подключить",
   "shizu.modules.ShizuSettings.no_button": "Пока нет",
   "shizu.modules.ShizuSettings.congratulations": "🎉 <b>Поздравляем! Вы успешно включили Telethon!</b>\n<i>Перезапустите бота, чтобы изменения вступили в силу</i>",

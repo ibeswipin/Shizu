@@ -52,33 +52,6 @@ def clean(raw: str) -> str:
     return CONTROL.sub("", text)
 
 
-async def spawn_pty(cmd: str, term: str):
-    """Runs cmd in a pseudo-terminal, returns (process, pty master fd)"""
-    master, slave = pty.openpty()
-    process = await asyncio.create_subprocess_shell(
-        cmd,
-        stdin=slave,
-        stdout=slave,
-        stderr=slave,
-        cwd=utils.get_base_dir(),
-        env={**os.environ, "TERM": term},
-        start_new_session=True,
-        preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0),
-    )
-    os.close(slave)
-    return process, master
-
-ANSI = re.compile(r"\x1b(\[[0-?]*[ -/]*[@-~]|\][^\x07]*\x07|[()][0-9A-Za-z]|[=>])")
-CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-
-
-def clean(raw: str) -> str:
-    """Strips ANSI codes and applies carriage returns like a terminal would"""
-    text = ANSI.sub("", raw).replace("\r\n", "\n")
-    text = "\n".join(line.rsplit("\r", 1)[-1] for line in text.split("\n"))
-    return CONTROL.sub("", text)
-
-
 async def spawn_pty(cmd: str, term: str = "dumb"):
     """Runs cmd in a pseudo-terminal, returns (process, pty master fd)"""
     master, slave = pty.openpty()
@@ -136,7 +109,7 @@ class TerminalMod(loader.Module):
         key = (message.chat.id, message.id)
         self._procs[key] = (master, sender)
 
-        wait = asyncio.ensure_future(process.wait())
+        wait = asyncio.create_task(process.wait())
         shown = None
         try:
             while True:
@@ -160,7 +133,9 @@ class TerminalMod(loader.Module):
     def _render(self, cmd: str, output: bytearray, code) -> str:
         out = utils.escape_html(clean(output.decode(errors="replace")).strip()[-3500:])
         status = (
-            self.strings("running") if code is None else self.strings("done").format(code)
+            self.strings("running")
+            if code is None
+            else self.strings("done").format(code)
         )
         return (
             f"⌨️ <b>Command:</b> <pre language='shell'>{utils.escape_html(cmd.strip())}</pre>\n"
@@ -209,7 +184,7 @@ class TerminalMod(loader.Module):
             disable_web_page_preview=True,
         )
         self._web = w
-        asyncio.ensure_future(self._web_watchdog(w))
+        utils.spawn(self._web_watchdog(w))
         await message.answer(self.strings("web_ready").format(w["url"]))
 
     async def _web_start(self):
@@ -242,7 +217,7 @@ class TerminalMod(loader.Module):
             await w["runner"].cleanup()
             return None
 
-        asyncio.ensure_future(w["tunnel"].process.stdout.read())
+        utils.spawn(w["tunnel"].process.stdout.read())
         return w
 
     async def _web_stop(self, notice: str):
@@ -270,7 +245,9 @@ class TerminalMod(loader.Module):
                 await self._web_stop(self.strings("web_idle"))
 
     def _web_authed(self, request: web.Request) -> bool:
-        return bool(self._web) and request.cookies.get("shizu_term") in self._web["tokens"]
+        return (
+            bool(self._web) and request.cookies.get("shizu_term") in self._web["tokens"]
+        )
 
     async def _web_index(self, request: web.Request):
         page = (
@@ -288,7 +265,7 @@ class TerminalMod(loader.Module):
         if not secrets.compare_digest(password.encode(), w["password"].encode()):
             w["fails"] += 1
             if w["fails"] >= WEB_MAX_FAILS:
-                asyncio.ensure_future(self._web_stop(self.strings("web_locked")))
+                utils.spawn(self._web_stop(self.strings("web_locked")))
 
             return web.Response(
                 text=web_page("terminal_login.html").replace(
@@ -327,10 +304,10 @@ class TerminalMod(loader.Module):
 
             if not data:
                 loop.remove_reader(master)
-                asyncio.ensure_future(ws.close())
+                utils.spawn(ws.close())
                 return
 
-            asyncio.ensure_future(ws.send_bytes(data))
+            utils.spawn(ws.send_bytes(data))
 
         loop.add_reader(master, on_read)
         try:
@@ -344,7 +321,9 @@ class TerminalMod(loader.Module):
                 elif "resize" in data:
                     cols, rows = data["resize"]
                     fcntl.ioctl(
-                        master, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0)
+                        master,
+                        termios.TIOCSWINSZ,
+                        struct.pack("HHHH", rows, cols, 0, 0),
                     )
         finally:
             w["sockets"].discard(ws)

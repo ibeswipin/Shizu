@@ -115,7 +115,7 @@
   "shizu.modules.ShizuSettings.alias_done": "✅ Alias <code>{}</code> bu komanda uchun yaratildi <code>{}</code>",
   "shizu.modules.ShizuSettings.no_such_alias": "❌ Bu alias mavjud emas",
   "shizu.modules.ShizuSettings.alias_removed": "✅ Alias <code>{}</code> o'chirildi",
-  "shizu.modules.ShizuSettings.are_you_sure": "🧩 <b>Telethonni ulaysizmi?</b>\nYangi kirish kodisiz 100+ qo‘shimcha mos modullardan foydalaning.\n\nTelegram <b>Shizu</b> qurilmasidan kirishni taniysizmi deb so‘raydi — «Ha» ni bosing.",
+  "shizu.modules.ShizuSettings.are_you_sure": "🧩 <b>Telethonni ulaysizmi?</b>\nYangi kirish kodisiz 100+ qo‘shimcha mos modullardan foydalaning.\n\nTelegram <b>{device}</b> qurilmasidan kirishni taniysizmi deb so‘raydi — «Ha» ni bosing.",
   "shizu.modules.ShizuSettings.yes_button": "✅ Ulash",
   "shizu.modules.ShizuSettings.no_button": "Hozir emas",
   "shizu.modules.ShizuSettings.congratulations": "🎉 <b>Tabriklaymiz! Siz telethonni muvaffaqiyatli yoqdingiz!</b>\n<i>Lekin o'zgarishlarni amalga oshirish uchun botni qayta ishga tushirishingiz kerak</i> ",

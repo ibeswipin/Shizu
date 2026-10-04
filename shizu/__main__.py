@@ -14,9 +14,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import asyncio
-import sys
 import logging
 import platform
+import sys
 
 ascii_ = """
 
@@ -46,23 +46,23 @@ ascii_ = """
 
 try:
     import pyrogram
-    from .version import __version__
+
     from . import main
     from .logger import setup_logger
+    from .version import __version__
 
     setup_logger("INFO")
 
     banner = (
-        ascii_ +
-        f"🐙 Shuzu v{'.'.join(map(str, __version__))} is starting...\n"
+        ascii_ + f"🐙 Shuzu v{'.'.join(map(str, __version__))} is starting...\n"
         f"🐍 Python v{platform.python_version()}\n"
         f"👾 Pyrogram v{pyrogram.__version__}\n"
         "🤝 Support chat: https://t.me/shizu_talks\n"
     )
     logging.info(banner)
-    
+
     asyncio.run(main.main())
-    
+
 except ModuleNotFoundError as module:
     print(f"🚫 Missing dependency: {module}", file=sys.stderr)
     print("Run bash install.sh to install Shizu dependencies.", file=sys.stderr)

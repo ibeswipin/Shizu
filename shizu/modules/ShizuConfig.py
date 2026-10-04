@@ -25,9 +25,8 @@ import ast
 import contextlib
 import logging
 
-from typing import Union
-from pyrogram.types import Message
 from aiogram.types import CallbackQuery
+from pyrogram.types import Message
 
 from shizu import loader, utils
 
@@ -71,11 +70,15 @@ class ShizuConfig(loader.Module):
         default = module.config.getdef(option)
         v = loader.Validators
 
-        if isinstance(validator, v.Boolean) or (validator is None and isinstance(default, bool)):
+        if isinstance(validator, v.Boolean) or (
+            validator is None and isinstance(default, bool)
+        ):
             return "bool"
         if isinstance(validator, v.Choice):
             return "choice"
-        if isinstance(validator, v.Series) or (validator is None and isinstance(default, list)):
+        if isinstance(validator, v.Series) or (
+            validator is None and isinstance(default, list)
+        ):
             return "list"
         if isinstance(validator, (v.Integer, v.Float)) or (
             validator is None and isinstance(default, (int, float))
@@ -138,7 +141,9 @@ class ShizuConfig(loader.Module):
     async def _show(self, target, text: str, markup: list, inline_message_id=None):
         if isinstance(target, Message):
             return await target.answer(text, reply_markup=markup)
-        await target.edit(text, reply_markup=markup, inline_message_id=inline_message_id)
+        await target.edit(
+            text, reply_markup=markup, inline_message_id=inline_message_id
+        )
 
     def _close_row(self, back_callback, *args) -> list:
         return [
@@ -161,15 +166,17 @@ class ShizuConfig(loader.Module):
 
     def _sections_view(self):
         sections = self._configurable()
-        markup = [[
-            {
-                "text": f"{self.SECTION_EMOJI[name]} {self.strings(name + '_title')} · {len(mods)}",
-                "callback": self.inline__global_config,
-                "args": (name, 0),
-            }
-            for name, mods in sections.items()
-            if mods
-        ]]
+        markup = [
+            [
+                {
+                    "text": f"{self.SECTION_EMOJI[name]} {self.strings(name + '_title')} · {len(mods)}",
+                    "callback": self.inline__global_config,
+                    "args": (name, 0),
+                }
+                for name, mods in sections.items()
+                if mods
+            ]
+        ]
         markup += [[{"text": self.strings("close"), "callback": self.inline__close}]]
         return self.strings("configure"), markup
 
@@ -183,26 +190,34 @@ class ShizuConfig(loader.Module):
         chunk = mods[page * self.MODULES_PER_PAGE : (page + 1) * self.MODULES_PER_PAGE]
 
         markup = utils.chunks(
-            [{"text": name, "callback": self.inline__configure, "args": (name,)} for name in chunk],
+            [
+                {"text": name, "callback": self.inline__configure, "args": (name,)}
+                for name in chunk
+            ],
             3,
         )
         markup += self.bot.build_pagination(
             self.inline__global_config, pages, current_page=page + 1, args=(section,)
         )
         markup += [self._close_row(self.inline__global_config)]
-        title = f"{self.SECTION_EMOJI[section]} <b>{self.strings(section + '_title')}</b>"
+        title = (
+            f"{self.SECTION_EMOJI[section]} <b>{self.strings(section + '_title')}</b>"
+        )
         return f"{self.strings('configure')}\n\n{title}", markup
 
     def _module_view(self, module, page: int = 0):
         options = list(module.config)
         pages = max(1, -(-len(options) // self.OPTIONS_PER_PAGE))
         page = min(page, pages - 1)
-        chunk = options[page * self.OPTIONS_PER_PAGE : (page + 1) * self.OPTIONS_PER_PAGE]
+        chunk = options[
+            page * self.OPTIONS_PER_PAGE : (page + 1) * self.OPTIONS_PER_PAGE
+        ]
 
         markup = utils.chunks(
             [
                 {
-                    "text": ("✏️ " if self._is_modified(module, option) else "") + option,
+                    "text": ("✏️ " if self._is_modified(module, option) else "")
+                    + option,
                     "callback": self.inline__configure_option,
                     "args": (module.name, option),
                 }
@@ -213,8 +228,12 @@ class ShizuConfig(loader.Module):
         markup += self.bot.build_pagination(
             self.inline__configure, pages, current_page=page + 1, args=(module.name,)
         )
-        markup += [self._close_row(self.inline__global_config, self._section_of(module))]
-        return self.strings("configuring_mod").format(utils.escape_html(module.name)), markup
+        markup += [
+            self._close_row(self.inline__global_config, self._section_of(module))
+        ]
+        return self.strings("configuring_mod").format(
+            utils.escape_html(module.name)
+        ), markup
 
     def _option_view(self, module, option, inline_message_id: str, note: str = ""):
         mod = module.name
@@ -223,13 +242,17 @@ class ShizuConfig(loader.Module):
         markup = []
 
         if kind == "bool":
-            markup.append([
-                {
-                    "text": self.strings("false") if current else self.strings("true"),
-                    "callback": self.inline__set_value,
-                    "args": (mod, option, not current),
-                }
-            ])
+            markup.append(
+                [
+                    {
+                        "text": self.strings("false")
+                        if current
+                        else self.strings("true"),
+                        "callback": self.inline__set_value,
+                        "args": (mod, option, not current),
+                    }
+                ]
+            )
         elif kind == "choice":
             markup += utils.chunks(
                 [
@@ -243,37 +266,43 @@ class ShizuConfig(loader.Module):
                 3,
             )
         elif kind == "number":
-            markup.append([
-                {
-                    "text": f"{delta:+}",
-                    "callback": self.inline__increment_value,
-                    "args": (mod, option, delta),
-                }
-                for delta in (-10, -1, 1, 10)
-            ])
-        elif kind == "list":
-            markup.append([
-                {
-                    "text": self.strings("add_value_to_list_button"),
-                    "input": self.strings("enter_value"),
-                    "handler": self.inline__add_item,
-                    "args": (mod, option, inline_message_id),
-                },
-                {
-                    "text": self.strings("remove_value_from_list_button"),
-                    "input": self.strings("enter_value"),
-                    "handler": self.inline__remove_item,
-                    "args": (mod, option, inline_message_id),
-                },
-            ])
-            if module.config.getdef(option):
-                markup.append([
+            markup.append(
+                [
                     {
-                        "text": self.strings("choose_button"),
-                        "callback": self.inline__choose,
-                        "args": (mod, option),
+                        "text": f"{delta:+}",
+                        "callback": self.inline__increment_value,
+                        "args": (mod, option, delta),
                     }
-                ])
+                    for delta in (-10, -1, 1, 10)
+                ]
+            )
+        elif kind == "list":
+            markup.append(
+                [
+                    {
+                        "text": self.strings("add_value_to_list_button"),
+                        "input": self.strings("enter_value"),
+                        "handler": self.inline__add_item,
+                        "args": (mod, option, inline_message_id),
+                    },
+                    {
+                        "text": self.strings("remove_value_from_list_button"),
+                        "input": self.strings("enter_value"),
+                        "handler": self.inline__remove_item,
+                        "args": (mod, option, inline_message_id),
+                    },
+                ]
+            )
+            if module.config.getdef(option):
+                markup.append(
+                    [
+                        {
+                            "text": self.strings("choose_button"),
+                            "callback": self.inline__choose,
+                            "args": (mod, option),
+                        }
+                    ]
+                )
 
         markup.append(
             [
@@ -314,21 +343,29 @@ class ShizuConfig(loader.Module):
 
         return text, markup
 
-    async def _refresh_option(self, call, module, option, note: str = "", inline_message_id=None):
+    async def _refresh_option(
+        self, call, module, option, note: str = "", inline_message_id=None
+    ):
         inline_message_id = inline_message_id or call.inline_message_id
         text, markup = self._option_view(module, option, inline_message_id, note)
         await call.edit(text, reply_markup=markup, inline_message_id=inline_message_id)
 
-    async def _apply(self, call, mod: str, option: str, get_value, inline_message_id=None):
+    async def _apply(
+        self, call, mod: str, option: str, get_value, inline_message_id=None
+    ):
         module = self._module(mod)
         if not module or option not in module.config:
-            return await call.edit("🚫", reply_markup=[], inline_message_id=inline_message_id)
+            return await call.edit(
+                "🚫", reply_markup=[], inline_message_id=inline_message_id
+            )
 
         try:
             value = get_value(module)
         except (ValueError, TypeError) as e:
             note = self.strings("validation_error").format(utils.escape_html(str(e)))
-            return await self._refresh_option(call, module, option, note, inline_message_id)
+            return await self._refresh_option(
+                call, module, option, note, inline_message_id
+            )
 
         if value is None:
             self._reset(module, option)
@@ -346,12 +383,18 @@ class ShizuConfig(loader.Module):
             call,
             mod,
             option,
-            lambda module: self._parse(module, option, query) if query.strip() else None,
+            lambda module: (
+                self._parse(module, option, query) if query.strip() else None
+            ),
             inline_message_id,
         )
 
-    async def inline__set_value(self, call: CallbackQuery, mod: str, option: str, value) -> None:
-        await self._apply(call, mod, option, lambda module: self._check(module, option, value))
+    async def inline__set_value(
+        self, call: CallbackQuery, mod: str, option: str, value
+    ) -> None:
+        await self._apply(
+            call, mod, option, lambda module: self._check(module, option, value)
+        )
 
     async def inline__increment_value(
         self, call: CallbackQuery, mod: str, option: str, delta: int
@@ -363,7 +406,9 @@ class ShizuConfig(loader.Module):
             lambda module: self._check(module, option, module.config[option] + delta),
         )
 
-    async def inline__set_to_default(self, call: CallbackQuery, mod: str, option: str) -> None:
+    async def inline__set_to_default(
+        self, call: CallbackQuery, mod: str, option: str
+    ) -> None:
         module = self._module(mod)
         if module:
             self._reset(module, option)
@@ -377,7 +422,9 @@ class ShizuConfig(loader.Module):
                 item = ast.literal_eval(query)
             except (ValueError, SyntaxError):
                 item = query
-            return self._check(module, option, list(module.config[option] or []) + [item])
+            return self._check(
+                module, option, list(module.config[option] or []) + [item]
+            )
 
         await self._apply(call, mod, option, add, inline_message_id)
 
@@ -443,13 +490,15 @@ class ShizuConfig(loader.Module):
         if module and config_opt in module.config:
             await self._refresh_option(call, module, config_opt)
 
-    async def inline__configure(self, call: CallbackQuery, mod: str, page: int = 0) -> None:
+    async def inline__configure(
+        self, call: CallbackQuery, mod: str, page: int = 0
+    ) -> None:
         module = self._module(mod)
         if module:
             await self._show(call, *self._module_view(module, page))
 
     async def inline__global_config(
-        self, call: Union[Message, CallbackQuery], section: str = None, page: int = 0
+        self, call: Message | CallbackQuery, section: str = None, page: int = 0
     ) -> None:
         await self._show(call, *self._global_view(section, page))
 
@@ -472,7 +521,8 @@ class ShizuConfig(loader.Module):
             module = self.all_modules.get_module(args)
             if not module or not hasattr(module, "config"):
                 await utils.answer(
-                    message, f"❌ Module '{utils.escape_html(args)}' not found or has no config"
+                    message,
+                    f"❌ Module '{utils.escape_html(args)}' not found or has no config",
                 )
                 return
 
@@ -480,11 +530,13 @@ class ShizuConfig(loader.Module):
                 self.db.save()
                 self.reconfmod(module, self.db)
                 await utils.answer(
-                    message, f"✅ Reset configs for module '{utils.escape_html(module.name)}'"
+                    message,
+                    f"✅ Reset configs for module '{utils.escape_html(module.name)}'",
                 )
             else:
                 await utils.answer(
-                    message, f"ℹ️ Module '{utils.escape_html(module.name)}' has no custom configs"
+                    message,
+                    f"ℹ️ Module '{utils.escape_html(module.name)}' has no custom configs",
                 )
         else:
             # Reset all modules
@@ -509,8 +561,7 @@ class ShizuConfig(loader.Module):
             if (
                 not getattr(message, "via_bot", False)
                 or message.via_bot.id != (await self.bot.bot.get_me()).id
-                or "This message will be deleted..."
-                not in getattr(message, "text", "")
+                or "This message will be deleted..." not in getattr(message, "text", "")
             ):
                 return
 

@@ -32,10 +32,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import os
-import re
 import asyncio
 import inspect
+import os
+import re
 
 import aiohttp_jinja2
 import jinja2
@@ -67,7 +67,7 @@ class TunnelManager:
         async for line in stdout:
             match = re.search(r"tunneled.*?(https:\/\/.+)", line.decode())
             if match:
-                self._drain_task = asyncio.ensure_future(self._drain(stdout))
+                self._drain_task = asyncio.create_task(self._drain(stdout))
                 return match[1].strip()
         return None
 
@@ -115,7 +115,6 @@ class Web(initial_setup.Web, TunnelManager):
         await self.open_tunnel(self.port)
 
         self.running.set()
-
 
     async def stop(self):
         await self.runner.shutdown()

@@ -15,11 +15,11 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-    █ █ ▀ █▄▀ ▄▀█ █▀█ ▀    ▄▀█ ▀█▀ ▄▀█ █▀▄▀█ ▄▀█
-    █▀█ █ █ █ █▀█ █▀▄ █ ▄  █▀█  █  █▀█ █ ▀ █ █▀█
+█ █ ▀ █▄▀ ▄▀█ █▀█ ▀    ▄▀█ ▀█▀ ▄▀█ █▀▄▀█ ▄▀█
+█▀█ █ █ █ █▀█ █▀▄ █ ▄  █▀█  █  █▀█ █ ▀ █ █▀█
 
-    Copyright 2022 t.me/hikariatama
-    Licensed under the GNU GPLv3
+Copyright 2022 t.me/hikariatama
+Licensed under the GNU GPLv3
 """
 
 # Shizu Copyright (C) 2023-2026  Ibeswipin
@@ -37,40 +37,39 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import html
-import json
-import re
-import time
-import sys
-import inspect
-
-import logging
 import asyncio
-import functools
+import builtins
 import contextlib
+import functools
+import html
+import inspect
+import json
+import logging
+import re
+import sys
+from typing import Any
+
 import aiogram
 import pyrogram
-
 from aiogram.types import (
     CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
     InlineQuery,
     InlineQueryResultArticle,
+    InlineQueryResultAudio,
+    InlineQueryResultCachedPhoto,
+    InlineQueryResultGif,
+    InlineQueryResultPhoto,
+    InlineQueryResultVideo,
     InputTextMessageContent,
     Message,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    InlineQueryResultPhoto,
-    InlineQueryResultCachedPhoto,
-    InlineQueryResultVideo,
-    InlineQueryResultAudio,
-    InlineQueryResultGif,
 )
-from typing import Union, List, Any, Optional
 
-from shizu import utils, logger as lo
-from shizu.security import EVERYONE, mask_of
+from shizu import database, utils
+from shizu import logger as lo
 from shizu.bot.types import Item
-from shizu import database
+from shizu.security import EVERYONE, mask_of
 from shizu.translator import Translator
 
 logger = logging.getLogger(__name__)
@@ -106,14 +105,14 @@ async def delete(self: Any = None, form: Any = None, form_uid: Any = None) -> bo
 
 async def edit(
     text: str,
-    reply_markup: List[List[dict]] = None,
-    force_me: Union[bool, None] = True,
-    always_allow: Union[List[int], None] = None,
+    reply_markup: list[list[dict]] = None,
+    force_me: bool | None = True,
+    always_allow: list[int] | None = None,
     self: Any = None,
     query: Any = None,
     form: Any = None,
     form_uid: Any = None,
-    inline_message_id: Union[str, None] = None,
+    inline_message_id: str | None = None,
     disable_web_page_preview: bool = True,
 ) -> None:
     """
@@ -170,9 +169,7 @@ async def edit(
         )
     except aiogram.utils.exceptions.MessageIdInvalid:
         with contextlib.suppress(aiogram.utils.exceptions.InvalidQueryID):
-            await query.answer(
-                "Couldn't edit the message because it was deleted :("
-            )
+            await query.answer("Couldn't edit the message because it was deleted :(")
     except aiogram.utils.exceptions.BadRequest as error:
         if "no text in the message" not in str(error).lower():
             raise
@@ -213,7 +210,6 @@ class InlineCall(CallbackQuery):
         self.unload = None
         self.edit = functools.partial(edit, self=self)
         self.delete = functools.partial(delete, self=self)
-    
 
 
 class Events(Item):
@@ -271,7 +267,10 @@ class Events(Item):
             buttons = form.get("buttons", [])
             if isinstance(buttons, list):
                 for button in array_sum(buttons):
-                    if button.get("_switch_query") == switch_query and "input" in button:
+                    if (
+                        button.get("_switch_query") == switch_query
+                        and "input" in button
+                    ):
                         yield form, button
                         return
         button = self._custom_map.get(switch_query)
@@ -298,7 +297,9 @@ class Events(Item):
             return func(*args)
         if any(p.kind is p.VAR_POSITIONAL for p in params):
             return func(*args)
-        positional = [p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+        positional = [
+            p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
         return func(*args[: len(positional)])
 
     @staticmethod
@@ -336,7 +337,7 @@ class Events(Item):
         return self._generate_markup(markup or [])
 
     async def _message_handler(self, message: Message) -> Message:
-        setattr(message, "answer", functools.partial(answer, app=self, message=message))
+        message.answer = functools.partial(answer, app=self, message=message)
 
         for func in self._all_modules.message_handlers.values():
             if not await self._check_filters(func, func.__self__, message):
@@ -353,7 +354,9 @@ class Events(Item):
             try:
                 await watcher(message)
             except Exception:
-                logger.exception("aiogram_watcher of %s failed", getattr(module, "name", module))
+                logger.exception(
+                    "aiogram_watcher of %s failed", getattr(module, "name", module)
+                )
         return message
 
     async def gallery(
@@ -389,7 +392,11 @@ class Events(Item):
             return pool.pop(0) if pool else None
 
         def caption_for(index: int) -> str:
-            text = self._call_accepted(caption, history[index]) if callable(caption) else caption
+            text = (
+                self._call_accepted(caption, history[index])
+                if callable(caption)
+                else caption
+            )
             return self.sanitise_text(text)
 
         first = await fetch()
@@ -411,6 +418,7 @@ class Events(Item):
                 while preload and len(history) < position["index"] + 1 + preload:
                     if not await extend():
                         return
+
         extra = reply_markup or []
         if isinstance(extra, dict):
             extra = [[extra]]
@@ -423,7 +431,9 @@ class Events(Item):
             row = []
             if position["index"] > 0:
                 row.append({"text": "⬅️", "callback": functools.partial(navigate, -1)})
-            if not isinstance(next_handler, (list, tuple)) or position["index"] + 1 < len(next_handler):
+            if not isinstance(next_handler, (list, tuple)) or position[
+                "index"
+            ] + 1 < len(next_handler):
                 row.append({"text": "➡️", "callback": functools.partial(navigate, 1)})
             row.append({"text": "🔻", "callback": close})
             buttons = [row, *extra]
@@ -434,9 +444,15 @@ class Events(Item):
         allowed = set(always_allow or [])
 
         async def guard(call) -> bool:
-            if open_to_all or self._is_owner(call.from_user.id) or call.from_user.id in allowed:
+            if (
+                open_to_all
+                or self._is_owner(call.from_user.id)
+                or call.from_user.id in allowed
+            ):
                 return True
-            await call.answer(self._tr("not_allowed", "🚫 You are not allowed to press this button!"))
+            await call.answer(
+                self._tr("not_allowed", "🚫 You are not allowed to press this button!")
+            )
             return False
 
         async def navigate(step: int, call):
@@ -447,12 +463,20 @@ class Events(Item):
                 return await call.answer()
             while target >= len(history):
                 if not await extend():
-                    return await call.answer(self._tr("no_more_items", "No more items"), show_alert=False)
+                    return await call.answer(
+                        self._tr("no_more_items", "No more items"), show_alert=False
+                    )
             position["index"] = target
-            asyncio.ensure_future(warm())
-            media_cls = aiogram.types.InputMediaAnimation if gif else aiogram.types.InputMediaPhoto
+            utils.spawn(warm())
+            media_cls = (
+                aiogram.types.InputMediaAnimation
+                if gif
+                else aiogram.types.InputMediaPhoto
+            )
             await self.bot.edit_message_media(
-                media=media_cls(history[target], caption=caption_for(target), parse_mode="HTML"),
+                media=media_cls(
+                    history[target], caption=caption_for(target), parse_mode="HTML"
+                ),
                 inline_message_id=call.inline_message_id,
                 chat_id=None if call.inline_message_id else call.message.chat.id,
                 message_id=None if call.inline_message_id else call.message.message_id,
@@ -465,7 +489,9 @@ class Events(Item):
                 return
             if call.inline_message_id:
                 await self.bot.edit_message_caption(
-                    inline_message_id=call.inline_message_id, caption="🔻", reply_markup=None
+                    inline_message_id=call.inline_message_id,
+                    caption="🔻",
+                    reply_markup=None,
                 )
             else:
                 await call.message.delete()
@@ -481,19 +507,23 @@ class Events(Item):
             **({"gif": first} if gif else {"photo": first}),
         )
         if result:
-            asyncio.ensure_future(warm())
+            utils.spawn(warm())
         return result
 
     def _inline_error_text(self, error: Exception) -> str:
         error_id = getattr(error, "ID", None)
         if template := self.INLINE_ERRORS.get(error_id):
             return self._tr(f"error_{error_id}", template).format(
-                bot=getattr(self, "bot_username", "bot"), value=getattr(error, "value", "")
+                bot=getattr(self, "bot_username", "bot"),
+                value=getattr(error, "value", ""),
             )
-        return self._tr(
-            "error_inline_failed",
-            "🚫 <b>The inline bot could not show this message.</b>\nDetails are in the logs chat.",
-        ) + f"\n\n<code>{utils.escape_html(str(error))}</code>"
+        return (
+            self._tr(
+                "error_inline_failed",
+                "🚫 <b>The inline bot could not show this message.</b>\nDetails are in the logs chat.",
+            )
+            + f"\n\n<code>{utils.escape_html(str(error))}</code>"
+        )
 
     async def _inline_results(self, query: str):
         username = (await self._app.inline_bot.get_me()).username
@@ -503,14 +533,17 @@ class Events(Item):
             if getattr(self, "_inline_fix_tried", False):
                 raise
             self._inline_fix_tried = True
-            logger.warning("Inline mode is off for @%s, enabling it via @BotFather", username)
+            logger.warning(
+                "Inline mode is off for @%s, enabling it via @BotFather", username
+            )
             await self.enable_inline(username)
             return await self._app.get_inline_bot_results(username, query)
 
     def _is_owner(self, user_id: int) -> bool:
-        return user_id in (self._me, database.db.get("shizu.me", "me")) or user_id in database.db.get(
-            "shizu.me", "owners", []
-        )
+        return user_id in (
+            self._me,
+            database.db.get("shizu.me", "me"),
+        ) or user_id in database.db.get("shizu.me", "owners", [])
 
     async def _inline_handler(self, inline_query: InlineQuery) -> InlineQuery:
         """Handles inline queries"""
@@ -589,7 +622,9 @@ class Events(Item):
                                 photo_file_id=photo,
                                 caption=self._forms[query].get("text", None),
                                 parse_mode="HTML",
-                                reply_markup=self._generate_markup(query, for_inline_query=True),
+                                reply_markup=self._generate_markup(
+                                    query, for_inline_query=True
+                                ),
                             )
                         ],
                         cache_time=0,
@@ -605,7 +640,9 @@ class Events(Item):
                                 parse_mode="HTML",
                                 photo_url=self._forms[query].get("photo", None),
                                 thumb_url=self._forms[query].get("photo", None),
-                                reply_markup=self._generate_markup(query, for_inline_query=True),
+                                reply_markup=self._generate_markup(
+                                    query, for_inline_query=True
+                                ),
                             )
                         ],
                         cache_time=60,
@@ -621,7 +658,9 @@ class Events(Item):
                                 parse_mode="HTML",
                                 video_url=self._forms[query].get("video", None),
                                 thumb_url=self._forms[query].get("video", None),
-                                reply_markup=self._generate_markup(query, for_inline_query=True),
+                                reply_markup=self._generate_markup(
+                                    query, for_inline_query=True
+                                ),
                                 mime_type="video/mp4",
                             )
                         ],
@@ -637,7 +676,9 @@ class Events(Item):
                                 parse_mode="HTML",
                                 gif_url=self._forms[query].get("gif", None),
                                 thumb_url=self._forms[query].get("gif", None),
-                                reply_markup=self._generate_markup(query, for_inline_query=True),
+                                reply_markup=self._generate_markup(
+                                    query, for_inline_query=True
+                                ),
                             )
                         ],
                         cache_time=60,
@@ -652,7 +693,9 @@ class Events(Item):
                                 caption=self._forms[query].get("text", None),
                                 parse_mode="HTML",
                                 audio_url=self._forms[query].get("audio", None),
-                                reply_markup=self._generate_markup(query, for_inline_query=True),
+                                reply_markup=self._generate_markup(
+                                    query, for_inline_query=True
+                                ),
                             )
                         ],
                         cache_time=60,
@@ -668,7 +711,9 @@ class Events(Item):
                                 "HTML",
                                 disable_web_page_preview=True,
                             ),
-                            reply_markup=self._generate_markup(query, for_inline_query=True),
+                            reply_markup=self._generate_markup(
+                                query, for_inline_query=True
+                            ),
                         )
                     ],
                     cache_time=60,
@@ -687,7 +732,9 @@ class Events(Item):
                                 "HTML",
                                 disable_web_page_preview=True,
                             ),
-                            reply_markup=self._generate_markup(query, for_inline_query=True),
+                            reply_markup=self._generate_markup(
+                                query, for_inline_query=True
+                            ),
                         )
                     ],
                     cache_time=60,
@@ -703,16 +750,18 @@ class Events(Item):
                                 "HTML",
                                 disable_web_page_preview=True,
                             ),
-                            reply_markup=self._generate_markup(query, for_inline_query=True),
+                            reply_markup=self._generate_markup(
+                                query, for_inline_query=True
+                            ),
                         )
                     ],
                     cache_time=60,
                 )
         except KeyError:
             for form, button in self._input_buttons(query.split()[0]):
-                if inline_query.from_user.id in [self._me] + form.get("always_allow", []) + self._db.get(
-                    "shizu.me", "owners", []
-                ):
+                if inline_query.from_user.id in [self._me] + form.get(
+                    "always_allow", []
+                ) + self._db.get("shizu.me", "owners", []):
                     await inline_query.answer(
                         [
                             InlineQueryResultArticle(
@@ -738,7 +787,8 @@ class Events(Item):
         inline_query.args = args
         try:
             params = [
-                p for p in inspect.signature(func).parameters.values()
+                p
+                for p in inspect.signature(func).parameters.values()
                 if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
             ]
         except (TypeError, ValueError):
@@ -751,7 +801,9 @@ class Events(Item):
             else:
                 result = await func(self._app, inline_query)
         except Exception as error:
-            logger.exception("Inline handler %s failed", getattr(func, "__name__", func))
+            logger.exception(
+                "Inline handler %s failed", getattr(func, "__name__", func)
+            )
             with contextlib.suppress(Exception):
                 await inline_query.answer(
                     [
@@ -760,7 +812,10 @@ class Events(Item):
                             title=self._tr("inline_error_title", "🚫 Error"),
                             description=str(error)[:100],
                             input_message_content=InputTextMessageContent(
-                                self._tr("inline_command_failed", "🚫 <b>Inline command failed:</b>")
+                                self._tr(
+                                    "inline_command_failed",
+                                    "🚫 <b>Inline command failed:</b>",
+                                )
                                 + f" <code>{utils.escape_html(str(error))}</code>",
                                 "HTML",
                             ),
@@ -784,7 +839,9 @@ class Events(Item):
             elif markup and isinstance(markup[0], dict):
                 markup = [markup]
             keyboard = self._generate_markup(markup) if markup else None
-            text = self.sanitise_text(item.get("message") or item.get("caption") or item.get("title", ""))
+            text = self.sanitise_text(
+                item.get("message") or item.get("caption") or item.get("title", "")
+            )
             common = {"id": utils.random_id(), "reply_markup": keyboard}
             if item.get("photo"):
                 answers.append(
@@ -871,9 +928,11 @@ class Events(Item):
 
         await inline_query.answer(results[:50], cache_time=0)
 
-    def _generate_markup(self, form_uid: Union[str, list], for_inline_query: bool = False) -> InlineKeyboardMarkup:
+    def _generate_markup(
+        self, form_uid: str | list, for_inline_query: bool = False
+    ) -> InlineKeyboardMarkup:
         """Generate markup for form
-        
+
         Args:
             form_uid: Form ID or list of buttons
             for_inline_query: If True, filters out buttons that are not allowed in inline query results
@@ -902,7 +961,9 @@ class Events(Item):
                     button["_callback_data"] = utils.rand(self.CALLBACK_ID_SIZE)
                     self._custom_map[button["_callback_data"]] = button
                     if len(self._custom_map) > self.CUSTOM_MAP_LIMIT:
-                        for stale in list(self._custom_map)[: self.CUSTOM_MAP_LIMIT // 2]:
+                        for stale in list(self._custom_map)[
+                            : self.CUSTOM_MAP_LIMIT // 2
+                        ]:
                             del self._custom_map[stale]
 
                 if "handler" in button and not isinstance(button["handler"], str):
@@ -982,7 +1043,7 @@ class Events(Item):
         return markup
 
     async def _callback_query_handler(
-        self, query: CallbackQuery, reply_markup: List[List[dict]] = None
+        self, query: CallbackQuery, reply_markup: list[list[dict]] = None
     ) -> None:
         """Callback query handler (button presses)"""
         if reply_markup is None:
@@ -1026,7 +1087,10 @@ class Events(Item):
                         )
                     ):
                         await query.answer(
-                            self._tr("not_allowed", "🚫 You are not allowed to press this button!")
+                            self._tr(
+                                "not_allowed",
+                                "🚫 You are not allowed to press this button!",
+                            )
                         )
                         return
 
@@ -1062,9 +1126,14 @@ class Events(Item):
             if (
                 self._custom_map[query.data].get("force_me", None)
                 and query.from_user.id != self._me
-                and query.from_user.id not in self._db.get("shizu.me", "owners", []) + [self._me] 
+                and query.from_user.id
+                not in self._db.get("shizu.me", "owners", []) + [self._me]
             ):
-                await query.answer(self._tr("not_allowed", "🚫 You are not allowed to press this button!"))
+                await query.answer(
+                    self._tr(
+                        "not_allowed", "🚫 You are not allowed to press this button!"
+                    )
+                )
                 return
 
             button = self._custom_map[query.data]
@@ -1088,17 +1157,21 @@ class Events(Item):
         data = query.data or ""
         if len(data) == self.CALLBACK_ID_SIZE and data.isalnum():
             with contextlib.suppress(Exception):
-                await query.answer(self._tr("button_expired", "⌛️ This button has expired"))
+                await query.answer(
+                    self._tr("button_expired", "⌛️ This button has expired")
+                )
 
     async def _chosen_inline_handler(
         self, chosen_inline_query: aiogram.types.ChosenInlineResult
     ) -> None:
         query = chosen_inline_query.query
 
-        for form, button in self._input_buttons(query.split()[0] if query.split() else ""):
-            if chosen_inline_query.from_user.id in [self._me] + form.get("always_allow", []) + self._db.get(
-                "shizu.me", "owners", []
-            ):
+        for form, button in self._input_buttons(
+            query.split()[0] if query.split() else ""
+        ):
+            if chosen_inline_query.from_user.id in [self._me] + form.get(
+                "always_allow", []
+            ) + self._db.get("shizu.me", "owners", []):
                 query = query.split(maxsplit=1)[1] if len(query.split()) > 1 else ""
 
                 call = InlineCall()
@@ -1115,7 +1188,9 @@ class Events(Item):
 
                 owner_name, method_name = button["handler"].split(".")
                 for module in self._all_modules.modules:
-                    if module.__class__.__name__ == owner_name and hasattr(module, method_name):
+                    if module.__class__.__name__ == owner_name and hasattr(
+                        module, method_name
+                    ):
                         try:
                             return await getattr(module, method_name)(
                                 call,
@@ -1124,28 +1199,35 @@ class Events(Item):
                                 **button.get("kwargs", {}),
                             )
                         except Exception:
-                            logger.exception("Input handler %s failed", button["handler"])
+                            logger.exception(
+                                "Input handler %s failed", button["handler"]
+                            )
                             with contextlib.suppress(Exception):
-                                await call.edit(self._tr("input_failed", "🚫 <b>Could not process the input.</b> See the logs for details."))
+                                await call.edit(
+                                    self._tr(
+                                        "input_failed",
+                                        "🚫 <b>Could not process the input.</b> See the logs for details.",
+                                    )
+                                )
                             return
 
     async def form(
         self,
         text: str,
-        message: Union[Message, int],
-        reply_markup: List[List[dict]] = None,
+        message: Message | int,
+        reply_markup: list[list[dict]] = None,
         force_me: bool = True,
         prev: bool = True,
         msg_id: int = None,
-        always_allow: List[int] = None,
-        ttl: Union[int, bool] = False,
+        always_allow: list[int] = None,
+        ttl: int | bool = False,
         photo: str = None,
         video: str = None,
         gif: str = None,
         audio: str = None,
         rich_message: dict = None,
         **kwargs,
-    ) -> Union[str, bool]:
+    ) -> str | bool:
         """Creates inline form with callback
 
         Args:
@@ -1245,7 +1327,9 @@ class Events(Item):
             logger.error("Invalid type for `ttl`")
             return False
 
-        chat_id = message if isinstance(message, int) else getattr(message, "chat_id", None)
+        chat_id = (
+            message if isinstance(message, int) else getattr(message, "chat_id", None)
+        )
         if chat_id is None:
             chat_id = getattr(getattr(message, "chat", None), "id", None)
         if chat_id is None:
@@ -1267,8 +1351,16 @@ class Events(Item):
             **({"video": video} if video else {}),
             **({"gif": gif} if gif else {}),
             **({"audio": audio} if audio else {}),
-            **({"audio_title": kwargs["audio_title"]} if kwargs.get("audio_title") else {}),
-            **({"audio_performer": kwargs["audio_performer"]} if kwargs.get("audio_performer") else {}),
+            **(
+                {"audio_title": kwargs["audio_title"]}
+                if kwargs.get("audio_title")
+                else {}
+            ),
+            **(
+                {"audio_performer": kwargs["audio_performer"]}
+                if kwargs.get("audio_performer")
+                else {}
+            ),
             **({"rich_message": rich_message} if rich_message else {}),
         }
 
@@ -1289,7 +1381,9 @@ class Events(Item):
             )
             if soo:
                 await self._app.delete_messages(soo.chat.id, soo.id)
-            elif prev and hasattr(message, "chat_id") and getattr(message, "out", False):
+            elif (
+                prev and hasattr(message, "chat_id") and getattr(message, "out", False)
+            ):
                 with contextlib.suppress(Exception):
                     await message.delete()
         except Exception as erro:
@@ -1330,10 +1424,10 @@ class Events(Item):
         self,
         callback,
         total_pages: int,
-        unit_id: Optional[str] = None,
-        current_page: Optional[int] = None,
+        unit_id: str | None = None,
+        current_page: int | None = None,
         args: tuple = (),
-    ) -> List[List[dict]]:
+    ) -> list[list[dict]]:
         if current_page is None:
             current_page = self._forms[unit_id]["current_index"] + 1
 
@@ -1372,17 +1466,17 @@ class Events(Item):
 
     async def list(
         self,
-        message: Union[Message, int],
-        strings: List[str],
+        message: Message | int,
+        strings: list[str],
         prev: bool = True,
         *,
-        force_me: Optional[bool] = True,
-        always_allow: Optional[list] = None,
-        custom_buttons: Optional[List[List[dict]]] = None,
+        force_me: bool | None = True,
+        always_allow: list | None = None,
+        custom_buttons: list[list[dict]] | None = None,
         silent: bool = False,
         disable_security: bool = False,
         **kwargs,
-    ) -> Union[str, bool]:
+    ) -> str | bool:
         """
         Send inline list to chat
         :param message: Where to send list. Can be either `Message` or chat id
@@ -1416,7 +1510,9 @@ class Events(Item):
         }
         self._forms[unit_id]["buttons"] = self._list_buttons(unit_id)
 
-        chat_id = message if isinstance(message, int) else getattr(message, "chat_id", None)
+        chat_id = (
+            message if isinstance(message, int) else getattr(message, "chat_id", None)
+        )
         if chat_id is None:
             chat_id = message.chat.id
         is_pyrogram = isinstance(message, pyrogram.types.Message)
@@ -1456,17 +1552,25 @@ class Events(Item):
 
         return unit_id
 
-    def _list_buttons(self, unit_id: str) -> List[List[dict]]:
+    def _list_buttons(self, unit_id: str) -> builtins.list[builtins.list[dict]]:
         form = self._forms[unit_id]
         return (
             form["custom_buttons"]
             + self.build_pagination(
                 self._list_page, len(form["strings"]), unit_id, args=(unit_id,)
             )
-            + [[{"text": "🔻 Close", "callback": self._list_page, "args": (unit_id, "close")}]]
+            + [
+                [
+                    {
+                        "text": "🔻 Close",
+                        "callback": self._list_page,
+                        "args": (unit_id, "close"),
+                    }
+                ]
+            ]
         )
 
-    async def _list_page(self, call: CallbackQuery, unit_id: str, page: Union[int, str]):
+    async def _list_page(self, call: CallbackQuery, unit_id: str, page: int | str):
         form = self._forms.get(unit_id)
         if not form:
             return await call.answer("⌛️ Expired", show_alert=True)

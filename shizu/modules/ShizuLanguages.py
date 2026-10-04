@@ -14,9 +14,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import shutil
 import os
-from shizu import loader, utils, translator
+import shutil
+
+from shizu import loader, translator, utils
 
 
 @loader.module("ShizuLanguages", "hikamoru", 1.0)
@@ -56,7 +57,9 @@ class ShizuLanguages(loader.Module):
 
         tr = translator.Translator(app, self.db)
         await tr.init()
-        await message.answer(self.strings("language_saved").format(self._flag(args.lower())))
+        await message.answer(
+            self.strings("language_saved").format(self._flag(args.lower()))
+        )
 
     FLAGS = {"en": "🇬🇧", "ru": "🇷🇺", "uz": "🇺🇿"}
 
@@ -68,7 +71,9 @@ class ShizuLanguages(loader.Module):
         folder = f"{utils.get_base_dir()}/langpacks"
         if not os.path.isdir(folder):
             return ["en"]
-        return sorted(name[:-5] for name in os.listdir(folder) if name.endswith(".json"))
+        return sorted(
+            name[:-5] for name in os.listdir(folder) if name.endswith(".json")
+        )
 
     @loader.command(aliases=["setlang", "langs"])
     async def lang(self, app, message):
@@ -78,7 +83,9 @@ class ShizuLanguages(loader.Module):
             if any(len(code) != 2 for code in args.split()):
                 return await utils.answer(message, self.strings("incorrect_language"))
             self.db.set("shizu.me", "lang", args)
-            return await message.answer(self.strings("language_saved").format(self._flag(args.split()[0])))
+            return await message.answer(
+                self.strings("language_saved").format(self._flag(args.split()[0]))
+            )
 
         langs = self._available()
         await message.answer(
@@ -86,7 +93,11 @@ class ShizuLanguages(loader.Module):
             + "\n".join(f"{self._flag(lang)} <code>{lang}</code>" for lang in langs),
             reply_markup=utils.chunks(
                 [
-                    {"text": f"{self._flag(lang)} {lang}", "callback": self.setlang_cb, "args": (lang,)}
+                    {
+                        "text": f"{self._flag(lang)} {lang}",
+                        "callback": self.setlang_cb,
+                        "args": (lang,),
+                    }
                     for lang in langs
                 ],
                 3,

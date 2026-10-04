@@ -14,31 +14,35 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import configparser as cp
+import argparse
 import asyncio
+import base64
+import configparser as cp
 import logging
 import random
-import base64
 import sys
-import argparse
-
 from datetime import datetime
 from getpass import getpass
-from typing import NoReturn, Tuple, Union
+from typing import NoReturn
 
-from pyrogram import Client, errors, types, raw
-from pyrogram.session.session import Session
+from pyrogram import Client, errors, raw, types
 from pyrogram.raw.functions.auth.export_login_token import ExportLoginToken
-
+from pyrogram.session.session import Session
 from qrcode.main import QRCode
+
 from shizu import database, utils
 from shizu.health import Reporter, reporter
-from shizu.telegram.exceptions import TelegramConnectionError
+from shizu.telegram.device import TelegramDeviceProfile
+from shizu.telegram.exceptions import (
+    AccountMismatch,
+    TelegramConnectionError,
+    TelethonSessionInvalid,
+)
 from shizu.telegram.services import TelegramConnectionService
 
 try:
     from .web import core
-except ImportError as e:
+except ImportError:
     web_available = False
     logging.exception("Unable to import web")
 else:
@@ -76,7 +80,9 @@ def argument_parser() -> argparse.ArgumentParser:
         "--no-web", action="store_false", help="Disable web interface", dest="web"
     )
     parser.add_argument("--port", type=int, help="Port for web interface", dest="port")
-    parser.add_argument("--setup-only", action="store_true", help="Authorize the account and exit")
+    parser.add_argument(
+        "--setup-only", action="store_true", help="Authorize the account and exit"
+    )
 
     return parser.parse_args()
 
@@ -92,9 +98,7 @@ class Auth:
         cfg = cp.ConfigParser()
         cfg.read("./config.ini")
 
-        device_model = cfg.get(
-            "pyrogram", "device_model", fallback=utils.get_random_smartphone()
-        )
+        device = TelegramDeviceProfile.from_config(cfg)
         api_id = cfg.get("pyrogram", "api_id", fallback="123")
         api_hash = cfg.get("pyrogram", "api_hash", fallback="hash")
 
@@ -102,7 +106,7 @@ class Auth:
             name=session_name,
             api_id=api_id,
             api_hash=api_hash,
-            device_model=device_model,
+            **device.client_options(),
         )
 
         self.tapp = None
@@ -113,25 +117,36 @@ class Auth:
         database.db.set("shizu.telethon", "enabled", False)
         database.db.set("shizu.telethon", "status", "invalid")
         self.app.is_tl_enabled = False
-        reporter.problem("telethon_revoked", "Telethon отключён в Telegram. Для переподключения используйте <code>.enabletlmode</code>.")
+        reporter.problem(
+            "telethon_revoked",
+            "Telethon отключён в Telegram. Для переподключения используйте <code>.enabletlmode</code>.",
+        )
 
     async def restore_telethon(self, user_id: int) -> None:
         """Restore only an existing encrypted authorization during startup."""
         try:
             self.connections = TelegramConnectionService.from_environment(
-                self.app.api_id, self.app.api_hash, on_invalid=self._telethon_invalidated,
+                self.app.api_id,
+                self.app.api_hash,
+                on_invalid=self._telethon_invalidated,
             )
             self.tapp = await self.connections.restore(user_id)
             self.app.telethon_connections = self.connections
-        except TelegramConnectionError as error:
+        except (TelethonSessionInvalid, AccountMismatch) as error:
             logging.warning("Telethon startup: %s", error.status)
             await self._telethon_invalidated(user_id)
+        except TelegramConnectionError as error:
+            logging.warning(
+                "Telethon startup temporarily unavailable: %s", error.status
+            )
+            database.db.set("shizu.telethon", "status", "unavailable")
+            self.app.is_tl_enabled = False
 
     def _check_api_tokens(self) -> bool:
         cfg = cp.ConfigParser()
         return bool(cfg.read("./config.ini"))
 
-    async def send_code(self) -> Tuple[str, str]:
+    async def send_code(self) -> tuple[str, str]:
         while True:
             error_text: str = ""
             try:
@@ -150,9 +165,7 @@ class Auth:
             if error_text:
                 logging.error(error_text)
 
-    async def enter_code(
-        self, phone: str, phone_code_hash: str
-    ) -> Union[types.User, bool]:
+    async def enter_code(self, phone: str, phone_code_hash: str) -> types.User | bool:
         try:
             code = colored_input("Enter confirmation code: ")
             return await self.app.sign_in(phone, phone_code_hash, code)
@@ -169,7 +182,7 @@ class Auth:
             except errors.BadRequest:
                 logging.error("Incorrect password, please try again")
 
-    async def authorize(self) -> Union[Tuple[types.User, Client], NoReturn]:
+    async def authorize(self) -> tuple[types.User, Client] | NoReturn:
         await self.app.connect()
 
         try:
@@ -189,7 +202,7 @@ class Auth:
             await self.handle_session_revoked()
             return sys.exit(64)
 
-        if utils.is_tl_enabled():
+        if utils.is_tl_configured():
             await self.restore_telethon(me.id)
         return me, self.app, self.tapp
 
@@ -197,14 +210,19 @@ class Auth:
         cfg = cp.ConfigParser()
         cfg.read("config.ini")
 
-        api_id = cfg.get("pyrogram", "api_id", fallback="") or colored_input("Enter API ID: ")
-        api_hash = cfg.get("pyrogram", "api_hash", fallback="") or colored_input("Enter API hash: ")
+        api_id = cfg.get("pyrogram", "api_id", fallback="") or colored_input(
+            "Enter API ID: "
+        )
+        api_hash = cfg.get("pyrogram", "api_hash", fallback="") or colored_input(
+            "Enter API hash: "
+        )
 
-        cfg["pyrogram"] = {
-            "api_id": api_id,
-            "api_hash": api_hash,
-            "device_model": utils.get_random_smartphone(),
-        }
+        if not cfg.has_section("pyrogram"):
+            cfg.add_section("pyrogram")
+        cfg.set("pyrogram", "api_id", api_id)
+        cfg.set("pyrogram", "api_hash", api_hash)
+        if not cfg.get("pyrogram", "device_model", fallback="").strip():
+            cfg.set("pyrogram", "device_model", self.app.device_model)
 
         with open("config.ini", "w", encoding="utf-8") as file:
             cfg.write(file)
@@ -215,9 +233,10 @@ class Auth:
         else:
             phone, phone_code_hash = await self.send_code()
             logged = await self.enter_code(phone, phone_code_hash)
-            me: types.User = (
-                await self.app.get_me() if logged else await self.enter_2fa()
-            )
+            if logged:
+                await self.app.get_me()
+            else:
+                await self.enter_2fa()
 
     async def handle_session_revoked(self) -> None:
         logging.error(
@@ -240,7 +259,7 @@ class Auth:
                     "Enter two-factor authentication password: ", True
                 )
                 await self.app.check_password(passwd)
-                me = await self.app.get_me()
+                await self.app.get_me()
                 break
             if isinstance(r, raw.types.auth.login_token_success.LoginTokenSuccess):
                 break
@@ -259,20 +278,19 @@ class Auth:
         """Start the web interface for authentication"""
 
         if args.web and web_available:
-
             if web := (
                 core.Web(
                     api_token=None,
                 )
             ):
-
                 web.port = args.port or random.randint(2000, 9999)
 
                 await web.start(web.port)
 
                 logging.info(f"🌐 Web interface available at: {web.url}")
                 await Reporter.notify_owner_by_token(
-                    Reporter.SESSION_ENDED + Reporter.LOGIN_WEB.format(web.url), "session_notice"
+                    Reporter.SESSION_ENDED + Reporter.LOGIN_WEB.format(web.url),
+                    "session_notice",
                 )
 
                 await web.wait_for_api_token_setup()

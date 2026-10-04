@@ -14,27 +14,27 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import contextlib
+import logging
 import re
 import time
-import logging
 
+from aiogram.utils.exceptions import ChatNotFound, Unauthorized
 from pyrogram import Client, enums
-from pyrogram.raw import functions, types as typ
 from pyrogram.errors import (
     AuthKeyDuplicated,
     AuthKeyUnregistered,
-    MessageIdInvalid,
     BadRequest,
     ChannelInvalid,
     ChannelPrivate,
+    MessageIdInvalid,
     PeerIdInvalid,
     SessionExpired,
     SessionRevoked,
     UserDeactivated,
     UserDeactivatedBan,
 )
-
-from aiogram.utils.exceptions import ChatNotFound, Unauthorized
+from pyrogram.raw import functions
+from pyrogram.raw import types as typ
 
 from shizu import fsm, loader, utils
 from shizu.health import reporter
@@ -50,15 +50,30 @@ class ShizuOnload(loader.Module):
     AVATARS_VERSION = 2
 
     SERVICE_CHATS = (
-        ("logs", "Shizu-logs", "📫 Shizu logs. Do not delete this group, or the bot will break", "assets/logs.jpg"),
-        ("backup", "Shizu-backup", "📫 Shizu backups. Do not delete this group, or the bot will break", "assets/backups.jpg"),
-        ("besafe", "Shizu-besafe", "🛡 Shizu BeSafe confirmations. Do not delete this group, or the bot will break", "assets/besafe.jpg"),
+        (
+            "logs",
+            "Shizu-logs",
+            "📫 Shizu logs. Do not delete this group, or the bot will break",
+            "assets/logs.jpg",
+        ),
+        (
+            "backup",
+            "Shizu-backup",
+            "📫 Shizu backups. Do not delete this group, or the bot will break",
+            "assets/backups.jpg",
+        ),
+        (
+            "besafe",
+            "Shizu-besafe",
+            "🛡 Shizu BeSafe confirmations. Do not delete this group, or the bot will break",
+            "assets/besafe.jpg",
+        ),
     )
 
     text = """
     👋 Hey there! Congratulations on installing the <u>Shizu userbot</u>. Need a hand with anything?
 
-❓ Don't hesitate to reach out to our support chat if you have questions. We're here to assist everyone. @shizu_talks   
+❓ Don't hesitate to reach out to our support chat if you have questions. We're here to assist everyone. @shizu_talks
 
 🔒 Plus, we've beefed up security to protect against <b>Account Deletion</b>.
 
@@ -158,7 +173,9 @@ class ShizuOnload(loader.Module):
         try:
             await self.app.get_me()
         except self.DEAD_SESSION:
-            await reporter.send(reporter.SESSION_ENDED + "\n\nShizu restarts to start the login.")
+            await reporter.send(
+                reporter.SESSION_ENDED + "\n\nShizu restarts to start the login."
+            )
             utils.restart()
             return
         except Exception:
@@ -167,7 +184,9 @@ class ShizuOnload(loader.Module):
         try:
             await self._bot.get_me()
         except Unauthorized as error:
-            reporter.problem("bot_token", reporter.BOT_TOKEN.format(utils.escape_html(str(error))))
+            reporter.problem(
+                "bot_token", reporter.BOT_TOKEN.format(utils.escape_html(str(error)))
+            )
         except Exception:
             return
 
@@ -189,14 +208,22 @@ class ShizuOnload(loader.Module):
             try:
                 await app.resolve_peer(chat_id)
             except (ChannelInvalid, ChannelPrivate, PeerIdInvalid):
-                logging.warning("Service chat %s (%s) is gone, recreating", key, chat_id)
+                logging.warning(
+                    "Service chat %s (%s) is gone, recreating", key, chat_id
+                )
                 self.db.pop("shizu.chat", key)
 
-        if missing := [chat for chat in self.SERVICE_CHATS if not self.db.get("shizu.chat", chat[0])]:
+        if missing := [
+            chat
+            for chat in self.SERVICE_CHATS
+            if not self.db.get("shizu.chat", chat[0])
+        ]:
             logging.info("Trying to create service chats")
             app.me = await app.get_me()
             for key, title, description, _ in missing:
-                chat = await utils.create_chat(app, title, description, True, True, True)
+                chat = await utils.create_chat(
+                    app, title, description, True, True, True
+                )
                 self.db.set("shizu.chat", key, chat.id)
             logging.info("Service chats created")
             utils.restart()
@@ -303,7 +330,9 @@ class ShizuOnload(loader.Module):
                             parse_mode=enums.ParseMode.HTML,
                         )
                 except Exception:
-                    logging.exception("Could not edit restart message, sending a new one")
+                    logging.exception(
+                        "Could not edit restart message, sending a new one"
+                    )
                     with contextlib.suppress(Exception):
                         await app.send_message(
                             restart["chat"],

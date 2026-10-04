@@ -14,32 +14,29 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import logging
 import asyncio
-import traceback
-import os
-import typing
-import io
 import contextlib
-import json
 import html
+import io
+import json
+import logging
+import os
 import re
 import time
-
+import traceback
+import typing
 from datetime import datetime
-
-from typing import Union
-from aiogram import Bot, Dispatcher
-from aiogram.utils.exceptions import MessageNotModified, NetworkError, RetryAfter
-from loguru._better_exceptions import ExceptionFormatter
-from loguru._colorizer import Colorizer
-from loguru import logger
 from logging.handlers import RotatingFileHandler
 
+from aiogram import Bot, Dispatcher
 from aiogram.types import ParseMode
+from aiogram.utils.exceptions import MessageNotModified, NetworkError, RetryAfter
+from loguru import logger
+from loguru._better_exceptions import ExceptionFormatter
+from loguru._colorizer import Colorizer
 
-from shizu.database import db
 from shizu import utils
+from shizu.database import db
 
 FORMAT_FOR_FILES = "[{level}] {name}: {message}"
 
@@ -54,7 +51,7 @@ with contextlib.suppress(Exception):  # will be simplified in the future
     dp = Dispatcher(bot)
 
 
-def get_valid_level(level: Union[str, int]):
+def get_valid_level(level: str | int):
     return int(level) if level.isdigit() else getattr(logging, level.upper(), None)
 
 
@@ -64,9 +61,7 @@ class CustomException:
         message: str,
         local_vars: str,
         full_stack: str,
-        sysinfo: typing.Optional[
-            typing.Tuple[object, Exception, traceback.TracebackException]
-        ] = None,
+        sysinfo: tuple[object, Exception, traceback.TracebackException] | None = None,
     ):
         self.message = message
         self.local_vars = local_vars
@@ -99,9 +94,9 @@ class CustomException:
 
             return dictionary
 
-        full_stack = "".join(traceback.format_exception(exc_type, exc_value, tb)).replace(
-            "Traceback (most recent call last):\n", ""
-        )
+        full_stack = "".join(
+            traceback.format_exception(exc_type, exc_value, tb)
+        ).replace("Traceback (most recent call last):\n", "")
 
         # part HIkka: https://github.com/hikariatama/Hikka/blob/ce1f24f03313f8500de671815dde065fc8d86897/hikka/log.py#L76
 
@@ -295,13 +290,13 @@ class Telegramhandler(logging.Handler):
             except RuntimeError:
                 return
 
-            asyncio.ensure_future(self.send_logs(self.msgs))
+            utils.spawn(self.send_logs(self.msgs))
             self.msgs = []
 
             self.last_log_time = current_time
 
     @staticmethod
-    def _pages(lines: typing.List[str], limit: int = 3500) -> typing.List[str]:
+    def _pages(lines: list[str], limit: int = 3500) -> list[str]:
         pages, page = [], ""
         for line in lines:
             while len(line) > limit:
@@ -366,11 +361,15 @@ class Telegramhandler(logging.Handler):
             self._show, len(pages), current_page=i + 1, args=(uid, pages, exc)
         )
         if exc:
-            rows.append([{"text": "⬅️ Back", "callback": self._short, "args": (uid, exc)}])
+            rows.append(
+                [{"text": "⬅️ Back", "callback": self._short, "args": (uid, exc)}]
+            )
         return rows
 
     def _trace_button(self, uid: str, exc: CustomException) -> list:
-        return [[{"text": "🪐 Full traceback", "callback": self._trace, "args": (uid, exc)}]]
+        return [
+            [{"text": "🪐 Full traceback", "callback": self._trace, "args": (uid, exc)}]
+        ]
 
     async def _show(self, call, uid: str, pages: list, exc, i: int):
         await self._edit(call, uid, pages[i], self._page_buttons(uid, pages, i, exc))
@@ -393,7 +392,9 @@ class Telegramhandler(logging.Handler):
 
         try:
             for exc in (m for m in msgs if isinstance(m, CustomException)):
-                await self._send(exc.message, lambda uid: self._trace_button(uid, exc))
+                await self._send(
+                    exc.message, lambda uid, exc=exc: self._trace_button(uid, exc)
+                )
 
             if not pages:
                 return
@@ -416,7 +417,7 @@ class Telegramhandler(logging.Handler):
             pass
 
 
-def override_text(exception: Exception) -> typing.Optional[str]:
+def override_text(exception: Exception) -> str | None:
     """Returns error-specific description if available, else `None`"""
     if isinstance(exception, NetworkError):
         return "✈️ <b>You have problems with internet connection on your server.</b>"
@@ -424,8 +425,7 @@ def override_text(exception: Exception) -> typing.Optional[str]:
     return None
 
 
-
-def setup_logger(level: Union[str, int], log_file_path: str = "shizu.log"):
+def setup_logger(level: str | int, log_file_path: str = "shizu.log"):
     """Setup logger"""
 
     level = get_valid_level(level) or 20
@@ -451,11 +451,11 @@ def setup_logger(level: Union[str, int], log_file_path: str = "shizu.log"):
             if "Server resent the older message" in record.getMessage():
                 return False
             return True
-    
+
     pyrogram_logger = logging.getLogger("pyrogram")
     pyrogram_logger.setLevel(logging.CRITICAL)
     pyrogram_logger.addFilter(PyrogramFilter())
-    
+
     logging.getLogger("aiogram").setLevel(logging.WARNING)
     logging.getLogger("telethon").setLevel(logging.WARNING)
     logging.getLogger("asyncio").setLevel(logging.WARNING)

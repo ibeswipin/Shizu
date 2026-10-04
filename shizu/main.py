@@ -14,20 +14,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import os
 
-import sys
-import asyncio
-import subprocess
-
-import pyrogram
-from pyrogram import types
 from pyrogram.methods.utilities.idle import idle
 
 from shizu import auth, database, loader
 from shizu.besafe import BeSafe
 from shizu.ratelimit import ApiLimiter
-from shizu.version import __version__
 
 
 async def main():

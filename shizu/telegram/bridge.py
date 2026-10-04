@@ -1,3 +1,19 @@
+# Shizu Copyright (C) 2023-2026  Ibeswipin
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
 """QR bridge using a NEW Telethon authorization; no Pyrogram key conversion."""
 
 import asyncio
@@ -6,18 +22,20 @@ import binascii
 import contextlib
 import logging
 import struct
-from typing import Any
 from collections.abc import Awaitable, Callable
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from pyrogram import Client, errors as pyro_errors
+from pyrogram import Client
+from pyrogram import errors as pyro_errors
 from pyrogram.raw.functions.auth import AcceptLoginToken
 from telethon import TelegramClient
 from telethon import errors as tl_errors
-from telethon.sessions import StringSession
 from telethon.network.mtprotosender import MTProtoSender
+from telethon.sessions import StringSession
 from telethon.tl.tlobject import TLObject
 
+from shizu.telegram.device import TelegramDeviceProfile
 from shizu.telegram.exceptions import (
     InvalidTwoFactorPassword,
     LoginTimeout,
@@ -29,6 +47,7 @@ from shizu.telegram.exceptions import (
     TelethonSessionInvalid,
     TwoFactorRequired,
 )
+from shizu.telegram.state import TelethonConnectionState
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +114,25 @@ class ManagedTelegramClient(TelegramClient):
     session_invalidated: Callable[[], Awaitable[None]] | None = None
     _logging_out = False
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.connection_state = TelethonConnectionState()
+
+    async def disconnect(self) -> None:
+        """Closing a connection does not revoke the saved authorization."""
+        try:
+            await super().disconnect()
+        finally:
+            self.connection_state.disconnected()
+
     async def log_out(self) -> bool:
         """Preserve the cause of logout failure instead of Telethon swallowing RPC errors."""
         self._logging_out = True
         try:
-            return await super().log_out()
+            result = await super().log_out()
+            if result:
+                self.connection_state.invalidated()
+            return result
         finally:
             self._logging_out = False
 
@@ -111,17 +144,34 @@ class ManagedTelegramClient(TelegramClient):
         flood_sleep_threshold: int | None = None,
     ) -> Any:
         try:
-            return await super()._call(sender, request, ordered, flood_sleep_threshold)
+            result = await super()._call(
+                sender, request, ordered, flood_sleep_threshold
+            )
         except tl_errors.RPCError as error:
             if (
-                self.session_invalidated is not None
-                and TelegramErrorMapper.invalid_session(error)
+                isinstance(error, tl_errors.AuthKeyUnregisteredError)
+                and self.connection_state.user_id is None
+                and self.session_invalidated is None
+                and not self._logging_out
             ):
-                await self.session_invalidated()
+                # connect() probes get_me() before a fresh QR login. Telethon
+                # must receive UnauthorizedError itself so get_me() returns
+                # None and connection initialization can continue normally.
+                raise
+            if TelegramErrorMapper.invalid_session(error):
+                self.connection_state.invalidated()
+                if self.session_invalidated is not None:
+                    await self.session_invalidated()
                 raise TelegramErrorMapper.translate(error) from None
             if self._logging_out:
                 raise TelegramErrorMapper.translate(error) from None
             raise
+        except (asyncio.TimeoutError, OSError):
+            self.connection_state.unavailable()
+            raise
+        else:
+            self.connection_state.rpc_succeeded()
+            return result
 
 
 class TelethonLoginBridge:
@@ -132,9 +182,9 @@ class TelethonLoginBridge:
         api_id: int,
         api_hash: str,
         *,
-        device_model: str = "Shizu",
-        app_version: str = "1.0",
-        system_version: str = "Shizu service",
+        device_model: str = TelegramDeviceProfile.device_model,
+        app_version: str = TelegramDeviceProfile.app_version,
+        system_version: str = TelegramDeviceProfile.system_version,
         timeout: float = 30,
     ) -> None:
         self.api_id, self.api_hash = api_id, api_hash

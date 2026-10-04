@@ -34,15 +34,12 @@
 import asyncio
 import logging
 from types import TracebackType
-from typing import List, Union
 
 from pyrogram import Client, types
 
 
 class Conversation:
-    def __init__(
-        self, app: Client, chat_id: Union[str, int], purge: bool = False
-    ) -> None:
+    def __init__(self, app: Client, chat_id: str | int, purge: bool = False) -> None:
         """Initializing a class
 
         Parameters:
@@ -59,7 +56,7 @@ class Conversation:
         self.chat_id = chat_id
         self.purge = purge
 
-        self.messagee_to_purge: List[types.Message] = []
+        self.messages_to_purge: list[types.Message] = []
 
     async def __aenter__(self) -> "Conversation":
         return self
@@ -72,7 +69,7 @@ class Conversation:
         elif self.purge:
             await self._purge()
 
-        return self.messagee_to_purge.clear()
+        return self.messages_to_purge.clear()
 
     async def ask(self, text: str, *args, **kwargs) -> types.Message:
         """Send a message
@@ -89,7 +86,7 @@ class Conversation:
         """
         message = await self.app.send_message(self.chat_id, text, *args, **kwargs)
 
-        self.messagee_to_purge.append(message)
+        self.messages_to_purge.append(message)
         return message
 
     async def ask_media(
@@ -127,7 +124,7 @@ class Conversation:
             self.chat_id, file_path, *args, **kwargs
         )
 
-        self.messagee_to_purge.append(message)
+        self.messages_to_purge.append(message)
         return message
 
     async def get_response(self, timeout: int = 30) -> types.Message:
@@ -137,38 +134,23 @@ class Conversation:
             timeout (`int`, optional):
                 Response waiting time
         """
-        responses = self.app.get_chat_history(self.chat_id, limit=1)
-        async for response in responses:
-            if response.from_user.is_self:
-                timeout -= 1
-                if timeout == 0:
-                    raise RuntimeError("Response timeout expired")
+        for _ in range(timeout):
+            async for response in self.app.get_chat_history(self.chat_id, limit=1):
+                if not response.from_user or not response.from_user.is_self:
+                    self.messages_to_purge.append(response)
+                    return response
 
-                await asyncio.sleep(1)
-                responses = self.app.get_chat_history(self.chat_id, limit=1)
+            await asyncio.sleep(1)
 
-            self.messagee_to_purge.append(response)
-
-        return response
+        raise RuntimeError("Response timeout expired")
 
     async def get_another_same(self) -> types.Message:
         """Returns a response"""
-        responses = self.app.get_chat_history(self.chat_id, limit=1)
-        async for response in responses:
-            if response.from_user.is_self:
-                timeout -= 1
-                if timeout == 0:
-                    raise RuntimeError("Response timeout expired")
-
-                await asyncio.sleep(1)
-                responses = self.app.get_chat_history(self.chat_id, limit=1)
-
-            self.messagee_to_purge.append(response)
-        return response
+        return await self.get_response()
 
     async def _purge(self) -> bool:
         """Delete all sent and received messages"""
-        for message in self.messagee_to_purge:
+        for message in self.messages_to_purge:
             await message.delete()
 
         return True

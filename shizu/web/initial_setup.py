@@ -1,4 +1,3 @@
-
 #    Friendly Telegram (telegram userbot)
 #    Copyright (C) 2018-2022 The Authors
 
@@ -36,6 +35,7 @@
 import asyncio
 import base64
 import collections
+import configparser as cp
 import os
 import secrets
 import string
@@ -45,17 +45,16 @@ import aiohttp_jinja2
 import pyrogram
 import qrcode
 import qrcode.image.svg
-
-import configparser as cp
 from aiohttp import web
-
 from pyrogram import errors, raw
 
 from shizu import utils
 from shizu.bot.token_manager import TokenManager
+from shizu.telegram.device import TelegramDeviceProfile
 from shizu.web.telethon_setup import TelethonSetupController
 
-BASE_DIR =  os.path.dirname(utils.get_base_dir())
+BASE_DIR = os.path.dirname(utils.get_base_dir())
+
 
 class Web:
     def __init__(self, **kwargs):
@@ -92,12 +91,15 @@ class Web:
         if self.redirect_url:
             self.root_redirected.set()
             return web.Response(status=302, headers={"Location": self.redirect_url})
-        
+
         return await self.initial_setup(request)
 
     @aiohttp_jinja2.template("initial_root.jinja2")
     async def initial_setup(self, request):
-        if self.authenticated and request.cookies.get("shizu_setup") != self.setup_owner:
+        if (
+            self.authenticated
+            and request.cookies.get("shizu_setup") != self.setup_owner
+        ):
             raise web.HTTPForbidden()
         return {
             "api_done": self.api_token is not None,
@@ -128,11 +130,11 @@ class Web:
         cfg["pyrogram"] = {
             "api_id": api_id,
             "api_hash": api_hash,
-            "device_model": utils.get_random_smartphone(),
+            "device_model": await utils.run_sync(utils.get_random_smartphone),
         }
         with open("./config.ini", "w", encoding="utf-8") as file:
             cfg.write(file)
-            
+
         self.api_token = collections.namedtuple("api_token", ("ID", "HASH"))(
             api_id, api_hash
         )
@@ -152,7 +154,7 @@ class Web:
             self.phone_code_hash = phone_hash
             self.sign_in_clients[phone] = client
             return web.Response()
-        
+
     async def new_client(self):
         if self.client is not None:
             await self.client.disconnect()
@@ -162,7 +164,7 @@ class Web:
             name="../shizu",
             api_id=self.api_token.ID,
             api_hash=self.api_token.HASH,
-            device_model=utils.get_random_smartphone(),
+            **TelegramDeviceProfile.from_config().client_options(),
         )
         await self.client.connect()
         return self.client
@@ -186,7 +188,16 @@ class Web:
     def _authorize_browser(self, response, request=None):
         """Bind subsequent setup writes to the browser that completed login."""
         self.setup_owner = secrets.token_urlsafe(32)
-        response.set_cookie("shizu_setup", self.setup_owner, httponly=True, samesite="Strict", secure=bool(getattr(request, "secure", False) or str(getattr(self, "url", "")).startswith("https://")))
+        response.set_cookie(
+            "shizu_setup",
+            self.setup_owner,
+            httponly=True,
+            samesite="Strict",
+            secure=bool(
+                getattr(request, "secure", False)
+                or str(getattr(self, "url", "")).startswith("https://")
+            ),
+        )
         return response
 
     async def qr_authorized(self, user_id, request=None):
@@ -205,12 +216,16 @@ class Web:
         try:
             r = await self.client.invoke(
                 raw.functions.auth.ExportLoginToken(
-                    api_id=int(self.api_token.ID), api_hash=self.api_token.HASH, except_ids=[]
+                    api_id=int(self.api_token.ID),
+                    api_hash=self.api_token.HASH,
+                    except_ids=[],
                 )
             )
             if isinstance(r, raw.types.auth.LoginTokenMigrateTo):
                 await self.migrate_dc(r.dc_id)
-                r = await self.client.invoke(raw.functions.auth.ImportLoginToken(token=r.token))
+                r = await self.client.invoke(
+                    raw.functions.auth.ImportLoginToken(token=r.token)
+                )
         except errors.exceptions.SessionPasswordNeeded:
             self.qr["password"] = True
             return web.Response(status=401)
@@ -219,8 +234,12 @@ class Web:
         if isinstance(r, raw.types.auth.LoginTokenSuccess):
             return await self.qr_authorized(r.authorization.user.id, request)
         if self.qr["expires"] - time.time() < 5:
-            url = "tg://login?token=" + base64.urlsafe_b64encode(r.token).decode().rstrip("=")
-            svg = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, border=1)
+            url = "tg://login?token=" + base64.urlsafe_b64encode(
+                r.token
+            ).decode().rstrip("=")
+            svg = qrcode.make(
+                url, image_factory=qrcode.image.svg.SvgPathImage, border=1
+            )
             self.qr = {"expires": r.expires, "svg": svg.to_string(encoding="unicode")}
         return web.json_response({"svg": self.qr["svg"]})
 
@@ -258,21 +277,23 @@ class Web:
             return web.Response(status=400)
         if not password:
             try:
-                await self.client.sign_in(phone, phone_code=code, phone_code_hash=self.phone_code_hash)
+                await self.client.sign_in(
+                    phone, phone_code=code, phone_code_hash=self.phone_code_hash
+                )
             except errors.exceptions.SessionPasswordNeeded:
                 return web.Response(status=401)  # Requires 2FA login
             except errors.exceptions.PhoneCodeExpired:
                 return web.Response(status=404)
             except errors.exceptions.PhoneCodeInvalid:
                 return web.Response(status=403)
-            except errors.exceptions.FloodWait as e:
+            except errors.exceptions.FloodWait:
                 return web.Response(status=421)
         else:
             try:
                 await self.client.check_password(password)
             except errors.exceptions.PasswordHashInvalid:
                 return web.Response(status=403)  # Invalid 2FA password
-            except errors.exceptions.FloodWait as e:
+            except errors.exceptions.FloodWait:
                 return web.Response(status=421)
         del self.sign_in_clients[phone]
         self.authenticated = True
@@ -283,10 +304,15 @@ class Web:
             return web.Response(status=409)
         if not self.authenticated:
             return web.Response(status=401)
-        if getattr(self, "setup_owner", None) and request.cookies.get("shizu_setup") != self.setup_owner:
+        if (
+            getattr(self, "setup_owner", None)
+            and request.cookies.get("shizu_setup") != self.setup_owner
+        ):
             return web.Response(status=401)
         if getattr(self, "telethon_choice", False) is None:
-            return web.json_response({"error": "Choose whether to connect Telethon first."}, status=409)
+            return web.json_response(
+                {"error": "Choose whether to connect Telethon first."}, status=409
+            )
         token = (await request.text()).strip()
         if token:
             try:

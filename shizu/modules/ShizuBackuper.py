@@ -13,16 +13,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 import io
 import json
+import os
 import time
-
 from datetime import datetime
-from pyrogram import Client, types, enums
+
+from pyrogram import Client, enums, types
 
 from shizu import loader, utils
-
 
 LOADED_MODULES_DIR = os.path.join(os.getcwd(), "shizu/modules")
 
@@ -51,7 +50,9 @@ class BackupMod(loader.Module):
         await app.inline_bot.send_document(
             chat,
             document=txt,
-            caption=self.strings(caption_key).format(datetime.now().strftime("%d-%m-%Y %H:%M")),
+            caption=self.strings(caption_key).format(
+                datetime.now().strftime("%d-%m-%Y %H:%M")
+            ),
         )
 
     @loader.loop(time="backup_time", autostart=True)
@@ -72,7 +73,9 @@ class BackupMod(loader.Module):
         self.config["auto_backup"] = not self.config["auto_backup"]
         text = self.strings("enabled" if self.config["auto_backup"] else "disabled")
         if self.config["auto_backup"]:
-            text += self.strings("at_time").format(utils.escape_html(str(self.config["backup_time"])))
+            text += self.strings("at_time").format(
+                utils.escape_html(str(self.config["backup_time"]))
+            )
         await message.answer(text)
 
     @loader.command()
@@ -84,10 +87,11 @@ class BackupMod(loader.Module):
 
         await message.answer(self.strings("restoring"))
         file = await app.download_media(reply.document)
-        decoded_text = json.loads(io.open(file, "r", encoding="utf-8").read())
-
         if not file.endswith(".json"):
             return await message.answer(self.strings("invalid"))
+
+        with open(file, encoding="utf-8") as f:
+            decoded_text = json.load(f)
 
         self.db.reset()
 

@@ -24,7 +24,6 @@ from concurrent.futures import ProcessPoolExecutor
 from urllib.parse import unquote
 
 from pyrogram import Client
-from pyrogram.methods.messages.inline_session import get_session
 from pyrogram.session import Session
 from pyrogram.storage.sqlite_storage import SQLiteStorage
 from pyrogram.storage.storage import Storage
@@ -125,13 +124,18 @@ class BeSafe:
             frame = frame.f_back
         return None
 
+    @staticmethod
+    def _is_login_chat_id(value: object) -> bool:
+        """Compare numeric peer IDs without invoking TL object equality."""
+        return isinstance(value, int) and value == 777000
+
     @classmethod
     def sensitive_message(cls, message):
         for obj in (message, getattr(message, "message", None)):
             if obj is None:
                 continue
             for field in ("chat_id", "sender_id", "user_id", "peer"):
-                if getattr(obj, field, None) == 777000:
+                if cls._is_login_chat_id(getattr(obj, field, None)):
                     return True
             for field in (
                 "chat",
@@ -143,10 +147,9 @@ class BeSafe:
                 "to_peer",
             ):
                 peer = getattr(obj, field, None)
-                if (
-                    getattr(peer, "id", None) == 777000
-                    or getattr(peer, "user_id", None) == 777000
-                ):
+                if cls._is_login_chat_id(
+                    getattr(peer, "id", None)
+                ) or cls._is_login_chat_id(getattr(peer, "user_id", None)):
                     return True
         return False
 
@@ -539,7 +542,6 @@ class BeSafe:
 
         self._media_codes = {
             Client.get_session.__code__,
-            get_session.__code__,
             TelegramBaseClient._create_exported_sender.__code__,
         }
 

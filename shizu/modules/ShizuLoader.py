@@ -32,14 +32,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
 import inspect
 import io
 import logging
 import os
 import re
 import time
-from typing import List
 
 import requests
 from pyrogram import Client, enums, types
@@ -49,7 +47,7 @@ from shizu import loader, utils
 VALID_URL = r"[-[\]_.~:/?#@!$&'()*+,;%<=>a-zA-Z0-9]+"
 
 VALID_PIP_PACKAGES = re.compile(
-    r"^\s*# required:(?: ?)((?:{url} )*(?:{url}))\s*$".format(url=VALID_URL),
+    rf"^\s*# required:(?: ?)((?:{VALID_URL} )*(?:{VALID_URL}))\s*$",
     re.MULTILINE,
 )
 GIT_REGEX = re.compile(
@@ -96,14 +94,14 @@ class Loader(loader.Module):
 
         raw_link = api_result
 
-        modules = await utils.run_sync(requests.get, f"{raw_link}all.txt")
+        modules = await utils.run_sync(requests.get, f"{raw_link}all.txt", timeout=30)
 
         if modules.status_code != 200:
             return await message.answer(
                 self.strings("no_all").format(raw_link), disable_web_page_preview=True
             )
 
-        modules: List[str] = modules.text.splitlines()
+        modules: list[str] = modules.text.splitlines()
 
         if self.config["private_repo"] and self.config["private_token"]:
             api_resultP = await self.get_git_raw_link(private[0], private[1])
@@ -114,7 +112,7 @@ class Loader(loader.Module):
             headers = {"Authorization": f"token {private[1]}"}
 
             modulesP = await utils.run_sync(
-                requests.get, f"{api_resultP}all.txt", headers=headers
+                requests.get, f"{api_resultP}all.txt", headers=headers, timeout=30
             )
 
             if modulesP.status_code != 200:
@@ -123,7 +121,7 @@ class Loader(loader.Module):
                     disable_web_page_preview=True,
                 )
 
-            modulesP: List[str] = modulesP.text.splitlines()
+            modulesP: list[str] = modulesP.text.splitlines()
 
         if not args:
             text = self.strings("mods_in_repo").format("🎍", modules_repo) + "\n".join(
@@ -152,7 +150,7 @@ class Loader(loader.Module):
             or not self.config["private_token"]
             or args not in modulesP
         ):
-            r = await utils.run_sync(requests.get, args)
+            r = await utils.run_sync(requests.get, args, timeout=30)
             if r.status_code != 200:
                 raise requests.exceptions.ConnectionError
 
@@ -162,7 +160,7 @@ class Loader(loader.Module):
 
         if args in modules:
             args = raw_link + args + ".py"
-            r = await utils.run_sync(requests.get, args)
+            r = await utils.run_sync(requests.get, args, timeout=30)
             if r.status_code != 200:
                 raise requests.exceptions.ConnectionError
 
@@ -179,7 +177,7 @@ class Loader(loader.Module):
 
             headers = {"Authorization": f"token {private[1]}"}
 
-            r = await utils.run_sync(requests.get, args, headers=headers)
+            r = await utils.run_sync(requests.get, args, headers=headers, timeout=30)
 
             if r.status_code != 200:
                 raise requests.exceptions.ConnectionError
@@ -247,10 +245,11 @@ class Loader(loader.Module):
                 requests.get,
                 f"https://api.github.com/repos{repo_path}",
                 headers=headers,
+                timeout=30,
             )
         else:
             r = await utils.run_sync(
-                requests.get, f"https://api.github.com/repos{repo_path}"
+                requests.get, f"https://api.github.com/repos{repo_path}", timeout=30
             )
 
         if r.status_code != 200:
@@ -273,14 +272,16 @@ class Loader(loader.Module):
         )
         header = self.strings("loaded").format(
             utils.escape_html(str(module.name).capitalize()),
-            utils.escape_html(module.__doc__ or "No description")
+            utils.escape_html(module.__doc__ or "No description"),
         )
         footer = (
             f"<emoji id=5190458330719461749>🧑‍💻</emoji> <code>{utils.escape_html(str(module.author))}</code>"
             if getattr(module, "author", None)
             else ""
         )
-        return header + command_descriptions + "\n" + inline_descriptions + "\n" + footer
+        return (
+            header + command_descriptions + "\n" + inline_descriptions + "\n" + footer
+        )
 
     def _besafe(self):
         return getattr(self.all_modules.load_guard, "__self__", None)
@@ -296,10 +297,24 @@ class Loader(loader.Module):
             self.strings("review").format(utils.escape_html(name)),
             reply_markup=[
                 [
-                    {"text": self.strings("install"), "callback": self.inline__review, "args": (digest, True, dop_help)},
-                    {"text": self.strings("deny"), "callback": self.inline__review, "args": (digest, False, dop_help)},
+                    {
+                        "text": self.strings("install"),
+                        "callback": self.inline__review,
+                        "args": (digest, True, dop_help),
+                    },
+                    {
+                        "text": self.strings("deny"),
+                        "callback": self.inline__review,
+                        "args": (digest, False, dop_help),
+                    },
                 ],
-                [{"text": self.strings("code"), "callback": self.inline__review_code, "args": (digest,)}],
+                [
+                    {
+                        "text": self.strings("code"),
+                        "callback": self.inline__review_code,
+                        "args": (digest,),
+                    }
+                ],
             ],
             force_me=True,
         )
@@ -316,9 +331,13 @@ class Loader(loader.Module):
             return await call.edit(besafe.strings("denied").format(name))
         if result is True:
             return await call.edit(self.strings("dep_installed_req_res"))
-        if isinstance(result, str) and (module := self.all_modules.find_module_strict(result)):
+        if isinstance(result, str) and (
+            module := self.all_modules.find_module_strict(result)
+        ):
             return await call.edit(await self._loaded_text(module, dop_help))
-        await call.edit(besafe.strings("approved_only").format(name, utils.escape_html(str(result))))
+        await call.edit(
+            besafe.strings("approved_only").format(name, utils.escape_html(str(result)))
+        )
 
     async def inline__review_code(self, call, digest: str):
         besafe = self._besafe()
@@ -356,7 +375,7 @@ class Loader(loader.Module):
                 return await message.answer(self.strings("core_do"))
 
         try:
-            with open(file, "r", encoding="utf-8") as file:
+            with open(file, encoding="utf-8") as file:
                 module_source = file.read()
 
         except UnicodeDecodeError:
@@ -422,8 +441,9 @@ class Loader(loader.Module):
         self.db.set("shizu.loader", "modules", [])
 
         for local_module in filter(
-            lambda file_name: file_name.endswith(".py")
-            and not file_name.startswith("Shizu"),
+            lambda file_name: (
+                file_name.endswith(".py") and not file_name.startswith("Shizu")
+            ),
             os.listdir(self._local_modules_path),
         ):
             os.remove(f"{self._local_modules_path}/{local_module}")
@@ -469,7 +489,9 @@ class Loader(loader.Module):
 
     @classmethod
     def _core_file(cls, name: str):
-        path = os.path.realpath(os.path.join(cls.CORE_DIR, name.removesuffix(".py") + ".py"))
+        path = os.path.realpath(
+            os.path.join(cls.CORE_DIR, name.removesuffix(".py") + ".py")
+        )
         if not path.startswith(cls.CORE_DIR + os.sep) or not os.path.isfile(path):
             return None
         return path
@@ -497,7 +519,9 @@ class Loader(loader.Module):
             source_code.name = os.path.basename(path)
 
             return await message.answer(
-                source_code, doc=True, caption=self.strings("core_file").format(utils.escape_html(name))
+                source_code,
+                doc=True,
+                caption=self.strings("core_file").format(utils.escape_html(name)),
             )
 
         if not (module := self.all_modules.get_module(args, True, True)):

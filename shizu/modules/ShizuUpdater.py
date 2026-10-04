@@ -77,18 +77,32 @@ class UpdateMod(loader.Module):
     def _pull() -> bool:
         """Stash local changes and pull; False when already up to date"""
         check_output("git stash", shell=True)
-        return "Already up to date." not in check_output("git pull", shell=True).decode()
+        return (
+            "Already up to date." not in check_output("git pull", shell=True).decode()
+        )
 
-    def _restart_record(self, chat, message_id: int, kind: str, bot: bool = False) -> None:
+    def _restart_record(
+        self, chat, message_id: int, kind: str, bot: bool = False
+    ) -> None:
         self.db.set(
             "shizu.updater",
             "restart",
-            {"chat": chat, "id": message_id, "start": time.time(), "type": kind, **({"bot": True} if bot else {})},
+            {
+                "chat": chat,
+                "id": message_id,
+                "start": time.time(),
+                "type": kind,
+                **({"bot": True} if bot else {}),
+            },
         )
 
     @staticmethod
     def _chat_of(message):
-        return message.chat.username if message.chat.type == enums.ChatType.BOT else message.chat.id
+        return (
+            message.chat.username
+            if message.chat.type == enums.ChatType.BOT
+            else message.chat.id
+        )
 
     @loader.command()
     async def update(self, app: Client, message: types.Message):
@@ -117,7 +131,9 @@ class UpdateMod(loader.Module):
         lines, used = [], 0
         for commit in reversed(commits):
             sha = commit.get("sha", "")
-            message = commit.get("commit", {}).get("message", "No message").split("\n")[0]
+            message = (
+                commit.get("commit", {}).get("message", "No message").split("\n")[0]
+            )
             if len(message) > 80:
                 message = message[:79] + "…"
             used += len(message) + 12
@@ -156,7 +172,9 @@ class UpdateMod(loader.Module):
         except Exception as e:
             logging.warning("Fetch failed, using local refs: %s", e)
 
-    async def _get_latest_commit(self, owner: str, repo_name: str, branch_name: str) -> dict:
+    async def _get_latest_commit(
+        self, owner: str, repo_name: str, branch_name: str
+    ) -> dict:
         """Get the latest commit from git repository"""
         try:
             git_repo = git.Repo()
@@ -166,12 +184,10 @@ class UpdateMod(loader.Module):
                 latest_commit = next(
                     git_repo.iter_commits(f"origin/{branch_name}", max_count=1)
                 )
-                
+
                 return {
                     "sha": latest_commit.hexsha,
-                    "commit": {
-                        "message": latest_commit.message.strip()
-                    }
+                    "commit": {"message": latest_commit.message.strip()},
                 }
             except (git.exc.GitCommandError, StopIteration):
                 return None
@@ -190,43 +206,43 @@ class UpdateMod(loader.Module):
                 commits = list(
                     git_repo.iter_commits(f"{since_sha}..origin/{branch_name}")
                 )
-                
+
                 result = []
                 for commit in reversed(commits):
-                    result.append({
-                        "sha": commit.hexsha,
-                        "commit": {
-                            "message": commit.message.strip()
+                    result.append(
+                        {
+                            "sha": commit.hexsha,
+                            "commit": {"message": commit.message.strip()},
                         }
-                    })
-                
+                    )
+
                 return result
             except (git.exc.GitCommandError, ValueError):
                 logging.warning(
                     f"Git command failed for {since_sha[:7]}...{branch_name}, trying alternative method"
                 )
-                
+
                 try:
                     all_commits = list(
                         git_repo.iter_commits(f"origin/{branch_name}", max_count=30)
                     )
-                    
+
                     new_commits = []
                     for commit in all_commits:
                         if commit.hexsha == since_sha:
                             break
-                        new_commits.append({
-                            "sha": commit.hexsha,
-                            "commit": {
-                                "message": commit.message.strip()
+                        new_commits.append(
+                            {
+                                "sha": commit.hexsha,
+                                "commit": {"message": commit.message.strip()},
                             }
-                        })
-                    
+                        )
+
                     if new_commits:
                         return list(reversed(new_commits))
                 except Exception as e:
                     logging.error(f"Alternative method failed: {e}")
-                
+
                 return []
         except Exception as e:
             logging.error("Error fetching commits: %s", e)
@@ -255,7 +271,7 @@ class UpdateMod(loader.Module):
 
         logging.info(f"Found {len(commits)} new commit(s), sending notification")
         try:
-            await self._send_update_notification(self.bot, commits)
+            await self._send_update_notification(commits)
             self.db.set("shizu.update_notifier", "last_commit_sha", commit_sha)
             logging.info(
                 f"Notification sent and last_commit_sha updated to {commit_sha[:7]}"
@@ -263,7 +279,7 @@ class UpdateMod(loader.Module):
         except Exception as e:
             logging.exception("Error sending update notification: %s", e)
 
-    async def _send_update_notification(self, bot: "bot.BotManager", commits: list):
+    async def _send_update_notification(self, commits: list):
         """Send notification about new update"""
         try:
             text = self.strings("update_available").format(

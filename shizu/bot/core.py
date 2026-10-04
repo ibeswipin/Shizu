@@ -12,22 +12,19 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-    
-import logging
-import asyncio
-import contextlib
-import sys
 
-from aiogram import Bot, Dispatcher, exceptions, types as aiotypes
+import contextlib
+import logging
+import sys
+from typing import NoReturn
+
+from aiogram import Bot, Dispatcher, exceptions
 from pyrogram import Client
 
-from typing import Union, NoReturn
-
-from shizu.health import reporter
+from shizu import database, types, utils
 from shizu.bot.events import Events
 from shizu.bot.token_manager import TokenManager
-
-from shizu import database, types
+from shizu.health import reporter
 
 with contextlib.suppress(Exception):
     bot = Bot(token=database.db.get("shizu.bot", "token", None), parse_mode="html")
@@ -64,7 +61,7 @@ class BotManager(Events, TokenManager):
         self._token = self._db.get("shizu.bot", "token", None)
         self.init_complete = False
 
-    async def load(self) -> Union[bool, NoReturn]:
+    async def load(self) -> bool | NoReturn:
         """Loads the bot manager"""
         if not self._token:
             self._token = await self._create_bot()
@@ -80,10 +77,14 @@ class BotManager(Events, TokenManager):
             me = await self.bot.get_me()
         except (exceptions.ValidationError, exceptions.Unauthorized):
             if self._db.get("shizu.bot", "manual_token", False):
-                logging.error("The supplied bot token is invalid. Update shizu.bot.token in db.json and restart Shizu.")
+                logging.error(
+                    "The supplied bot token is invalid. Update shizu.bot.token in db.json and restart Shizu."
+                )
                 reporter.bind(self._app, None)
                 await reporter.send(
-                    reporter.BOT_TOKEN.format("Shizu stopped because it cannot start the bot."),
+                    reporter.BOT_TOKEN.format(
+                        "Shizu stopped because it cannot start the bot."
+                    ),
                     prefer_userbot=True,
                 )
                 session = await self.bot.get_session()
@@ -111,7 +112,7 @@ class BotManager(Events, TokenManager):
             self._callback_query_handler, lambda _: True
         )
 
-        asyncio.ensure_future(self._dp.start_polling())
+        utils.spawn(self._dp.start_polling())
 
         self.bot.manager = self
         self.init_complete = True
