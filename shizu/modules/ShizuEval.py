@@ -17,6 +17,7 @@ import contextlib
 import sys
 from meval import meval
 from pyrogram import Client, types
+from telethon.sessions import StringSession
 
 from shizu import loader, utils, logger
 
@@ -65,10 +66,10 @@ class EvaluatorMod(loader.Module):
             with contextlib.suppress(Exception):
                 sessions.append(await app.export_session_string())
             with contextlib.suppress(Exception):
-                if utils.is_tl_enabled() and app.tl != "Not enabled":
-                    from telethon.sessions import StringSession
-
-                    sessions.append(StringSession.save(app.tl.session))
+                client = getattr(app, "tl", None)
+                # Mask credentials even when the connection is temporarily down.
+                if getattr(client, "connection_state", None) is not None:
+                    sessions.append(StringSession.save(client.session))
             self._session_strings = [s for s in sessions if s]
         return self._session_strings
 

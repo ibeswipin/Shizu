@@ -48,15 +48,26 @@ class SessionStorage:
 
     @classmethod
     def from_environment(cls) -> "SessionStorage":
-        """Require a stable key supplied by the operator; never generate silently."""
-        key = os.environ.get("SHIZU_SESSION_KEY")
-        if not key:
+        """SHIZU_SESSION_KEY if set, otherwise a key file next to the DB, created once."""
+        path = Path(os.environ.get("SHIZU_TELETHON_DB", "telethon_sessions.sqlite3"))
+        return cls(path, os.environ.get("SHIZU_SESSION_KEY") or cls._key_file(path))
+
+    @staticmethod
+    def _key_file(db_path: Path) -> bytes:
+        key_path = db_path.with_suffix(".key")
+        try:
+            if key_path.exists():
+                return key_path.read_bytes().strip()
+            key_path.parent.mkdir(parents=True, exist_ok=True)
+            key = Fernet.generate_key()
+            fd = os.open(key_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(fd, "wb") as file:
+                file.write(key)
+            return key
+        except OSError:
             raise SessionStorageError(
-                "Set SHIZU_SESSION_KEY to enable encrypted Telethon sessions."
-            )
-        return cls(
-            os.environ.get("SHIZU_TELETHON_DB", "telethon_sessions.sqlite3"), key
-        )
+                "Could not read or create the Telethon session key file."
+            ) from None
 
     def _execute(self, query: str, parameters: tuple[Any, ...]) -> sqlite3.Row | None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

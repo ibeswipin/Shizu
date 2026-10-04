@@ -20,7 +20,11 @@ from loguru import logger
 from shizu import loader, utils
 from pyrogram import Client, types
 
-from shizu.telegram.exceptions import TelegramConnectionError
+from shizu.telegram.exceptions import (
+    AccountMismatch,
+    TelegramConnectionError,
+    TelethonSessionInvalid,
+)
 from shizu.telegram.services import TelegramConnectionService, TelegramDisconnectService
 
 
@@ -35,7 +39,7 @@ class ShizuSettings(loader.Module):
             id_ = (await app.get_me()).id
             self.db.set("shizu.me", "me", id_)
 
-        app.is_tl_enabled = utils.is_tl_enabled()
+        app.is_tl_enabled = utils.is_tl_enabled(app)
 
     def markup_(self, purpose):
         return [
@@ -205,7 +209,21 @@ class ShizuSettings(loader.Module):
     @loader.command()
     async def enabletlmode(self, app, message):
         """Enable Telethon mode"""
-        if utils.is_tl_enabled() is False:
+        live_client = getattr(app, "tl", None)
+        if utils.is_tl_configured() and getattr(live_client, "connection_state", None):
+            try:
+                await self._telethon_service().verify(
+                    live_client, (await app.get_me()).id
+                )
+            except (TelethonSessionInvalid, AccountMismatch):
+                self.db.set("shizu.telethon", "enabled", False)
+                self.db.set("shizu.telethon", "status", "invalid")
+                app.is_tl_enabled = False
+            except TelegramConnectionError as error:
+                return await message.answer("❌ " + utils.escape_html(str(error)))
+            else:
+                app.is_tl_enabled = True
+        if utils.is_tl_enabled(app) is False:
             return await message.answer(
                 self.strings["are_you_sure"],
                 reply_markup=self.markup_("enabletlmode"),

@@ -36,6 +36,7 @@ from typing import Any, List, Literal, Tuple, Union, AsyncIterator
 
 from pyrogram.types import Chat, Message, User
 from pyrogram import Client, enums, types
+from shizu.telegram.state import TelethonConnectionState
 
 from pyrogram.raw.types.message_entity_unknown import MessageEntityUnknown
 from pyrogram.raw.types.message_entity_mention import MessageEntityMention
@@ -800,9 +801,26 @@ def random_id(size: int = 10) -> str:
     )
 
 
-def is_tl_enabled() -> bool:
-    """Check if telethon is enabled"""
+def is_tl_configured() -> bool:
+    """User preference: restore Telethon at startup, even after a network outage."""
     return bool(database.db.get("shizu.telethon", "enabled", False))
+
+
+def is_tl_enabled(app: Client | None = None) -> bool:
+    """Whether this process has a connected, verified Telethon client.
+
+    This is a fast runtime check. Use the connection service's verify() method
+    when a fresh Telegram response is required. No-argument plugin calls use
+    the current module manager's primary client.
+    """
+    if not is_tl_configured():
+        return False
+    if app is None:
+        manager = getattr(sys.modules.get("shizu.loader"), "_manager", None)
+        app = getattr(manager, "_app", None)
+    client = getattr(app, "tl", None)
+    state = getattr(client, "connection_state", None)
+    return isinstance(state, TelethonConnectionState) and state.ready(client)
 
 
 async def respond(message, response: str, **kwargs):

@@ -101,13 +101,37 @@ class TelegramConnectionService:
     async def _check_account(self, client: ManagedTelegramClient, user_id: int) -> None:
         me = await client.get_me()
         if me is None:
+            client.connection_state.invalidated()
             raise TelethonSessionInvalid(
                 "Telethon authorization is no longer valid. Please reconnect."
             )
         if me.id != user_id:
+            client.connection_state.invalidated()
             raise AccountMismatch(
                 "Telethon session belongs to another account. Please reconnect."
             )
+        client.connection_state.authorized(user_id)
+
+    async def verify(
+        self, client: ManagedTelegramClient, user_id: int, *, timeout: float = 10
+    ) -> None:
+        """Refresh the live account check; network errors never revoke a session."""
+        async with self._lock(user_id):
+            try:
+                if not client.is_connected():
+                    await asyncio.wait_for(client.connect(), timeout)
+                await asyncio.wait_for(self._check_account(client, user_id), timeout)
+            except (TelethonSessionInvalid, AccountMismatch):
+                client.connection_state.invalidated()
+                await self._invalidate(user_id)
+                raise
+            except (tl_errors.RPCError, OSError, asyncio.TimeoutError) as error:
+                if TelegramErrorMapper.invalid_session(error):
+                    client.connection_state.invalidated()
+                    await self._invalidate(user_id)
+                else:
+                    client.connection_state.unavailable()
+                raise TelegramErrorMapper.translate(error) from None
 
     async def _restore(self, user_id: int) -> ManagedTelegramClient:
         session = await self.storage.load(user_id)

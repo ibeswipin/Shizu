@@ -33,7 +33,11 @@ from pyrogram.raw.functions.auth.export_login_token import ExportLoginToken
 from qrcode.main import QRCode
 from shizu import database, utils
 from shizu.health import Reporter, reporter
-from shizu.telegram.exceptions import TelegramConnectionError
+from shizu.telegram.exceptions import (
+    AccountMismatch,
+    TelegramConnectionError,
+    TelethonSessionInvalid,
+)
 from shizu.telegram.services import TelegramConnectionService
 
 try:
@@ -123,9 +127,13 @@ class Auth:
             )
             self.tapp = await self.connections.restore(user_id)
             self.app.telethon_connections = self.connections
-        except TelegramConnectionError as error:
+        except (TelethonSessionInvalid, AccountMismatch) as error:
             logging.warning("Telethon startup: %s", error.status)
             await self._telethon_invalidated(user_id)
+        except TelegramConnectionError as error:
+            logging.warning("Telethon startup temporarily unavailable: %s", error.status)
+            database.db.set("shizu.telethon", "status", "unavailable")
+            self.app.is_tl_enabled = False
 
     def _check_api_tokens(self) -> bool:
         cfg = cp.ConfigParser()
@@ -189,7 +197,7 @@ class Auth:
             await self.handle_session_revoked()
             return sys.exit(64)
 
-        if utils.is_tl_enabled():
+        if utils.is_tl_configured():
             await self.restore_telethon(me.id)
         return me, self.app, self.tapp
 

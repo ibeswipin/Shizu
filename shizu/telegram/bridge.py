@@ -29,6 +29,7 @@ from shizu.telegram.exceptions import (
     TelethonSessionInvalid,
     TwoFactorRequired,
 )
+from shizu.telegram.state import TelethonConnectionState
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +96,25 @@ class ManagedTelegramClient(TelegramClient):
     session_invalidated: Callable[[], Awaitable[None]] | None = None
     _logging_out = False
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.connection_state = TelethonConnectionState()
+
+    async def disconnect(self) -> None:
+        """Closing a connection does not revoke the saved authorization."""
+        try:
+            await super().disconnect()
+        finally:
+            self.connection_state.disconnected()
+
     async def log_out(self) -> bool:
         """Preserve the cause of logout failure instead of Telethon swallowing RPC errors."""
         self._logging_out = True
         try:
-            return await super().log_out()
+            result = await super().log_out()
+            if result:
+                self.connection_state.invalidated()
+            return result
         finally:
             self._logging_out = False
 
@@ -111,17 +126,22 @@ class ManagedTelegramClient(TelegramClient):
         flood_sleep_threshold: int | None = None,
     ) -> Any:
         try:
-            return await super()._call(sender, request, ordered, flood_sleep_threshold)
+            result = await super()._call(sender, request, ordered, flood_sleep_threshold)
         except tl_errors.RPCError as error:
-            if (
-                self.session_invalidated is not None
-                and TelegramErrorMapper.invalid_session(error)
-            ):
-                await self.session_invalidated()
+            if TelegramErrorMapper.invalid_session(error):
+                self.connection_state.invalidated()
+                if self.session_invalidated is not None:
+                    await self.session_invalidated()
                 raise TelegramErrorMapper.translate(error) from None
             if self._logging_out:
                 raise TelegramErrorMapper.translate(error) from None
             raise
+        except (OSError, asyncio.TimeoutError):
+            self.connection_state.unavailable()
+            raise
+        else:
+            self.connection_state.rpc_succeeded()
+            return result
 
 
 class TelethonLoginBridge:

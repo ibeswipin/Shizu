@@ -40,6 +40,7 @@ from pyrogram import Client, filters, types
 
 from shizu import bot, database, dispatcher, utils, logger as logger_, extrapatchs
 from shizu.besafe import BeSafe
+from shizu.telegram.exceptions import TelegramConnectionError
 from shizu.types import InfiniteLoop, StopLoop
 from shizu import health
 from shizu.translator import Strings, Translator
@@ -1143,10 +1144,14 @@ class ModulesManager:
 
         extrapatchs.MessageMagic(types.Message, app)
 
-        if utils.is_tl_enabled() and hasattr(app, "tl") and app.tl != "Not enabled":
-            await app.tl.connect() if not app.tl.is_connected() else None
-            self.telethon_dp = dispatcher.TelethonDispatcherManager(app.tl, self)
-            await self.telethon_dp.load()
+        if utils.is_tl_enabled(app):
+            try:
+                await app.telethon_connections.verify(app.tl, self.me.id)
+            except TelegramConnectionError as error:
+                logging.warning("Telethon dispatcher unavailable: %s", error.status)
+            else:
+                self.telethon_dp = dispatcher.TelethonDispatcherManager(app.tl, self)
+                await self.telethon_dp.load()
 
         try:
             app.inline_bot = self.bot_manager.bot
@@ -1208,7 +1213,7 @@ class ModulesManager:
     def _register_local(self, module_name: str, file_path: str, source_code: str):
         try:
             if self._is_telethon_module(source_code):
-                if not utils.is_tl_enabled():
+                if not utils.is_tl_enabled(self._app):
                     return
                 spec = ModuleSpec(
                     module_name,
@@ -1283,11 +1288,7 @@ class ModulesManager:
             value.prefix = self._db.get("shizu.loader", "prefixes", ["."])
             value.lookup = self._lookup
 
-            if (
-                utils.is_tl_enabled()
-                and hasattr(self._app, "tl")
-                and self._app.tl != "Not enabled"
-            ):
+            if utils.is_tl_enabled(self._app):
                 value.client = self._app.tl
                 value._client = self._app.tl
                 value.tl = self._app.tl
@@ -1302,11 +1303,7 @@ class ModulesManager:
             instance.hidden = self.hidden
             instance.inline = self.bot_manager
 
-            if (
-                utils.is_tl_enabled()
-                and hasattr(self._app, "tl")
-                and self._app.tl != "Not enabled"
-            ):
+            if utils.is_tl_enabled(self._app):
                 instance.client = self._app.tl
                 instance._client = self._app.tl
                 instance.tl = self._app.tl
@@ -1438,7 +1435,7 @@ class ModulesManager:
         is_telethon = self._is_telethon_module(original_source)
 
         if is_telethon:
-            if not utils.is_tl_enabled():
+            if not utils.is_tl_enabled(self._app):
                 return "OTL"
             module_source = inter.transform(original_source)
         else:
@@ -1457,7 +1454,7 @@ class ModulesManager:
             if str((await self._app.get_me()).id) not in allowed_accounts:
                 return "NFA"
 
-        if re.search(r"# ?tl-only", module_source) and not utils.is_tl_enabled():
+        if re.search(r"# ?tl-only", module_source) and not utils.is_tl_enabled(self._app):
             return "OTL"
         self.raw_modules[module_name] = original_source
         try:
@@ -1597,6 +1594,14 @@ class ModulesManager:
         if hasattr(module, "_client_ready_called") and module._client_ready_called:
             return True
 
+        client = self._app
+        if getattr(module, "m__telethon", False):
+            if not utils.is_tl_enabled(self._app):
+                return False
+            client = self._app.tl
+            if getattr(module, "client", None) is None:
+                module._client = module.client = module.tl = client
+
         for _, method in iter_attrs(module):
             if hasattr(method, "strings"):
                 method.strings = Strings(method, translator, self._db)
@@ -1610,14 +1615,6 @@ class ModulesManager:
                     method.start()
 
         module._client_ready_called = True
-
-        client = self._app
-        if getattr(module, "m__telethon", False) and utils.is_tl_enabled():
-            client = getattr(self._app, "tl", None)
-            if client in (None, "Not enabled"):
-                return True
-            if getattr(module, "client", None) is None:
-                module._client = module.client = module.tl = client
 
         for hook, args in (
             (module.on_load, (self._app,)),
@@ -1699,7 +1696,7 @@ class ModulesManager:
         tl = getattr(self._app, "tl", None)
         return (
             tl
-            if utils.is_tl_enabled() and tl not in (None, "Not enabled")
+            if utils.is_tl_enabled(self._app) and tl not in (None, "Not enabled")
             else self._app
         )
 
