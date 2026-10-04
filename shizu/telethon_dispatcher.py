@@ -23,6 +23,7 @@ from telethon import events
 from shizu import utils
 from shizu.dispatcher import security_manager
 from shizu.health import reporter
+from shizu.besafe import BeSafe
 
 if TYPE_CHECKING:
     from shizu.loader import ModulesManager
@@ -149,7 +150,8 @@ class TelethonDispatcherManager:
 
             async def callback(update, handler=handler):
                 try:
-                    await handler(update)
+                    if BeSafe.allow_handler(handler, update):
+                        await handler(update)
                 except Exception:
                     logger.exception("Raw handler %s failed", handler.__name__)
 
@@ -182,7 +184,7 @@ class TelethonDispatcherManager:
         command = self.modules.aliases.get(command, command).lower()
         func = self.modules.command_handlers.get(command)
         module = getattr(func, "__self__", None)
-        if not func or not getattr(module, "m__telethon", False):
+        if not func or not BeSafe.allow_handler(func, message) or not getattr(module, "m__telethon", False):
             return
 
         if not filters_accept(func, message, self.prefixes, "tags", "tag_values"):
@@ -217,6 +219,8 @@ class TelethonDispatcherManager:
             if not getattr(module, "m__telethon", False):
                 continue
             for watcher in getattr(module, "watcher_handlers", None) or ():
+                if not BeSafe.allow_handler(watcher, message):
+                    continue
                 if not watcher_accepts(watcher, message, prefixes):
                     continue
                 try:

@@ -39,6 +39,7 @@ import requests
 from pyrogram import Client, filters, types
 
 from shizu import bot, database, dispatcher, utils, logger as logger_, extrapatchs
+from shizu.besafe import BeSafe
 from shizu.types import InfiniteLoop, StopLoop
 from shizu import health
 from shizu.translator import Strings, Translator
@@ -1196,6 +1197,12 @@ class ModulesManager:
 
         sys.modules[module.__name__] = module
 
+        short_name = module_name.rsplit(".", 1)[-1]
+        core_path = os.path.join(os.path.dirname(__file__), "modules", short_name + ".py")
+        trusted = short_name in BeSafe._core and bool(file_path) and (
+            os.path.realpath(file_path) == os.path.realpath(core_path)
+        )
+        BeSafe.register_namespace(module, trusted=trusted)
         spec.loader.exec_module(module)
 
         instance = None
@@ -1646,6 +1653,7 @@ class ModulesManager:
         spec = ModuleSpec(name, StringLoader(code, url), origin=url)
         module = module_from_spec(spec)
         sys.modules[name] = module
+        BeSafe.register_namespace(module)
         try:
             spec.loader.exec_module(module)
         except ImportError as error:
@@ -1812,7 +1820,7 @@ class ModulesManager:
             asyncio.ensure_future(self.call_hook(module, "on_unload"))
 
         for attr in vars(type(module)).values():
-            if isinstance(attr, InfiniteLoop) and attr.module_instance is module:
+            if isinstance(attr, InfiniteLoop) and attr.module_instance is module and attr._task:
                 asyncio.ensure_future(attr.stop())
 
         module_module = inspect.getmodule(module)

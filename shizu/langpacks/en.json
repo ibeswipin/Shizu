@@ -121,14 +121,14 @@
   "shizu.modules.ShizuSettings.alias_done": "✅ Alias <code>{}</code> for the command <code>{}</code> has been added",
   "shizu.modules.ShizuSettings.no_such_alias": "❌ There is no such alias",
   "shizu.modules.ShizuSettings.alias_removed": "✅ Alias <code>{}</code> has been deleted",
-  "shizu.modules.ShizuSettings.are_you_sure": "🚸 <b>Are you sure you want to enable Telethon? We will not be responsible for your actions, even if you are banned. Enabling Telethon may result in unintended consequences or violations of our policies. Please proceed with caution and ensure that you use this feature responsibly and in accordance with our guidelines. Any misuse of Telethon may lead to disciplinary actions, up to and including account suspension or permanent bans.</b>",
-  "shizu.modules.ShizuSettings.yes_button": "✅ Totally sure",
-  "shizu.modules.ShizuSettings.no_button": "❌ No",
+  "shizu.modules.ShizuSettings.are_you_sure": "🧩 <b>Connect Telethon?</b>\nAccess 100+ additional compatible modules, without another phone code.\n\nTelegram will ask whether you recognize the login from <b>Shizu</b> — tap “Yes”.",
+  "shizu.modules.ShizuSettings.yes_button": "✅ Connect",
+  "shizu.modules.ShizuSettings.no_button": "Not now",
   "shizu.modules.ShizuSettings.congratulations": "🎉 <b>Congratulations! You have successfully enabled Telethon!</b>\n<i>Restart the bot to apply the changes</i>",
   "shizu.modules.ShizuSettings.already_enabled": "🧞 <b>Telethon is already enabled</b>",
   "shizu.modules.ShizuSettings.are_sure_to_stop": "🤔 <b>Are you sure you want to stop the bot? Next time you will need to start it manually</b>",
   "shizu.modules.ShizuSettings.shutted_down": "🩹 <b>The bot has been shut down</b>",
-  "shizu.modules.ShizuSettings.enter_2fa": "🔐 <b>Enter your 2FA code</b>",
+  "shizu.modules.ShizuSettings.enter_2fa": "🔐 <b>Enter your Telegram cloud password</b>\nThe password is only used to complete this login.",
   "shizu.modules.ShizuSettings.from_where": "❔ <b>Reply to the message to purge from</b>",
   "shizu.modules.ShizuSettings.no_message_to_delete": "❌ <b>No message to delete</b>",
   "shizu.modules.ShizuTester.ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Telegram response time:</b> <code>{}</code> <b>ms</b>",
@@ -337,5 +337,6 @@
   "shizu.modules.ShizuLoader.denied": "🛡 <b>This version of the module was denied.</b> Revoke the decision with <code>.bsforget</code> to review it again",
   "shizu.modules.ShizuPermissions.button_owners": "👑 Owners",
   "shizu.modules.ShizuSettings.api_on": "🛡 <b>API protection is on.</b>\nShizu paces messages so modules cannot get the account flood-banned.",
-  "shizu.modules.ShizuSettings.api_off": "⚠️ <b>API protection is off.</b>\nModules can send as fast as they want, which risks a flood ban."
+  "shizu.modules.ShizuSettings.api_off": "⚠️ <b>API protection is off.</b>\nModules can send as fast as they want, which risks a flood ban.",
+  "shizu.modules.ShizuSettings.telethon_disabled": "Telethon disconnected. Its separate authorization has been revoked. Restart Shizu to unload its modules."
 }

@@ -118,14 +118,14 @@
   "shizu.modules.ShizuSettings.alias_done": "✅ Алиас <code>{}</code> для команды <code>{}</code> добавлен",
   "shizu.modules.ShizuSettings.no_such_alias": "❌ Такого алиаса не существует",
   "shizu.modules.ShizuSettings.alias_removed": "✅ Алиас <code>{}</code> удалён",
-  "shizu.modules.ShizuSettings.are_you_sure": "🚸 <b>Вы уверены, что хотите включить Telethon? Мы не несем ответственности за ваши действия, даже если вы забанены. Включение Telethon может привести к непреднамеренным последствиям или нарушениям наших политик. Пожалуйста, действуйте осторожно и убедитесь, что вы используете эту функцию ответственно и в соответствии с нашими руководствами. Любое неправильное использование Telethon может привести к дисциплинарным мерам, вплоть до приостановки учетной записи или постоянной блокировки.</b>",
-  "shizu.modules.ShizuSettings.yes_button": "✅ Полностью уверен",
-  "shizu.modules.ShizuSettings.no_button": "❌ Нет",
+  "shizu.modules.ShizuSettings.are_you_sure": "🧩 <b>Подключить Telethon?</b>\nЭто откроет доступ к 100+ дополнительным совместимым модулям без нового кода входа.\n\nTelegram спросит, узнаёте ли вы вход с устройства <b>Shizu</b> — нажмите «Да».",
+  "shizu.modules.ShizuSettings.yes_button": "✅ Подключить",
+  "shizu.modules.ShizuSettings.no_button": "Пока нет",
   "shizu.modules.ShizuSettings.congratulations": "🎉 <b>Поздравляем! Вы успешно включили Telethon!</b>\n<i>Перезапустите бота, чтобы изменения вступили в силу</i>",
   "shizu.modules.ShizuSettings.already_enabled": "🧞 <b>Telethon уже включён</b>",
   "shizu.modules.ShizuSettings.are_sure_to_stop": "🤔 <b>Вы уверены, что хотите остановить бота? Потом его придётся запускать вручную</b>",
   "shizu.modules.ShizuSettings.shutted_down": "🩹 <b>Бот был выключен</b>",
-  "shizu.modules.ShizuSettings.enter_2fa": "🔐 <b>Введите ваш 2FA код</b>",
+  "shizu.modules.ShizuSettings.enter_2fa": "🔐 <b>Введите облачный пароль Telegram</b>\nПароль используется только для завершения этого входа.",
   "shizu.modules.ShizuSettings.from_where": "❔ <b>Ответьте на сообщение, с которого начать очистку</b>",
   "shizu.modules.ShizuSettings.no_message_to_delete": "❌ <b>Нет сообщения для удаления</b>",
   "shizu.modules.ShizuTester.ping": "<emoji id=5220226955206467824>⚡️</emoji> <b>Время ответа Telegram:</b> <code>{}</code> <b>мс</b>",
@@ -338,5 +338,6 @@
   "shizu.modules.ShizuLoader.denied": "🛡 <b>Эта версия модуля отклонена.</b> Отзови решение через <code>.bsforget</code>, чтобы проверить заново",
   "shizu.modules.ShizuPermissions.button_owners": "👑 Владельцы",
   "shizu.modules.ShizuSettings.api_on": "🛡 <b>Защита API включена.</b>\nShizu сдерживает частоту отправки, чтобы модули не довели аккаунт до флуд-бана.",
-  "shizu.modules.ShizuSettings.api_off": "⚠️ <b>Защита API выключена.</b>\nМодули могут отправлять сколько угодно быстро, есть риск флуд-бана."
+  "shizu.modules.ShizuSettings.api_off": "⚠️ <b>Защита API выключена.</b>\nМодули могут отправлять сколько угодно быстро, есть риск флуд-бана.",
+  "shizu.modules.ShizuSettings.telethon_disabled": "Telethon отключён, его отдельная авторизация завершена. Перезапустите Shizu, чтобы выгрузить его модули."
 }

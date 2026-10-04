@@ -802,7 +802,7 @@ def random_id(size: int = 10) -> str:
 
 def is_tl_enabled() -> bool:
     """Check if telethon is enabled"""
-    return any(("shizu-tl.session") in i for i in os.listdir())
+    return bool(database.db.get("shizu.telethon", "enabled", False))
 
 
 async def respond(message, response: str, **kwargs):

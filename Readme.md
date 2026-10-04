@@ -17,6 +17,7 @@
 
 - **Modules**: load from a link or a file, unload, configure. Built-in modules cover help, backups, updates, languages and more.
 - **Web setup**: first launch opens a web page. Log in with a QR code, or with your phone number and 2FA password, then pick your bot.
+- **Telethon (optional)**: a separate QR-approved login via Pyrogram, with encrypted string sessions. Choose it during setup or use `.enabletlmode`; `.disabletlmode` revokes it. Configure `SHIZU_SESSION_KEY` first — [setup and manual checks](shizu/telegram/README.md).
 - **Bot control panel**: send `/panel` to your bot to restart or stop Shizu, change the prefix or the bot token.
 - **BeSafe**: third-party modules load only after you review and approve them. Approval cards arrive in a separate chat.
 - **Service chats**: Shizu creates `Shizu-logs`, `Shizu-backup` and `Shizu-besafe`, and puts them with your bot into a **Shizu** chat folder.
