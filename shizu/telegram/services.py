@@ -1,14 +1,31 @@
+# Shizu Copyright (C) 2023-2026  Ibeswipin
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
 """Connection lifecycle for endpoints, setup handlers and the running userbot."""
 
 import asyncio
-import time
 import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
-from pyrogram import Client, errors as pyro_errors
+from pyrogram import Client
+from pyrogram import errors as pyro_errors
 from telethon import errors as tl_errors
 from telethon.sessions import StringSession
 
@@ -17,6 +34,7 @@ from shizu.telegram.bridge import (
     TelegramErrorMapper,
     TelethonLoginBridge,
 )
+from shizu.telegram.device import TelegramDeviceProfile
 from shizu.telegram.exceptions import (
     AccountMismatch,
     InvalidTwoFactorPassword,
@@ -30,8 +48,6 @@ from shizu.telegram.exceptions import (
     TwoFactorRequired,
 )
 from shizu.telegram.storage import SessionStorage
-from shizu.telegram.device import TelegramDeviceProfile
-
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +92,9 @@ class TelegramConnectionService:
     ) -> "TelegramConnectionService":
         """Use the same configured device profile as the primary client."""
         bridge = TelethonLoginBridge(
-            int(api_id), api_hash, **TelegramDeviceProfile.from_config().client_options()
+            int(api_id),
+            api_hash,
+            **TelegramDeviceProfile.from_config().client_options(),
         )
         return cls(bridge, SessionStorage.from_environment(), **kwargs)
 
@@ -125,7 +143,7 @@ class TelegramConnectionService:
                 client.connection_state.invalidated()
                 await self._invalidate(user_id)
                 raise
-            except (tl_errors.RPCError, OSError, asyncio.TimeoutError) as error:
+            except (TimeoutError, tl_errors.RPCError, OSError) as error:
                 if TelegramErrorMapper.invalid_session(error):
                     client.connection_state.invalidated()
                     await self._invalidate(user_id)
@@ -151,7 +169,7 @@ class TelegramConnectionService:
             finally:
                 await client.disconnect()
             raise
-        except (tl_errors.RPCError, OSError, asyncio.TimeoutError) as error:
+        except (TimeoutError, tl_errors.RPCError, OSError) as error:
             await client.disconnect()
             raise TelegramErrorMapper.translate(error) from None
         except BaseException:
@@ -173,12 +191,7 @@ class TelegramConnectionService:
             # Do not leave an untracked authorized device if persistence fails.
             try:
                 revoked = await client.log_out()
-            except (
-                TelegramConnectionError,
-                tl_errors.RPCError,
-                OSError,
-                asyncio.TimeoutError,
-            ):
+            except (TimeoutError, TelegramConnectionError, tl_errors.RPCError, OSError):
                 revoked = False
             if not revoked:
                 logger.warning(
@@ -214,7 +227,7 @@ class TelegramConnectionService:
             result = await self._save(pending.client, user_id)
         except (InvalidTwoFactorPassword, TelegramFloodWait):
             raise
-        except (tl_errors.RPCError, OSError, asyncio.TimeoutError) as error:
+        except (TimeoutError, tl_errors.RPCError, OSError) as error:
             self._forget_pending(user_id)
             await pending.client.disconnect()
             raise TelegramErrorMapper.translate(error) from None
@@ -229,7 +242,7 @@ class TelegramConnectionService:
         """Identify the primary account while mapping revoked-session errors."""
         try:
             owner = await pyro.get_me()
-        except (pyro_errors.RPCError, OSError, asyncio.TimeoutError) as error:
+        except (TimeoutError, pyro_errors.RPCError, OSError) as error:
             raise TelegramErrorMapper.translate(error, primary=True) from None
         if owner is None:
             raise PyrogramSessionInvalid(
@@ -268,7 +281,7 @@ class TelegramConnectionService:
                 pending.timer = asyncio.create_task(self._expire(user_id, pending))
                 keep_client = True
                 return ConnectionResult("need_2fa", self.bridge.warning)
-            except (tl_errors.RPCError, OSError, asyncio.TimeoutError) as error:
+            except (TimeoutError, tl_errors.RPCError, OSError) as error:
                 raise TelegramErrorMapper.translate(error) from None
             finally:
                 if not keep_client:
@@ -339,7 +352,7 @@ class TelegramDisconnectService:
                     if not TelegramErrorMapper.invalid_session(error):
                         raise TelegramErrorMapper.translate(error) from None
                 await self.connections.storage.delete(user_id)
-            except (OSError, asyncio.TimeoutError) as error:
+            except (TimeoutError, OSError) as error:
                 raise TelegramErrorMapper.translate(error) from None
             finally:
                 await client.disconnect()

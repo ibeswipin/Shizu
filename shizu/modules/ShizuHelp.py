@@ -48,7 +48,10 @@ class Help(loader.Module):
             for command in module.command_handlers
             if command not in self.hidden
         ]
-        inline = [f"<code>{utils.escape_html(command)}</code>" for command in module.inline_handlers]
+        inline = [
+            f"<code>{utils.escape_html(command)}</code>"
+            for command in module.inline_handlers
+        ]
         if not commands and not inline:
             return None
 
@@ -59,16 +62,22 @@ class Help(loader.Module):
         else:
             emoji = self.config["custom_modules"]
 
-        line = f"{emoji} <b>{utils.escape_html(module.name)}</b> — " + "  ".join(commands)
+        line = f"{emoji} <b>{utils.escape_html(module.name)}</b> — " + "  ".join(
+            commands
+        )
         if inline:
             line += (" · " if commands else "") + "🤖 " + "  ".join(inline)
         return line
 
     def _sections(self) -> dict:
         sections = {section: [] for section in self.SECTIONS}
-        for module in sorted(self.all_modules.modules, key=lambda mod: mod.name.lower()):
+        for module in sorted(
+            self.all_modules.modules, key=lambda mod: mod.name.lower()
+        ):
             if line := self._line(module):
-                sections["internal" if module.name in self.cmodules else "external"].append(line)
+                sections[
+                    "internal" if module.name in self.cmodules else "external"
+                ].append(line)
         return sections
 
     def _pages(self, lines: list) -> list:
@@ -95,19 +104,23 @@ class Help(loader.Module):
 
         markup = []
         if all(sections.values()):
-            markup.append([
-                {
-                    "text": ("• " if name == section else "")
-                    + f"{self.SECTION_EMOJI[name]} {self.strings(name + '_title')} · {len(sections[name])}",
-                    "callback": self.inline__help_page,
-                    "args": (name, 0),
-                }
-                for name in self.SECTIONS
-            ])
+            markup.append(
+                [
+                    {
+                        "text": ("• " if name == section else "")
+                        + f"{self.SECTION_EMOJI[name]} {self.strings(name + '_title')} · {len(sections[name])}",
+                        "callback": self.inline__help_page,
+                        "args": (name, 0),
+                    }
+                    for name in self.SECTIONS
+                ]
+            )
         markup += self.bot.build_pagination(
             self.inline__help_page, len(pages), current_page=page + 1, args=(section,)
         )
-        markup.append([{"text": self.strings("close"), "callback": self.inline__help_close}])
+        markup.append(
+            [{"text": self.strings("close"), "callback": self.inline__help_close}]
+        )
         return text, markup
 
     async def inline__help_page(self, call, section: str, page: int = 0):
@@ -159,7 +172,10 @@ class Help(loader.Module):
                 for command in module.command_handlers:
                     if command not in self.hidden and query in command.lower():
                         doc = " ".join(
-                            (module.command_handlers[command].__doc__ or "No description").split()
+                            (
+                                module.command_handlers[command].__doc__
+                                or "No description"
+                            ).split()
                         )
                         results.append(
                             f"• <code>{prefix}{command}</code> - <b>{module.name}</b>\n"
@@ -179,11 +195,6 @@ class Help(loader.Module):
                 result_text += f"\n\n... and {len(results) - 15} more results"
 
             return await send_response(result_text)
-
-        sorted_modules = sorted(
-            self.all_modules.modules,
-            key=lambda mod: (mod.name not in self.cmodules, len(mod.name)),
-        )
 
         if not args:
             sections = self._sections()
@@ -231,12 +242,16 @@ class Help(loader.Module):
             if not commands and not module.inline_handlers:
                 continue
 
-            if query and query not in module.name.lower() and not any(
-                query in c for c in [*commands, *module.inline_handlers]
+            if (
+                query
+                and query not in module.name.lower()
+                and not any(query in c for c in [*commands, *module.inline_handlers])
             ):
                 continue
 
-            text = f"🐙 <b>{module.name}</b>\nℹ️ {module.__doc__ or 'No description'}\n\n"
+            text = (
+                f"🐙 <b>{module.name}</b>\nℹ️ {module.__doc__ or 'No description'}\n\n"
+            )
             text += "\n".join(
                 f"▫️ <code>{prefix}{c}</code> - {module.command_handlers[c].__doc__ or 'No description'}"
                 for c in commands

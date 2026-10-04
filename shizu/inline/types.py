@@ -15,7 +15,7 @@
 
 """Hikka compatible `..inline.types` names mapped onto Shizu / aiogram types"""
 
-from aiogram.types import CallbackQuery, InlineQuery, Message
+from aiogram.types import CallbackQuery, Message
 
 from shizu.bot.events import InlineCall
 

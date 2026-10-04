@@ -1,3 +1,19 @@
+# Shizu Copyright (C) 2023-2026  Ibeswipin
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
 """QR bridge using a NEW Telethon authorization; no Pyrogram key conversion."""
 
 import asyncio
@@ -6,18 +22,20 @@ import binascii
 import contextlib
 import logging
 import struct
-from typing import Any
 from collections.abc import Awaitable, Callable
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from pyrogram import Client, errors as pyro_errors
+from pyrogram import Client
+from pyrogram import errors as pyro_errors
 from pyrogram.raw.functions.auth import AcceptLoginToken
 from telethon import TelegramClient
 from telethon import errors as tl_errors
-from telethon.sessions import StringSession
 from telethon.network.mtprotosender import MTProtoSender
+from telethon.sessions import StringSession
 from telethon.tl.tlobject import TLObject
 
+from shizu.telegram.device import TelegramDeviceProfile
 from shizu.telegram.exceptions import (
     InvalidTwoFactorPassword,
     LoginTimeout,
@@ -30,7 +48,6 @@ from shizu.telegram.exceptions import (
     TwoFactorRequired,
 )
 from shizu.telegram.state import TelethonConnectionState
-from shizu.telegram.device import TelegramDeviceProfile
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +144,9 @@ class ManagedTelegramClient(TelegramClient):
         flood_sleep_threshold: int | None = None,
     ) -> Any:
         try:
-            result = await super()._call(sender, request, ordered, flood_sleep_threshold)
+            result = await super()._call(
+                sender, request, ordered, flood_sleep_threshold
+            )
         except tl_errors.RPCError as error:
             if (
                 isinstance(error, tl_errors.AuthKeyUnregisteredError)
@@ -147,7 +166,7 @@ class ManagedTelegramClient(TelegramClient):
             if self._logging_out:
                 raise TelegramErrorMapper.translate(error) from None
             raise
-        except (OSError, asyncio.TimeoutError):
+        except (TimeoutError, OSError):
             self.connection_state.unavailable()
             raise
         else:
@@ -247,7 +266,7 @@ class TelethonLoginBridge:
                 raise TelegramRPCFailure(
                     "Telegram returned an unexpected login response. Please reconnect."
                 ) from None
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise LoginTimeout(
                     "Telegram login timed out. Please reconnect."
                 ) from None

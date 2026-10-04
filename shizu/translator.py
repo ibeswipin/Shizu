@@ -21,8 +21,8 @@ Licensed under the GNU GPLv3
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 import json
+import os
 from functools import lru_cache
 
 from shizu import utils
@@ -42,7 +42,7 @@ class Translator:
         path = os.path.join(utils.get_base_dir(), f"langpacks/{lang}.json")
 
         if os.path.isfile(path):
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 try:
                     return json.load(f)
                 except json.JSONDecodeError:

@@ -17,10 +17,9 @@
 import asyncio
 import datetime
 import re
-
-from types import FunctionType
-from typing import Any, Dict, List, Union
 from logging import getLogger
+from types import FunctionType
+from typing import Any
 
 from pyrogram import Client, types
 
@@ -35,7 +34,7 @@ class Module:
 
     name: str
     author: str
-    version: Union[int, float]
+    version: int | float
 
     async def on_load(self, app: Client) -> Any:
         """called when loading the module"""
@@ -45,22 +44,22 @@ class ModulesManager:
     """Manager of modules"""
 
     def __init__(self) -> None:
-        self.modules: List[Module]
-        self.watcher_handlers: List[FunctionType]
+        self.modules: list[Module]
+        self.watcher_handlers: list[FunctionType]
 
-        self.command_handlers: Dict[str, FunctionType]
-        self.message_handlers: Dict[str, FunctionType]
-        self.inline_handlers: Dict[str, FunctionType]
-        self.callback_handlers: Dict[str, FunctionType]
+        self.command_handlers: dict[str, FunctionType]
+        self.message_handlers: dict[str, FunctionType]
+        self.inline_handlers: dict[str, FunctionType]
+        self.callback_handlers: dict[str, FunctionType]
 
         self._local_modules_path: str
         self.me: types.User
         self._db: database.Database
 
-        self.aliases: Dict[str, str]
+        self.aliases: dict[str, str]
 
-        self.dp
-        self.bot_manager
+        self.dp: Any
+        self.bot_manager: Any
 
 
 class StopLoop(Exception):
@@ -77,8 +76,10 @@ class InfiniteLoop:
 
     @classmethod
     def parse_times(cls, value) -> set:
-        """"09:00", "9:00, 21:30" or ["09:00", "21:30"] -> {"09:00", "21:30"}"""
-        items = value.replace(",", " ").split() if isinstance(value, str) else list(value)
+        """ "09:00", "9:00, 21:30" or ["09:00", "21:30"] -> {"09:00", "21:30"}"""
+        items = (
+            value.replace(",", " ").split() if isinstance(value, str) else list(value)
+        )
         times = set()
         for item in items:
             item = str(item).strip()
@@ -98,21 +99,25 @@ class InfiniteLoop:
     def __init__(
         self,
         func: FunctionType,
-        interval: Union[int, str, None],
+        interval: int | str | None,
         autostart: bool,
         wait_before: bool,
-        time: Union[str, List[str], None] = None,
+        time: str | list[str] | None = None,
     ):
         name = getattr(func, "__qualname__", func)
         if (interval is None) == (time is None):
             raise ValueError(
                 f"{name}: loader.loop needs either interval= (seconds or a config key) "
-                "or time= (\"HH:MM\", a list of them, or a config key), not both"
+                'or time= ("HH:MM", a list of them, or a config key), not both'
             )
         if isinstance(interval, bool) or (
-            interval is not None and not isinstance(interval, str) and (not isinstance(interval, int) or interval <= 0)
+            interval is not None
+            and not isinstance(interval, str)
+            and (not isinstance(interval, int) or interval <= 0)
         ):
-            raise ValueError(f"{name}: loop interval must be a positive number of seconds or a config key")
+            raise ValueError(
+                f"{name}: loop interval must be a positive number of seconds or a config key"
+            )
         if time is not None and self.is_time_literal(time):
             self.parse_times(time)
         self.func = func
@@ -128,7 +133,9 @@ class InfiniteLoop:
     def _problem(self, text: str) -> None:
         if text != self._last_problem:
             self._last_problem = text
-            logger.error("Loop %s: %s", getattr(self.func, "__qualname__", self.func), text)
+            logger.error(
+                "Loop %s: %s", getattr(self.func, "__qualname__", self.func), text
+            )
 
     def _config(self, key: str):
         config = getattr(self.module_instance, "config", None)
@@ -138,19 +145,29 @@ class InfiniteLoop:
 
     def current_interval(self) -> int:
         try:
-            value = self._config(self.interval) if isinstance(self.interval, str) else self.interval
+            value = (
+                self._config(self.interval)
+                if isinstance(self.interval, str)
+                else self.interval
+            )
             value = int(value)
             if value <= 0:
                 raise ValueError
         except (TypeError, ValueError) as e:
-            self._problem(f"invalid interval ({e or 'must be a positive number'}), using {self.FALLBACK_INTERVAL} s")
+            self._problem(
+                f"invalid interval ({e or 'must be a positive number'}), using {self.FALLBACK_INTERVAL} s"
+            )
             return self.FALLBACK_INTERVAL
         self._last_problem = None
         return value
 
     def current_times(self) -> set:
         try:
-            value = self.time if self.is_time_literal(self.time) else self._config(self.time)
+            value = (
+                self.time
+                if self.is_time_literal(self.time)
+                else self._config(self.time)
+            )
             times = self.parse_times(value)
         except (TypeError, ValueError) as e:
             self._problem(f"{e}; the loop is paused until it is fixed")
@@ -176,7 +193,7 @@ class InfiniteLoop:
 
     def start(self, *args, **kwargs):
         if not self._task:
-            self._task = asyncio.ensure_future(self.actual_loop(*args, **kwargs))
+            self._task = asyncio.create_task(self.actual_loop(*args, **kwargs))
         else:
             logger.info("Attempted to start already running loop")
 
@@ -188,7 +205,9 @@ class InfiniteLoop:
         except Exception as error:
             logger.exception("Error running loop!")
             module = getattr(self.module_instance, "name", None)
-            reporter.failure(f"{module or 'Shizu'} · {self.func.__name__}", error, module)
+            reporter.failure(
+                f"{module or 'Shizu'} · {self.func.__name__}", error, module
+            )
         return True
 
     async def actual_loop(self, *args, **kwargs):

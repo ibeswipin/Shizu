@@ -13,10 +13,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from pyrogram.types import Message
-from pyrogram import Client
+
 from aiogram.types import CallbackQuery
-from typing import Union
+from pyrogram import Client
+from pyrogram.types import Message
 
 from shizu import loader, utils
 
@@ -31,7 +31,7 @@ class ShizuPermissions(loader.Module):
         """Close inline form"""
         await call.delete()
 
-    async def inline__main_menu(self, call: Union[Message, CallbackQuery]) -> None:
+    async def inline__main_menu(self, call: Message | CallbackQuery) -> None:
         """Show main menu"""
         markup = [
             [
@@ -65,7 +65,10 @@ class ShizuPermissions(loader.Module):
                 },
             ],
             [
-                {"text": self.strings("button_owners"), "callback": self.inline__owners},
+                {
+                    "text": self.strings("button_owners"),
+                    "callback": self.inline__owners,
+                },
                 {"text": self.strings("button_close"), "callback": self.inline__close},
             ],
         ]
@@ -89,20 +92,34 @@ class ShizuPermissions(loader.Module):
                 mentions.append(f"• {(await self.app.get_users(user_id)).mention}")
             except Exception:
                 mentions.append(f"• <code>{user_id}</code>")
-        text = self.strings("owner_on" if status else "owner_off") + "\n\n" + (
-            self.strings("owners").format("\n".join(mentions)) if mentions else self.strings("owner_no_owners")
+        text = (
+            self.strings("owner_on" if status else "owner_off")
+            + "\n\n"
+            + (
+                self.strings("owners").format("\n".join(mentions))
+                if mentions
+                else self.strings("owner_no_owners")
+            )
         )
         markup = [
             [
                 {
-                    "text": self.strings("owner_button_off" if status else "owner_button_on"),
+                    "text": self.strings(
+                        "owner_button_off" if status else "owner_button_on"
+                    ),
                     "callback": self.inline__owner_mode,
                     "args": (not status,),
                 },
-                {"text": self.strings("owner_advanced_security"), "callback": self.inline__owner_manage},
+                {
+                    "text": self.strings("owner_advanced_security"),
+                    "callback": self.inline__owner_manage,
+                },
             ],
             [
-                {"text": self.strings("button_back"), "callback": self.inline__main_menu},
+                {
+                    "text": self.strings("button_back"),
+                    "callback": self.inline__main_menu,
+                },
                 {"text": self.strings("button_close"), "callback": self.inline__close},
             ],
         ]
@@ -136,19 +153,34 @@ class ShizuPermissions(loader.Module):
                     },
                 ],
                 [
-                    {"text": self.strings("button_back"), "callback": self.inline__owners},
-                    {"text": self.strings("button_close"), "callback": self.inline__close},
+                    {
+                        "text": self.strings("button_back"),
+                        "callback": self.inline__owners,
+                    },
+                    {
+                        "text": self.strings("button_close"),
+                        "callback": self.inline__close,
+                    },
                 ],
             ],
         )
 
-    async def inline__owner_input(self, call: CallbackQuery, query: str, cid: str, add: bool) -> None:
+    async def inline__owner_input(
+        self, call: CallbackQuery, query: str, cid: str, add: bool
+    ) -> None:
         try:
             user_id = (await self.app.get_users(query.strip())).id
         except Exception:
             return await call.edit(
                 self.strings("owner_who"),
-                reply_markup=[[{"text": self.strings("button_back"), "callback": self.inline__owners}]],
+                reply_markup=[
+                    [
+                        {
+                            "text": self.strings("button_back"),
+                            "callback": self.inline__owners,
+                        }
+                    ]
+                ],
                 inline_message_id=cid,
             )
         self._set_owner(user_id, add)
@@ -168,7 +200,10 @@ class ShizuPermissions(loader.Module):
             return await utils.answer(message, self.strings("owner_who"))
         add = user.id not in self.db.get("shizu.me", "owners", [])
         self._set_owner(user.id, add)
-        await utils.answer(message, self.strings("owner_done" if add else "owner_doned").format(user.mention))
+        await utils.answer(
+            message,
+            self.strings("owner_done" if add else "owner_doned").format(user.mention),
+        )
 
     @loader.command(aliases=["perms"])
     async def permissions(self, app: Client, message: Message):

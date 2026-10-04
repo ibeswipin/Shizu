@@ -34,14 +34,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import time
 import io
-
 import logging
+import time
 
 from pyrogram import Client, types
 
-from shizu import loader, utils, logger
+from shizu import loader, logger
 
 
 @loader.module(name="ShizuTester", author="shizu")

@@ -13,14 +13,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import asyncio
 import contextlib
 import html
 import logging
 import time
 from collections import defaultdict, deque
 
-from shizu import database
+from shizu import database, utils
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,9 @@ class Reporter:
         "{} errors in the last {} minutes. The last one:\n<code>{}</code>"
         "{}"
     )
-    UNLOAD_HINT = "\n\nIf it is a module you do not need, unload it: <code>.unloadmod {}</code>"
+    UNLOAD_HINT = (
+        "\n\nIf it is a module you do not need, unload it: <code>.unloadmod {}</code>"
+    )
 
     def __init__(self):
         self.app = None
@@ -94,7 +95,7 @@ class Reporter:
         if not self._due(key):
             return
         with contextlib.suppress(RuntimeError):
-            asyncio.get_running_loop().create_task(self.send(text))
+            utils.spawn(self.send(text))
 
     async def send(self, text: str, prefer_userbot: bool = False) -> bool:
         """Logs chat through the bot, falling back to the userbot (or the other way round)"""
@@ -107,14 +108,18 @@ class Reporter:
                 if await sender(chat, text):
                     return True
             except Exception:
-                logger.debug("Problem notice via %s failed", sender.__name__, exc_info=True)
+                logger.debug(
+                    "Problem notice via %s failed", sender.__name__, exc_info=True
+                )
         logger.error("Could not deliver a problem notice: %s", text)
         return False
 
     async def _via_bot(self, chat, text: str) -> bool:
         if not self.bot or not chat:
             return False
-        await self.bot.send_message(chat, text, parse_mode="html", disable_web_page_preview=True)
+        await self.bot.send_message(
+            chat, text, parse_mode="html", disable_web_page_preview=True
+        )
         return True
 
     async def _via_userbot(self, chat, text: str) -> bool:
@@ -137,7 +142,9 @@ class Reporter:
 
         bot = Bot(token=token)
         try:
-            await bot.send_message(owner, text, parse_mode="html", disable_web_page_preview=True)
+            await bot.send_message(
+                owner, text, parse_mode="html", disable_web_page_preview=True
+            )
             return True
         except Exception:
             logger.warning("Could not notify the owner through the bot", exc_info=True)

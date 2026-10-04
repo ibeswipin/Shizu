@@ -15,7 +15,6 @@
 
 import inspect
 from types import FunctionType
-from typing import Union
 
 from aiogram.types import CallbackQuery, InlineQuery, Message
 from pyrogram import Client
@@ -38,7 +37,7 @@ class Item:
         self,
         func: FunctionType,
         module: types.Module,
-        update_type: Union[Message, InlineQuery, CallbackQuery],
+        update_type: Message | InlineQuery | CallbackQuery,
     ) -> bool:
         """Checking filters"""
         if custom_filters := getattr(func, "_filters", None):

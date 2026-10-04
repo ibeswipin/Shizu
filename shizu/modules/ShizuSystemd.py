@@ -19,8 +19,9 @@ import re
 import secrets
 import shutil
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Optional
 
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from aiohttp import web
@@ -67,9 +68,9 @@ class ServiceRef:
 @dataclass
 class ServiceInfo:
     ref: ServiceRef
-    props: Dict[str, str] = field(default_factory=dict)
+    props: dict[str, str] = field(default_factory=dict)
 
-    def _int(self, key: str) -> Optional[int]:
+    def _int(self, key: str) -> int | None:
         v = self.props.get(key, "")
         if not v.isdigit() or int(v) >= 2**63:  # "[not set]" / UINT64_MAX
             return None
@@ -103,31 +104,31 @@ class ServiceInfo:
         }.get(self.active, "⚫️")
 
     @property
-    def pid(self) -> Optional[int]:
+    def pid(self) -> int | None:
         return self._int("MainPID") or None
 
     @property
-    def uptime(self) -> Optional[float]:
+    def uptime(self) -> float | None:
         mono = self._int("ActiveEnterTimestampMonotonic")
         if self.active != "active" or not mono:
             return None
         return max(0.0, time.monotonic() - mono / 1e6)
 
     @property
-    def memory(self) -> Optional[int]:
+    def memory(self) -> int | None:
         return self._int("MemoryCurrent")
 
     @property
-    def cpu_seconds(self) -> Optional[float]:
+    def cpu_seconds(self) -> float | None:
         ns = self._int("CPUUsageNSec")
         return ns / 1e9 if ns is not None else None
 
     @property
-    def restarts(self) -> Optional[int]:
+    def restarts(self) -> int | None:
         return self._int("NRestarts")
 
     @property
-    def tasks(self) -> Optional[int]:
+    def tasks(self) -> int | None:
         return self._int("TasksCurrent")
 
     @property
@@ -189,7 +190,7 @@ class SystemdClient:
         )
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             return CommandResult(124, "", f"timeout {timeout}s")
         return CommandResult(
@@ -197,7 +198,7 @@ class SystemdClient:
         )
 
     @staticmethod
-    def _scope(ref: ServiceRef) -> List[str]:
+    def _scope(ref: ServiceRef) -> list[str]:
         return ["--user"] if ref.user else []
 
     async def info(self, ref: ServiceRef) -> ServiceInfo:
@@ -247,7 +248,7 @@ class SystemdClient:
             "systemctl", *self._scope(ref), "cat", ref.name, "--no-pager"
         )
 
-    def follow_cmd(self, ref: ServiceRef, backlog: int = 200) -> List[str]:
+    def follow_cmd(self, ref: ServiceRef, backlog: int = 200) -> list[str]:
         base = [
             "journalctl",
             *self._scope(ref),
@@ -266,9 +267,9 @@ class SystemdClient:
 class LiveLogServer:
     def __init__(self, client: SystemdClient):
         self._client = client
-        self._sessions: Dict[str, Tuple[ServiceRef, float]] = {}
-        self._runner: Optional[web.AppRunner] = None
-        self.port: Optional[int] = None
+        self._sessions: dict[str, tuple[ServiceRef, float]] = {}
+        self._runner: web.AppRunner | None = None
+        self.port: int | None = None
 
     @property
     def running(self) -> bool:
@@ -298,7 +299,7 @@ class LiveLogServer:
         self._sessions[token] = (ref, time.time() + ttl_min * 60)
         return token
 
-    def close_sessions(self, ref: Optional[ServiceRef] = None):
+    def close_sessions(self, ref: ServiceRef | None = None):
         for t, (r, _) in list(self._sessions.items()):
             if ref is None or r == ref:
                 del self._sessions[t]
@@ -343,7 +344,7 @@ class LiveLogServer:
             while token in self._sessions:
                 try:
                     line = await asyncio.wait_for(proc.stdout.readline(), 15)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     await resp.write(b": ping\n\n")
                     continue
                 if not line:
@@ -361,7 +362,7 @@ class LiveLogServer:
         return resp
 
     @staticmethod
-    def _event(line: bytes) -> Optional[dict]:
+    def _event(line: bytes) -> dict | None:
         try:
             e = json.loads(line)
         except ValueError:
@@ -381,8 +382,8 @@ class TunnelManager:
     """Public HTTPS address for a local port: cloudflared quick tunnel or localhost.run (ssh)"""
 
     def __init__(self):
-        self._proc: Optional[asyncio.subprocess.Process] = None
-        self.url: Optional[str] = None
+        self._proc: asyncio.subprocess.Process | None = None
+        self.url: str | None = None
 
     @property
     def running(self) -> bool:
@@ -435,7 +436,7 @@ class TunnelManager:
             if need_tunneled and "tunneled" not in text:
                 continue
             if m := pattern.search(text):
-                asyncio.ensure_future(self._drain())
+                utils.spawn(self._drain())
                 return m[1]
 
     async def _drain(self):
@@ -452,7 +453,7 @@ class ServiceFormatter:
     def __init__(self, strings: Callable[[str], str]):
         self.s = strings
 
-    def duration(self, sec: Optional[float]) -> str:
+    def duration(self, sec: float | None) -> str:
         if sec is None:
             return "—"
         sec = int(sec)
@@ -463,7 +464,7 @@ class ServiceFormatter:
             return self.s("dur_hours").format(h, m)
         return self.s("dur_minutes").format(m, sec % 60)
 
-    def size(self, b: Optional[int]) -> str:
+    def size(self, b: int | None) -> str:
         if b is None:
             return "—"
         units = self.s("size_units").split(",")
@@ -546,7 +547,7 @@ class SystemdMod(loader.Module):
             "auto",
             lambda m: self.strings("cfg_tunnel"),
         )
-        self.live: Optional[LiveLogServer] = None
+        self.live: LiveLogServer | None = None
         self.tunnel = TunnelManager()
 
     @property
@@ -557,10 +558,10 @@ class SystemdMod(loader.Module):
     def fmt(self) -> ServiceFormatter:
         return ServiceFormatter(self.strings)
 
-    def _refs(self) -> List[ServiceRef]:
+    def _refs(self) -> list[ServiceRef]:
         return [ServiceRef.from_key(k) for k in self.db.get(self.name, "services", [])]
 
-    def _save(self, refs: List[ServiceRef]):
+    def _save(self, refs: list[ServiceRef]):
         self.db.set(self.name, "services", [r.key for r in refs])
 
     @loader.command()
@@ -647,7 +648,7 @@ class SystemdMod(loader.Module):
             cache_time=0,
         )
 
-    async def _list_view(self) -> Tuple[str, list]:
+    async def _list_view(self) -> tuple[str, list]:
         refresh = [{"text": self.strings("btn_refresh"), "callback": self.inline__list}]
         refs = self._refs()
         if not refs:
@@ -857,7 +858,7 @@ class SystemdMod(loader.Module):
             await self._shutdown_live()
         if not self.config["WATCH"]:
             return
-        last: Dict[str, str] = self.db.get(self.name, "last_state", {})
+        last: dict[str, str] = self.db.get(self.name, "last_state", {})
         for ref in self._refs():
             info = await self.systemctl.info(ref)
             prev, now = last.get(ref.key), info.active
@@ -884,7 +885,7 @@ class SystemdMod(loader.Module):
         except Exception:
             pass
 
-    def _find(self, raw: str) -> Optional[ServiceRef]:
+    def _find(self, raw: str) -> ServiceRef | None:
         return next((r for r in self._refs() if raw in (r.name, r.short, r.key)), None)
 
     def _err_hint(self, r: CommandResult) -> str:

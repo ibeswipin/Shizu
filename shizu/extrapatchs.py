@@ -14,11 +14,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+
 from shizu.utils import (
     answer,
     get_args,
-    get_args_raw,
     get_args_html,
+    get_args_raw,
 )
 
 logging = logging.getLogger(__name__)

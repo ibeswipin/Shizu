@@ -24,6 +24,7 @@ from pyrogram import Client, types
 from shizu import loader, utils
 from shizu.bot.token_manager import TokenManager
 
+
 @loader.module("ShizuPanel", "hikamoru")
 class ShizuPanel(loader.Module):
     """Control Shizu from the bot with /panel"""
@@ -44,7 +45,10 @@ class ShizuPanel(loader.Module):
 
     def _markup(self, *rows):
         return self.bot._generate_markup(
-            [[{"text": text, "data": self.PREFIX + action} for text, action in row] for row in rows]
+            [
+                [{"text": text, "data": self.PREFIX + action} for text, action in row]
+                for row in rows
+            ]
         )
 
     def _panel(self):
@@ -62,9 +66,11 @@ class ShizuPanel(loader.Module):
         return username
 
     @loader.on_bot(
-        lambda self, app, m: m.chat.type == "private"
-        and m.text == "/panel"
-        and self.bot._is_owner(m.from_user.id)
+        lambda self, app, m: (
+            m.chat.type == "private"
+            and m.text == "/panel"
+            and self.bot._is_owner(m.from_user.id)
+        )
     )
     async def panel_message_handler(self, app, message):
         self.bot.ss(message.from_user.id, False)
@@ -73,13 +79,15 @@ class ShizuPanel(loader.Module):
         )
 
     @loader.on_bot(
-        lambda self, app, m: m.chat.type == "private"
-        and m.text != "/panel"
-        and str(self.bot.gs(m.from_user.id)).startswith(self.PREFIX)
+        lambda self, app, m: (
+            m.chat.type == "private"
+            and m.text != "/panel"
+            and str(self.bot.gs(m.from_user.id)).startswith(self.PREFIX)
+        )
     )
     async def panel_input_message_handler(self, app, message):
         user, chat = message.from_user.id, message.chat.id
-        action = self.bot.gs(user)[len(self.PREFIX):]
+        action = self.bot.gs(user)[len(self.PREFIX) :]
         text = (message.text or "").strip()
 
         if action == "prefix":
@@ -91,7 +99,9 @@ class ShizuPanel(loader.Module):
             self.db.set("shizu.loader", "prefixes", prefixes)
             self.bot.ss(user, False)
             return await self.bot.bot.send_message(
-                chat, "✅ Prefix changed.\n\n" + self._text(), reply_markup=self._panel()
+                chat,
+                "✅ Prefix changed.\n\n" + self._text(),
+                reply_markup=self._panel(),
             )
 
         with contextlib.suppress(Exception):
@@ -116,7 +126,7 @@ class ShizuPanel(loader.Module):
         if not self.bot._is_owner(call.from_user.id):
             return await call.answer("🚫 You are not allowed to press this button!")
 
-        action = call.data[len(self.PREFIX):]
+        action = call.data[len(self.PREFIX) :]
         self.bot.ss(call.from_user.id, False)
         await call.answer()
 
@@ -137,7 +147,9 @@ class ShizuPanel(loader.Module):
         elif action == "stop":
             await call.message.edit_text(
                 "⏹ <b>Stop Shizu?</b>\nIt stays offline until you start it again on the server.",
-                reply_markup=self._markup([("Yes, stop", "stop_yes"), ("Cancel", "back")]),
+                reply_markup=self._markup(
+                    [("Yes, stop", "stop_yes"), ("Cancel", "back")]
+                ),
             )
         elif action == "stop_yes":
             await call.message.edit_text("⏹ <b>Shizu stopped.</b>")
@@ -164,10 +176,14 @@ class ShizuPanel(loader.Module):
         with contextlib.suppress(Exception):
             await message.delete()
         if not token:
-            return await app.send_message(message.chat.id, "Usage: <code>setbot (token)</code>")
+            return await app.send_message(
+                message.chat.id, "Usage: <code>setbot (token)</code>"
+            )
         try:
             username = await self._set_token(token)
         except ValueError as e:
             return await app.send_message(message.chat.id, f"❌ {html.escape(str(e))}")
-        await app.send_message(message.chat.id, f"✅ Token saved. Restarting with @{username}…")
+        await app.send_message(
+            message.chat.id, f"✅ Token saved. Restarting with @{username}…"
+        )
         utils.restart()

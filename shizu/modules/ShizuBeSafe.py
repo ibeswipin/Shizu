@@ -194,11 +194,22 @@ class BeSafe(loader.Module):
         "too_many": "BeSafe: слишком много ожидающих модулей, запрос {} пропущен",
     }
 
-    SESSION_NAMES = {"auth_key", "export_session_string", "session_string", "StringSession"}
+    SESSION_NAMES = {
+        "auth_key",
+        "export_session_string",
+        "session_string",
+        "StringSession",
+    }
     DYNAMIC_NAMES = {"exec", "eval", "compile", "__import__"}
     DECODER_NAMES = {
-        "b64decode", "b32decode", "b85decode", "a85decode", "decompress",
-        "marshal", "fromhex", "unhexlify",
+        "b64decode",
+        "b32decode",
+        "b85decode",
+        "a85decode",
+        "decompress",
+        "marshal",
+        "fromhex",
+        "unhexlify",
     }
     CODES_CHAT = 777000
 
@@ -271,8 +282,13 @@ class BeSafe(loader.Module):
     def _log(self, action: str, digest: str, name: str, origin: str):
         log = self._get("log", [])[-(LOG_LIMIT - 1) :]
         log.append(
-            {"time": int(time.time()), "action": action, "digest": digest,
-             "name": name, "origin": origin}
+            {
+                "time": int(time.time()),
+                "action": action,
+                "digest": digest,
+                "name": name,
+                "origin": origin,
+            }
         )
         self.db.set(self.name, "log", log)
 
@@ -296,9 +312,11 @@ class BeSafe(loader.Module):
 
     def _is_local_file(self, origin: str) -> bool:
         modules_dir = os.path.abspath(self.all_modules._local_modules_path)
-        return bool(origin) and os.path.isfile(origin) and os.path.abspath(
-            origin
-        ).startswith(modules_dir + os.sep)
+        return (
+            bool(origin)
+            and os.path.isfile(origin)
+            and os.path.abspath(origin).startswith(modules_dir + os.sep)
+        )
 
     async def guard(self, source: str, origin: str):
         digest = self.digest(source)
@@ -310,7 +328,9 @@ class BeSafe(loader.Module):
         if self._trusted(origin):
             self._approve(digest, source, origin, info["name"], "trusted")
             return True
-        known = origin in self.db.get("shizu.loader", "modules", []) or self._is_local_file(origin)
+        known = origin in self.db.get(
+            "shizu.loader", "modules", []
+        ) or self._is_local_file(origin)
         if self.bootstrap and known:
             self._approve(digest, source, origin, info["name"], "bootstrap")
             return True
@@ -319,7 +339,10 @@ class BeSafe(loader.Module):
                 logging.warning(self.strings("too_many").format(info["name"]))
                 return "PENDING"
             self.pending[digest] = {
-                "source": source, "origin": origin, "risks": self.risks(source), **info
+                "source": source,
+                "origin": origin,
+                "risks": self.risks(source),
+                **info,
             }
             self._save_pending()
             await self._send_card(digest)
@@ -339,7 +362,11 @@ class BeSafe(loader.Module):
         )
         text = self.strings("card").format(
             name=utils.escape_html(item["name"]),
-            origin=utils.escape_html(item["origin"] if is_url(item["origin"]) or self._is_local_file(item["origin"]) else self.strings("file")),
+            origin=utils.escape_html(
+                item["origin"]
+                if is_url(item["origin"]) or self._is_local_file(item["origin"])
+                else self.strings("file")
+            ),
             lines=item["lines"],
             digest=digest[:16],
             imports=imports,
@@ -348,8 +375,12 @@ class BeSafe(loader.Module):
             risks=self._risk_text(item.get("risks", {})),
             changed=self.strings("changed") if previous else "",
         )
+
         def button(key, handler):
-            return {"text": self.strings(key), "callback": functools.partial(handler, digest)}
+            return {
+                "text": self.strings(key),
+                "callback": functools.partial(handler, digest),
+            }
 
         row = [button("btn_code", self._code)]
         if previous:
@@ -387,7 +418,8 @@ class BeSafe(loader.Module):
                 self.db.set("shizu.loader", "modules", modules + [origin])
         elif not self._is_local_file(origin):
             path = os.path.join(
-                self.all_modules._local_modules_path, "_".join(name.lower().split()) + ".py"
+                self.all_modules._local_modules_path,
+                "_".join(name.lower().split()) + ".py",
             )
             with open(path, "w", encoding="utf-8") as f:
                 f.write(source)
@@ -407,20 +439,29 @@ class BeSafe(loader.Module):
             result = await self.all_modules.load_module(item["source"], item["origin"])
             if result is True:
                 text = self.strings("approved_restart").format(name)
-            elif isinstance(result, str) and result not in ("NFA", "OTL", "PENDING", "DENIED"):
+            elif isinstance(result, str) and result not in (
+                "NFA",
+                "OTL",
+                "PENDING",
+                "DENIED",
+            ):
                 self._persist(result, item["source"], item["origin"])
                 if module := self.all_modules.find_module_strict(result):
                     await self.all_modules.call_hook(module, "on_dlmod")
                 text = self.strings("loaded").format(utils.escape_html(result))
             else:
-                text = self.strings("approved_only").format(name, utils.escape_html(str(result)))
+                text = self.strings("approved_only").format(
+                    name, utils.escape_html(str(result))
+                )
         else:
             self._record("denied", digest, item["name"], item["origin"])
             self._log("deny", digest, item["name"], item["origin"])
             modules = self.db.get("shizu.loader", "modules", [])
             if item["origin"] in modules:
                 self.db.set(
-                    "shizu.loader", "modules", [m for m in modules if m != item["origin"]]
+                    "shizu.loader",
+                    "modules",
+                    [m for m in modules if m != item["origin"]],
                 )
             text = self.strings("denied").format(name)
         if card := item.get("card"):
@@ -469,7 +510,9 @@ class BeSafe(loader.Module):
         return bool(message.from_user and message.from_user.is_self)
 
     def _origin_label(self, origin: str) -> str:
-        return utils.escape_html(origin if origin and origin != "<string>" else self.strings("file"))
+        return utils.escape_html(
+            origin if origin and origin != "<string>" else self.strings("file")
+        )
 
     @loader.command()
     async def besafe(self, app: Client, message: types.Message):
@@ -485,7 +528,9 @@ class BeSafe(loader.Module):
                     parts.append(self.strings(title))
                     parts.extend(
                         self.strings("list_line").format(
-                            d[:12], utils.escape_html(i["name"]), self._origin_label(i.get("origin"))
+                            d[:12],
+                            utils.escape_html(i["name"]),
+                            self._origin_label(i.get("origin")),
                         )
                         for d, i in data.items()
                     )
@@ -506,7 +551,10 @@ class BeSafe(loader.Module):
         )
         await message.answer(
             self.strings("status").format(
-                len(approved), len(denied), len(self.pending), trusted or self.strings("none")
+                len(approved),
+                len(denied),
+                len(self.pending),
+                trusted or self.strings("none"),
             )
         )
 

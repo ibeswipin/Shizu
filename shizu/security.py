@@ -115,7 +115,9 @@ class SecurityManager:
     @property
     def _sudo(self) -> list:
         users = {int(uid) for uid in self._db.get("shizu.permissions", "users", {})}
-        users |= {int(uid) for uid in self._db.get("shizu.commandgroups", "user_groups", {})}
+        users |= {
+            int(uid) for uid in self._db.get("shizu.commandgroups", "user_groups", {})
+        }
         return sorted(users)
 
     @property
@@ -133,7 +135,9 @@ class SecurityManager:
         groups = self._db.get("shizu.commandgroups", "groups", {})
         return any(
             command in groups.get(name, [])
-            for name in self._db.get("shizu.commandgroups", "user_groups", {}).get(user, [])
+            for name in self._db.get("shizu.commandgroups", "user_groups", {}).get(
+                user, []
+            )
         )
 
     def rate_limited(self, user_id: int, command: str) -> bool:
@@ -173,7 +177,10 @@ class SecurityManager:
             return True
         if mask & (GROUP_OWNER | GROUP_ADMIN_ANY):
             return await _group_rights_allow(
-                mask, client or getattr(message, "_client", None), info["chat_id"], user_id
+                mask,
+                client or getattr(message, "_client", None),
+                info["chat_id"],
+                user_id,
             )
         return False
 
@@ -190,7 +197,8 @@ def _message_info(message) -> dict:
     chat = getattr(message, "chat", None)
     chat_type = getattr(getattr(chat, "type", None), "name", "")
     return {
-        "out": bool(getattr(message, "outgoing", False)) or bool(getattr(user, "is_self", False)),
+        "out": bool(getattr(message, "outgoing", False))
+        or bool(getattr(user, "is_self", False)),
         "user_id": getattr(user, "id", None),
         "private": chat_type in ("PRIVATE", "BOT"),
         "chat_id": getattr(chat, "id", None),

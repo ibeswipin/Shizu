@@ -17,16 +17,16 @@
 import sys
 
 from loguru import logger
-from shizu import loader, utils
 from pyrogram import Client, types
 
+from shizu import loader, utils
+from shizu.telegram.device import TelegramDeviceProfile
 from shizu.telegram.exceptions import (
     AccountMismatch,
     TelegramConnectionError,
     TelethonSessionInvalid,
 )
 from shizu.telegram.services import TelegramConnectionService, TelegramDisconnectService
-from shizu.telegram.device import TelegramDeviceProfile
 
 
 @loader.module(name="ShizuSettings", author="shizu")
@@ -227,7 +227,9 @@ class ShizuSettings(loader.Module):
         if utils.is_tl_enabled(app) is False:
             return await message.answer(
                 self.strings["are_you_sure"].format(
-                    device=utils.escape_html(TelegramDeviceProfile.from_config().device_model)
+                    device=utils.escape_html(
+                        TelegramDeviceProfile.from_config().device_model
+                    )
                 ),
                 reply_markup=self.markup_("enabletlmode"),
             )

@@ -23,12 +23,13 @@ import traceback
 from types import FunctionType
 
 from pyrogram import Client, filters, types
-from pyrogram.handlers import MessageHandler, EditedMessageHandler
+from pyrogram.handlers import EditedMessageHandler, MessageHandler
 from telethon import events
 
-from shizu.health import reporter
+from shizu import database, loader, utils
+from shizu import logger as lo
 from shizu.besafe import BeSafe
-from shizu import loader, utils, database, logger as lo
+from shizu.health import reporter
 from shizu.security import SecurityManager
 
 logger = logging.getLogger(__name__)

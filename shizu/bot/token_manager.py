@@ -16,8 +16,6 @@
 import asyncio
 import logging
 import re
-from typing import Union
-from typing import Tuple
 
 from aiogram import Bot, exceptions
 from pyrogram import errors
@@ -43,9 +41,9 @@ class TokenManager(Item):
         try:
             return (await bot.get_me()).username
         except (exceptions.ValidationError, exceptions.Unauthorized):
-            raise ValueError("Token is invalid. Check it in @BotFather.")
-        except (exceptions.TelegramAPIError, asyncio.TimeoutError):
-            raise ValueError("Could not verify the bot. Try again.")
+            raise ValueError("Token is invalid. Check it in @BotFather.") from None
+        except (TimeoutError, exceptions.TelegramAPIError):
+            raise ValueError("Could not verify the bot. Try again.") from None
         finally:
             await (await bot.get_session()).close()
 
@@ -70,7 +68,7 @@ class TokenManager(Item):
                 await conv.ask(text)
                 await conv.get_response()
 
-    async def _find_bot(self) -> Union[Tuple[str, str], None]:
+    async def _find_bot(self) -> tuple[str, str] | None:
         """Find the bot"""
 
         async with fsm.Conversation(self._app, "@BotFather") as conv:
@@ -117,7 +115,7 @@ class TokenManager(Item):
             else:
                 return None
 
-    async def _create_bot(self) -> Union[str, None]:
+    async def _create_bot(self) -> str | None:
         """Create and configure a bot"""
 
         logging.info("Searching for a bot...")

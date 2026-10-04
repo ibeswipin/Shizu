@@ -15,18 +15,18 @@
 
 import contextlib
 import sys
+
 from meval import meval
 from pyrogram import Client, types
 from telethon.sessions import StringSession
 
-from shizu import loader, utils, logger
+from shizu import loader, logger, utils
 
 
 @loader.module(name="ShizuEval", author="hikamoru")
 class EvaluatorMod(loader.Module):
     """Execute Python code"""
-    
-    
+
     strings = {}
 
     @loader.command(aliases=["e"])
@@ -78,7 +78,7 @@ class EvaluatorMod(loader.Module):
             text = text.replace(session, "StringSession(**************************)")
 
         if token := self.db.get("shizu.bot", "token", None):
-            text = text.replace(token, f'{token.split(":")[0]}:{"*" * 26}')
+            text = text.replace(token, f"{token.split(':')[0]}:{'*' * 26}")
 
         return text
 

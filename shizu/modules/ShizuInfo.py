@@ -1,9 +1,9 @@
 """
-    █ █ ▀ █▄▀ ▄▀█ █▀█ ▀    ▄▀█ ▀█▀ ▄▀█ █▀▄▀█ ▄▀█
-    █▀█ █ █ █ █▀█ █▀▄ █ ▄  █▀█  █  █▀█ █ ▀ █ █▀█
+█ █ ▀ █▄▀ ▄▀█ █▀█ ▀    ▄▀█ ▀█▀ ▄▀█ █▀▄▀█ ▄▀█
+█▀█ █ █ █ █▀█ █▀▄ █ ▄  █▀█  █  █▀█ █ ▀ █ █▀█
 
-    Copyright 2022 t.me/hikariatama
-    Licensed under the GNU GPLv3
+Copyright 2022 t.me/hikariatama
+Licensed under the GNU GPLv3
 """
 
 # Shizu Copyright (C) 2023-2026  Ibeswipin
@@ -24,6 +24,7 @@
 import collections
 
 from pyrogram import Client, types
+
 from shizu import loader, utils, version
 
 
@@ -48,7 +49,7 @@ class InformationMod(loader.Module):
 
     async def text_(self, me: types.User, username):
         """Get text"""
-        mention = f'<a href="tg://user?id={me.id}">{utils.escape_html((utils.get_display_name(me)))}</a>'
+        mention = f'<a href="tg://user?id={me.id}">{utils.escape_html(utils.get_display_name(me))}</a>'
         prefix = ", ".join(self.prefix)
 
         if self.config["custom_message"]:
@@ -80,7 +81,9 @@ class InformationMod(loader.Module):
         """Info about Shizu"""
         if self.config["custom_buttons"]:
             await message.answer(
-                response=await self.text_(self.me, (await self.bot.bot.get_me()).username),
+                response=await self.text_(
+                    self.me, (await self.bot.bot.get_me()).username
+                ),
                 reply_markup=[[self.config["custom_buttons"]]],
                 photo=self.config["photo_url"],
             )
@@ -88,5 +91,7 @@ class InformationMod(loader.Module):
             await message.answer(
                 response=self.config["photo_url"],
                 photo_=True,
-                caption=await self.text_(self.me, (await self.bot.bot.get_me()).username),
+                caption=await self.text_(
+                    self.me, (await self.bot.bot.get_me()).username
+                ),
             )

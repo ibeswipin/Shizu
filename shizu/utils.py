@@ -16,81 +16,77 @@
 # some piece of code taken from: https://github.com/hikariatama/Hikka/blob/master/hikka/utils.py
 
 import asyncio
-import logging
-import requests
+import contextlib
 import functools
+import io
+import logging
+import os
 import random
 import re
-import sys
 import string
-import git
+import sys
 import typing
-import contextlib
-import io
-import os
-import grapheme
-
+from collections.abc import AsyncIterator
 from types import FunctionType
+from typing import Any, Literal
 
-from typing import Any, List, Literal, Tuple, Union, AsyncIterator
-
-from pyrogram.types import Chat, Message, User
+import git
+import grapheme
+import requests
 from pyrogram import Client, enums, types
-from shizu.telegram.state import TelethonConnectionState
-
-from pyrogram.raw.types.message_entity_unknown import MessageEntityUnknown
-from pyrogram.raw.types.message_entity_mention import MessageEntityMention
-from pyrogram.raw.types.message_entity_hashtag import MessageEntityHashtag
-from pyrogram.raw.types.message_entity_bot_command import MessageEntityBotCommand
-from pyrogram.raw.types.message_entity_url import MessageEntityUrl
-from pyrogram.raw.types.message_entity_email import MessageEntityEmail
-from pyrogram.raw.types.message_entity_bold import MessageEntityBold
-from pyrogram.raw.types.message_entity_italic import MessageEntityItalic
-from pyrogram.raw.types.message_entity_code import MessageEntityCode
-from pyrogram.raw.types.message_entity_pre import MessageEntityPre
-from pyrogram.raw.types.message_entity_text_url import MessageEntityTextUrl
-from pyrogram.raw.types.message_entity_mention_name import MessageEntityMentionName
 from pyrogram.raw.types.input_message_entity_mention_name import (
     InputMessageEntityMentionName,
 )
-from pyrogram.raw.types.message_entity_phone import MessageEntityPhone
-from pyrogram.raw.types.message_entity_cashtag import MessageEntityCashtag
-from pyrogram.raw.types.message_entity_underline import MessageEntityUnderline
-from pyrogram.raw.types.message_entity_strike import MessageEntityStrike
-from pyrogram.raw.types.message_entity_blockquote import MessageEntityBlockquote
 from pyrogram.raw.types.message_entity_bank_card import MessageEntityBankCard
-from pyrogram.raw.types.message_entity_spoiler import MessageEntitySpoiler
+from pyrogram.raw.types.message_entity_blockquote import MessageEntityBlockquote
+from pyrogram.raw.types.message_entity_bold import MessageEntityBold
+from pyrogram.raw.types.message_entity_bot_command import MessageEntityBotCommand
+from pyrogram.raw.types.message_entity_cashtag import MessageEntityCashtag
+from pyrogram.raw.types.message_entity_code import MessageEntityCode
 from pyrogram.raw.types.message_entity_custom_emoji import MessageEntityCustomEmoji
-
+from pyrogram.raw.types.message_entity_email import MessageEntityEmail
+from pyrogram.raw.types.message_entity_hashtag import MessageEntityHashtag
+from pyrogram.raw.types.message_entity_italic import MessageEntityItalic
+from pyrogram.raw.types.message_entity_mention import MessageEntityMention
+from pyrogram.raw.types.message_entity_mention_name import MessageEntityMentionName
+from pyrogram.raw.types.message_entity_phone import MessageEntityPhone
+from pyrogram.raw.types.message_entity_pre import MessageEntityPre
+from pyrogram.raw.types.message_entity_spoiler import MessageEntitySpoiler
+from pyrogram.raw.types.message_entity_strike import MessageEntityStrike
+from pyrogram.raw.types.message_entity_text_url import MessageEntityTextUrl
+from pyrogram.raw.types.message_entity_underline import MessageEntityUnderline
+from pyrogram.raw.types.message_entity_unknown import MessageEntityUnknown
+from pyrogram.raw.types.message_entity_url import MessageEntityUrl
+from pyrogram.types import Chat, Message, User
 
 from shizu import database
+from shizu.telegram.state import TelethonConnectionState
 
+FormattingEntity = (
+    MessageEntityUnknown
+    | MessageEntityMention
+    | MessageEntityHashtag
+    | MessageEntityBotCommand
+    | MessageEntityUrl
+    | MessageEntityEmail
+    | MessageEntityBold
+    | MessageEntityItalic
+    | MessageEntityCode
+    | MessageEntityPre
+    | MessageEntityTextUrl
+    | MessageEntityMentionName
+    | InputMessageEntityMentionName
+    | MessageEntityPhone
+    | MessageEntityCashtag
+    | MessageEntityUnderline
+    | MessageEntityStrike
+    | MessageEntityBlockquote
+    | MessageEntityBankCard
+    | MessageEntitySpoiler
+    | MessageEntityCustomEmoji
+)
 
-FormattingEntity = Union[
-    MessageEntityUnknown,
-    MessageEntityMention,
-    MessageEntityHashtag,
-    MessageEntityBotCommand,
-    MessageEntityUrl,
-    MessageEntityEmail,
-    MessageEntityBold,
-    MessageEntityItalic,
-    MessageEntityCode,
-    MessageEntityPre,
-    MessageEntityTextUrl,
-    MessageEntityMentionName,
-    InputMessageEntityMentionName,
-    MessageEntityPhone,
-    MessageEntityCashtag,
-    MessageEntityUnderline,
-    MessageEntityStrike,
-    MessageEntityBlockquote,
-    MessageEntityBankCard,
-    MessageEntitySpoiler,
-    MessageEntityCustomEmoji,
-]
-
-ListLike = Union[list, set, tuple]
+ListLike = list | set | tuple
 
 
 db = database.db
@@ -132,14 +128,14 @@ def get_lang_flag(countrycode: str) -> str:
     return countrycode.encode("utf-8")
 
 
-def chunks(_list: Union[list, tuple, set], n: int, /) -> list:
+def chunks(_list: list | tuple | set, n: int, /) -> list:
     """Split provided `_list` into chunks of `n`"""
     return [_list[i : i + n] for i in range(0, len(_list), n)]
 
 
 def get_full_command(
     message: Message,
-) -> Union[Tuple[Literal[""], Literal[""], Literal[""]], Tuple[str, str, str]]:
+) -> tuple[Literal[""], Literal[""], Literal[""]] | tuple[str, str, str]:
     """Output tuple from prefix, command and arguments
 
     Parameters:
@@ -173,7 +169,7 @@ def _raw_text(message: Any) -> str:
     return getattr(message, "text", message) or ""
 
 
-def get_args(message: typing.Union[Message, str]) -> typing.Union[str, List[str]]:
+def get_args(message: Message | str) -> str | list[str]:
     """
     Arguments of a command: a string for Pyrogram messages and plain strings,
     a list of shell-like split arguments for Telethon messages
@@ -202,7 +198,7 @@ def restart():
     os.execl(sys.executable, sys.executable, "-m", "shizu")
 
 
-def get_args_raw(message: typing.Union[Message, str]) -> str:
+def get_args_raw(message: Message | str) -> str:
     """
     Get the parameters to the command as a raw string (not split)
     :param message: Message or string to get arguments from
@@ -214,7 +210,7 @@ def get_args_raw(message: typing.Union[Message, str]) -> str:
     return args[1] if len(args := text.split(maxsplit=1)) > 1 else ""
 
 
-def get_args_html(message: typing.Union[Message, str]) -> str:
+def get_args_html(message: Message | str) -> str:
     """
     Get arguments from message in html format.
     """
@@ -222,7 +218,9 @@ def get_args_html(message: typing.Union[Message, str]) -> str:
         if is_telethon_message(message):
             from telethon.extensions import html as tl_html
 
-            args = tl_html.unparse(message.message or "", message.entities or []).split(maxsplit=1)[1]
+            args = tl_html.unparse(message.message or "", message.entities or []).split(
+                maxsplit=1
+            )[1]
         else:
             args = message.text.html.split(maxsplit=1)[1]
     except Exception:
@@ -311,7 +309,7 @@ def get_dir(mod: str) -> str:
 async def smart_split(
     client: Client,
     text: str,
-    entities: List[FormattingEntity],
+    entities: list[FormattingEntity],
     length: int = 4096,
     split_on: ListLike = ("\n", " "),
     min_length: int = 1,
@@ -524,8 +522,8 @@ def _copy_tl(o: FormattingEntity, client, **kwargs):
 
 
 async def answer(
-    message: Union[Message, List[Message]],
-    response: Union[str, Any],
+    message: Message | list[Message],
+    response: str | Any,
     doc: bool = False,
     photo_: bool = False,
     reply_markup: Any = None,
@@ -693,7 +691,9 @@ async def answer(
                             reply_to_message_id=(
                                 message.topic.id
                                 if hasattr(message, "topic") and message.topic
-                                else reply_id if reply_id else None
+                                else reply_id
+                                if reply_id
+                                else None
                             ),
                             **kwargs,
                         )
@@ -739,7 +739,18 @@ def run_sync(func: FunctionType, *args, **kwargs) -> asyncio.Future:
     )
 
 
-def get_display_name(entity: Union[User, Chat]) -> str:
+_background_tasks: set[asyncio.Task] = set()
+
+
+def spawn(coro: typing.Awaitable) -> asyncio.Task:
+    """Schedules a background task and keeps a reference until it finishes"""
+    task = asyncio.ensure_future(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+def get_display_name(entity: User | Chat) -> str:
     """Получить отображаемое имя
 
     Параметры:
@@ -749,7 +760,10 @@ def get_display_name(entity: Union[User, Chat]) -> str:
     if title := getattr(entity, "title", None):
         return title
     name = " ".join(
-        filter(None, [getattr(entity, "first_name", None), getattr(entity, "last_name", None)])
+        filter(
+            None,
+            [getattr(entity, "first_name", None), getattr(entity, "last_name", None)],
+        )
     )
     return name or getattr(entity, "username", None) or str(getattr(entity, "id", ""))
 
@@ -831,7 +845,7 @@ async def respond(message, response: str, **kwargs):
     return await message.reply(response, quote=False, **kwargs)
 
 
-def get_chat_id(message: typing.Union[Message, Any]) -> int:
+def get_chat_id(message: Message | Any) -> int:
     """
     Get the chat ID, but without -100 if its a channel
     :param message: Message to get chat ID from
@@ -851,7 +865,7 @@ def get_chat_id(message: typing.Union[Message, Any]) -> int:
         try:
             chat_id = int(chat_id)
         except ValueError:
-            raise ValueError(f"Invalid chat_id format: {chat_id}")
+            raise ValueError(f"Invalid chat_id format: {chat_id}") from None
 
     try:
         import telethon
@@ -865,7 +879,7 @@ def get_chat_id(message: typing.Union[Message, Any]) -> int:
         return chat_id
 
 
-def available_branches() -> List[str]:
+def available_branches() -> list[str]:
     """Returns a list of available branches"""
     return [head.name.split("/")[-1] for head in git.Repo().heads]
 
@@ -957,7 +971,9 @@ async def send_table(message, rows, header=None, title=None):
     try:
         return await _rich_table(message, rows, header, title, text)
     except Exception:
-        logger.debug("Could not send rich table; using preformatted text", exc_info=True)
+        logger.debug(
+            "Could not send rich table; using preformatted text", exc_info=True
+        )
 
     return await answer(message, text)
 
@@ -965,9 +981,25 @@ async def send_table(message, rows, header=None, title=None):
 _PROCESS_STARTED = __import__("time").time()
 
 KAOMOJI = (
-    "(｡◕‿◕｡)", "(◕‿◕✿)", "ʕ•ᴥ•ʔ", "(ᵔᴥᵔ)", "(¬‿¬)", "(✿◠‿◠)", "ヽ(•‿•)ノ",
-    "(•̀ᴗ•́)و", "(＾▽＾)", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "¯\\_(ツ)_/¯", "(っ˘ω˘ς)", "(＾• ω •＾)",
-    "(=^･ω･^=)", "(˘▾˘~)", "(づ｡◕‿‿◕｡)づ", "(•ө•)♡", "٩(◕‿◕｡)۶", "(o^▽^o)",
+    "(｡◕‿◕｡)",
+    "(◕‿◕✿)",
+    "ʕ•ᴥ•ʔ",
+    "(ᵔᴥᵔ)",
+    "(¬‿¬)",
+    "(✿◠‿◠)",
+    "ヽ(•‿•)ノ",
+    "(•̀ᴗ•́)و",
+    "(＾▽＾)",
+    "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧",
+    "¯\\_(ツ)_/¯",
+    "(っ˘ω˘ς)",
+    "(＾• ω •＾)",
+    "(=^･ω･^=)",
+    "(˘▾˘~)",
+    "(づ｡◕‿‿◕｡)づ",
+    "(•ө•)♡",
+    "٩(◕‿◕｡)۶",
+    "(o^▽^o)",
 )
 
 
@@ -978,19 +1010,19 @@ def ascii_face() -> str:
 
 emoji_pattern = re.compile(
     "["
-    "\U0001F600-\U0001F64F"
-    "\U0001F300-\U0001F5FF"
-    "\U0001F680-\U0001F6FF"
-    "\U0001F1E0-\U0001F1FF"
-    "\U0001F900-\U0001F9FF"
-    "\U0001FA70-\U0001FAFF"
-    "\u2600-\u27BF"
+    "\U0001f600-\U0001f64f"
+    "\U0001f300-\U0001f5ff"
+    "\U0001f680-\U0001f6ff"
+    "\U0001f1e0-\U0001f1ff"
+    "\U0001f900-\U0001f9ff"
+    "\U0001fa70-\U0001faff"
+    "\u2600-\u27bf"
     "]+",
     flags=re.UNICODE,
 )
 
 
-def get_args_split_by(message: Any, separator: str = ",") -> List[str]:
+def get_args_split_by(message: Any, separator: str = ",") -> list[str]:
     """Command arguments split by `separator`, stripped and without empty items"""
     raw = get_args_raw(message) or ""
     return [part.strip() for part in raw.split(separator) if part.strip()]
@@ -1003,7 +1035,11 @@ def remove_html(text: str, escape: bool = False, keep_emojis: bool = False) -> s
 
     keep = r"(?!/?(?:emoji|tg-emoji)\b)" if keep_emojis else ""
     stripped = re_lib.sub(rf"<{keep}/?[^>]*?>", "", str(text))
-    return escape_html(html_lib.unescape(stripped)) if escape else html_lib.unescape(stripped)
+    return (
+        escape_html(html_lib.unescape(stripped))
+        if escape
+        else html_lib.unescape(stripped)
+    )
 
 
 def check_url(url: str) -> bool:
@@ -1017,7 +1053,7 @@ def check_url(url: str) -> bool:
     return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
-def get_git_hash() -> Union[str, bool]:
+def get_git_hash() -> str | bool:
     """Commit hash of the running Shizu checkout, False outside of git"""
     try:
         return git.Repo(os.path.dirname(get_base_dir())).head.commit.hexsha
@@ -1053,9 +1089,7 @@ def get_named_platform() -> str:
     if system == "Linux":
         with contextlib.suppress(Exception):
             with open("/etc/os-release", encoding="utf-8") as file:
-                info = dict(
-                    line.strip().split("=", 1) for line in file if "=" in line
-                )
+                info = dict(line.strip().split("=", 1) for line in file if "=" in line)
             return f"🐧 {info.get('PRETTY_NAME', 'Linux').strip(chr(34))}"
         return "🐧 Linux"
     return f"💻 {system or 'Unknown'}"
@@ -1075,7 +1109,9 @@ def get_entity_url(entity: Any, openmessage: bool = False) -> str:
             else f"tg://user?id={entity_id}"
         )
     channel_id = str(entity_id)
-    channel_id = channel_id[4:] if channel_id.startswith("-100") else channel_id.lstrip("-")
+    channel_id = (
+        channel_id[4:] if channel_id.startswith("-100") else channel_id.lstrip("-")
+    )
     return f"https://t.me/c/{channel_id}"
 
 
@@ -1098,12 +1134,14 @@ def get_message_link(message: Any, chat: Any = None) -> str:
     return f"https://t.me/c/{chat_id}/{message_id}"
 
 
-def get_topic(message: Any) -> Union[int, None]:
+def get_topic(message: Any) -> int | None:
     """Forum topic id of a message, None outside of topics"""
     if is_telethon_message(message):
         reply_to = getattr(message, "reply_to", None)
         if reply_to and getattr(reply_to, "forum_topic", False):
-            return getattr(reply_to, "reply_to_top_id", None) or reply_to.reply_to_msg_id
+            return (
+                getattr(reply_to, "reply_to_top_id", None) or reply_to.reply_to_msg_id
+            )
         return None
     if getattr(message, "is_topic_message", False):
         return getattr(message, "message_thread_id", None)
@@ -1165,7 +1203,8 @@ async def dnd(client: Any, peer: Any, archive: bool = True) -> bool:
     """Mute `peer` forever and optionally move it to the archive"""
     try:
         if hasattr(client, "get_input_entity"):
-            from telethon.tl import functions as tl_functions, types as tl_types
+            from telethon.tl import functions as tl_functions
+            from telethon.tl import types as tl_types
 
             entity = await client.get_input_entity(peer)
             await client(
@@ -1184,7 +1223,8 @@ async def dnd(client: Any, peer: Any, archive: bool = True) -> bool:
                 )
             return True
 
-        from pyrogram.raw import functions as raw_functions, types as raw_types
+        from pyrogram.raw import functions as raw_functions
+        from pyrogram.raw import types as raw_types
 
         entity = await client.resolve_peer(peer)
         await client.invoke(
@@ -1228,7 +1268,7 @@ async def asset_channel(
     avatar: str = None,
     ttl: int = None,
     _folder: str = None,
-) -> Tuple[Any, bool]:
+) -> tuple[Any, bool]:
     """Find or create a service chat named `title`; returns `(entity, created)`"""
     from shizu import database
 
@@ -1308,7 +1348,11 @@ async def asset_forum_topic(
     entity = await client.get_entity(peer)
     if not getattr(entity, "forum", False):
         await client(ToggleForumRequest(entity, True))
-    topics = await client(GetForumTopicsRequest(entity, offset_date=None, offset_id=0, offset_topic=0, limit=100))
+    topics = await client(
+        GetForumTopicsRequest(
+            entity, offset_date=None, offset_id=0, offset_topic=0, limit=100
+        )
+    )
     for topic in topics.topics:
         if getattr(topic, "title", None) == title:
             return topic
@@ -1323,7 +1367,11 @@ async def asset_forum_topic(
     topic_id = next(
         u.id for u in result.updates if type(u).__name__ == "UpdateMessageID"
     )
-    topics = await client(GetForumTopicsRequest(entity, offset_date=None, offset_id=0, offset_topic=0, limit=100))
+    topics = await client(
+        GetForumTopicsRequest(
+            entity, offset_date=None, offset_id=0, offset_topic=0, limit=100
+        )
+    )
     topic = next((t for t in topics.topics if t.id == topic_id), None)
     if description and topic is not None:
         with contextlib.suppress(Exception):
@@ -1348,7 +1396,7 @@ def get_entity_id(entity: Any) -> int:
         return getattr(entity, "id", entity)
 
 
-async def get_target(message: Any, arg_no: int = 0) -> Union[int, None]:
+async def get_target(message: Any, arg_no: int = 0) -> int | None:
     """User id the command targets: an argument (@username / id) or the replied sender"""
     client = _client_of(message)
     args = get_args(message)
@@ -1357,7 +1405,9 @@ async def get_target(message: Any, arg_no: int = 0) -> Union[int, None]:
     if len(args) > arg_no:
         target = args[arg_no]
         try:
-            entity = await client.get_entity(int(target) if target.lstrip("-").isdigit() else target)
+            entity = await client.get_entity(
+                int(target) if target.lstrip("-").isdigit() else target
+            )
             return get_entity_id(entity)
         except Exception:
             if target.lstrip("-").isdigit():
@@ -1377,7 +1427,9 @@ async def set_avatar(client: Any, peer: Any, avatar: Any) -> bool:
         await _set_chat_photo(client, entity, avatar)
         return True
     except Exception:
-        logging.getLogger(__name__).debug("set_avatar failed for %s", peer, exc_info=True)
+        logging.getLogger(__name__).debug(
+            "set_avatar failed for %s", peer, exc_info=True
+        )
         return False
 
 
@@ -1398,7 +1450,9 @@ async def get_placeholders() -> dict:
             if asyncio.iscoroutine(value):
                 value = await value
         except Exception:
-            logging.getLogger(__name__).debug("placeholder %s failed", name, exc_info=True)
+            logging.getLogger(__name__).debug(
+                "placeholder %s failed", name, exc_info=True
+            )
             value = ""
         values[name] = value
     return values
