@@ -498,9 +498,12 @@ class BeSafe:
 
         def factory(loop, coro, context=None):
             context = self._context(context)
+            # Tasks capture the current context on both Python 3.10 and 3.11.
+            # Running the constructor inside it also supports existing task
+            # factories that only accept (loop, coro).
             if previous:
-                return previous(loop, coro, context=context)
-            return asyncio.Task(coro, loop=loop, context=context)
+                return context.run(previous, loop, coro)
+            return context.run(asyncio.Task, coro, loop=loop)
 
         loop.set_task_factory(factory)
         self._protect_scheduling(loop)
