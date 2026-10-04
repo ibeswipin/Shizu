@@ -190,7 +190,7 @@ class SystemdClient:
         )
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout)
-        except TimeoutError:
+        except asyncio.TimeoutError:
             proc.kill()
             return CommandResult(124, "", f"timeout {timeout}s")
         return CommandResult(
@@ -344,7 +344,7 @@ class LiveLogServer:
             while token in self._sessions:
                 try:
                     line = await asyncio.wait_for(proc.stdout.readline(), 15)
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     await resp.write(b": ping\n\n")
                     continue
                 if not line:

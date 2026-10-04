@@ -143,7 +143,7 @@ class TelegramConnectionService:
                 client.connection_state.invalidated()
                 await self._invalidate(user_id)
                 raise
-            except (TimeoutError, tl_errors.RPCError, OSError) as error:
+            except (asyncio.TimeoutError, tl_errors.RPCError, OSError) as error:
                 if TelegramErrorMapper.invalid_session(error):
                     client.connection_state.invalidated()
                     await self._invalidate(user_id)
@@ -169,7 +169,7 @@ class TelegramConnectionService:
             finally:
                 await client.disconnect()
             raise
-        except (TimeoutError, tl_errors.RPCError, OSError) as error:
+        except (asyncio.TimeoutError, tl_errors.RPCError, OSError) as error:
             await client.disconnect()
             raise TelegramErrorMapper.translate(error) from None
         except BaseException:
@@ -191,7 +191,12 @@ class TelegramConnectionService:
             # Do not leave an untracked authorized device if persistence fails.
             try:
                 revoked = await client.log_out()
-            except (TimeoutError, TelegramConnectionError, tl_errors.RPCError, OSError):
+            except (
+                asyncio.TimeoutError,
+                TelegramConnectionError,
+                tl_errors.RPCError,
+                OSError,
+            ):
                 revoked = False
             if not revoked:
                 logger.warning(
@@ -227,7 +232,7 @@ class TelegramConnectionService:
             result = await self._save(pending.client, user_id)
         except (InvalidTwoFactorPassword, TelegramFloodWait):
             raise
-        except (TimeoutError, tl_errors.RPCError, OSError) as error:
+        except (asyncio.TimeoutError, tl_errors.RPCError, OSError) as error:
             self._forget_pending(user_id)
             await pending.client.disconnect()
             raise TelegramErrorMapper.translate(error) from None
@@ -242,7 +247,7 @@ class TelegramConnectionService:
         """Identify the primary account while mapping revoked-session errors."""
         try:
             owner = await pyro.get_me()
-        except (TimeoutError, pyro_errors.RPCError, OSError) as error:
+        except (asyncio.TimeoutError, pyro_errors.RPCError, OSError) as error:
             raise TelegramErrorMapper.translate(error, primary=True) from None
         if owner is None:
             raise PyrogramSessionInvalid(
@@ -281,7 +286,7 @@ class TelegramConnectionService:
                 pending.timer = asyncio.create_task(self._expire(user_id, pending))
                 keep_client = True
                 return ConnectionResult("need_2fa", self.bridge.warning)
-            except (TimeoutError, tl_errors.RPCError, OSError) as error:
+            except (asyncio.TimeoutError, tl_errors.RPCError, OSError) as error:
                 raise TelegramErrorMapper.translate(error) from None
             finally:
                 if not keep_client:
@@ -352,7 +357,7 @@ class TelegramDisconnectService:
                     if not TelegramErrorMapper.invalid_session(error):
                         raise TelegramErrorMapper.translate(error) from None
                 await self.connections.storage.delete(user_id)
-            except (TimeoutError, OSError) as error:
+            except (asyncio.TimeoutError, OSError) as error:
                 raise TelegramErrorMapper.translate(error) from None
             finally:
                 await client.disconnect()

@@ -42,7 +42,7 @@ class TokenManager(Item):
             return (await bot.get_me()).username
         except (exceptions.ValidationError, exceptions.Unauthorized):
             raise ValueError("Token is invalid. Check it in @BotFather.") from None
-        except (TimeoutError, exceptions.TelegramAPIError):
+        except (asyncio.TimeoutError, exceptions.TelegramAPIError):
             raise ValueError("Could not verify the bot. Try again.") from None
         finally:
             await (await bot.get_session()).close()

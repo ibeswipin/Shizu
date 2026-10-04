@@ -21,7 +21,7 @@ import os
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -141,7 +141,7 @@ class SessionStorage:
         if not session:
             raise SessionStorageError("Cannot save an empty Telethon session.")
         encrypted = self._cipher.encrypt(session.encode()).decode()
-        created = datetime.now(UTC).isoformat()
+        created = datetime.now(timezone.utc).isoformat()
         await self._run(
             "INSERT INTO telethon_sessions VALUES (?, ?, ?, 'active') "
             "ON CONFLICT(user_id) DO UPDATE SET encrypted_session=excluded.encrypted_session, "

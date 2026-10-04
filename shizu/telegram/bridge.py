@@ -166,7 +166,7 @@ class ManagedTelegramClient(TelegramClient):
             if self._logging_out:
                 raise TelegramErrorMapper.translate(error) from None
             raise
-        except (TimeoutError, OSError):
+        except (asyncio.TimeoutError, OSError):
             self.connection_state.unavailable()
             raise
         else:
@@ -266,7 +266,7 @@ class TelethonLoginBridge:
                 raise TelegramRPCFailure(
                     "Telegram returned an unexpected login response. Please reconnect."
                 ) from None
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 raise LoginTimeout(
                     "Telegram login timed out. Please reconnect."
                 ) from None
