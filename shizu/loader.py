@@ -65,9 +65,14 @@ async def _install_requirements(requirements):
     local = sys.prefix == sys.base_prefix
     await utils.run_sync(
         subprocess.run,
-        [sys.executable, "-m", "pip", "install",
-         *(["--target", MODULE_DEPENDENCIES] if local else []),
-         *requirements],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            *(["--target", MODULE_DEPENDENCIES] if local else []),
+            *requirements,
+        ],
         check=True,
     )
     if local:
@@ -190,12 +195,16 @@ class Module:
             target = getattr(message, "chat_id", None) or message.chat.id
         if target is None:
             target = "me"
-        reply_to = getattr(message, "id", None) if message is not None and not edit else None
+        reply_to = (
+            getattr(message, "id", None) if message is not None and not edit else None
+        )
         if hasattr(client, "send_message") and hasattr(client, "get_permissions"):
             return await client.send_message(target, text, reply_to=reply_to)
         return await client.send_message(target, text, reply_to_message_id=reply_to)
 
-    async def animate(self, message: Any, frames: list, interval: float, *, inline: bool = False):
+    async def animate(
+        self, message: Any, frames: list, interval: float, *, inline: bool = False
+    ):
         """Edit `message` through `frames`, waiting `interval` seconds between them"""
         from shizu import utils
 
@@ -217,7 +226,9 @@ class Module:
             url, suspend_on_error=suspend_on_error
         )
 
-    async def request_join(self, peer: Any, reason: str, assure_joined: bool = False) -> bool:
+    async def request_join(
+        self, peer: Any, reason: str, assure_joined: bool = False
+    ) -> bool:
         """Ask the owner through the inline bot whether to join `peer`"""
         return await self.all_modules.request_join(self, peer, reason)
 
@@ -285,7 +296,9 @@ def _hook_args(func, available: tuple) -> tuple:
         return ()
     if any(p.kind is p.VAR_POSITIONAL for p in params):
         return available
-    positional = [p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    positional = [
+        p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
     return available[: len(positional)]
 
 
@@ -330,7 +343,9 @@ def watcher(
 
     flags = {tag for tag in tags if isinstance(tag, str)}
     flags |= {key for key, value in kwargs.items() if value is True}
-    values = {key: value for key, value in kwargs.items() if not isinstance(value, bool)}
+    values = {
+        key: value for key, value in kwargs.items() if not isinstance(value, bool)
+    }
     if flags:
         only_messages = "only_messages" in flags
         no_commands = no_commands or "no_commands" in flags
@@ -579,7 +594,9 @@ def inline_handler(name: str = None, **kwargs):
     def decorator(func):
         func.is_inline_handler = True
         label = name if isinstance(name, str) else None
-        func.is_inline_handler_name = (label or func.__name__.removesuffix("_inline_handler")).lower()
+        func.is_inline_handler_name = (
+            label or func.__name__.removesuffix("_inline_handler")
+        ).lower()
         return func
 
     return decorator(name) if callable(name) else decorator
@@ -591,7 +608,9 @@ def callback_handler(name: str = None, **kwargs):
     def decorator(func):
         func.is_callback_handler = True
         label = name if isinstance(name, str) else None
-        func.is_callback_handler_name = (label or func.__name__.removesuffix("_callback_handler")).lower()
+        func.is_callback_handler_name = (
+            label or func.__name__.removesuffix("_callback_handler")
+        ).lower()
         return func
 
     return decorator(name) if callable(name) else decorator
@@ -707,12 +726,15 @@ class Validators:
         def validate(self, value):
             if not self.pattern.match(str(value)):
                 raise ValueError(
-                    self.description or f"Value does not match pattern: {self.pattern.pattern}"
+                    self.description
+                    or f"Value does not match pattern: {self.pattern.pattern}"
                 )
             return value
 
     class Series:
-        def __init__(self, *args, validator=None, min_len=None, max_len=None, fixed_len=None):
+        def __init__(
+            self, *args, validator=None, min_len=None, max_len=None, fixed_len=None
+        ):
             if validator is not None:
                 self.validators = (validator,)
             else:
@@ -784,7 +806,9 @@ class Validators:
             if self.length is not None and len(value) != self.length:
                 raise ValueError(f"Text must be exactly {self.length} characters long")
             if self.min_len is not None and len(value) < self.min_len:
-                raise ValueError(f"Text must be at least {self.min_len} characters long")
+                raise ValueError(
+                    f"Text must be at least {self.min_len} characters long"
+                )
             if self.max_len is not None and len(value) > self.max_len:
                 raise ValueError(f"Text must be at most {self.max_len} characters long")
             return value
@@ -804,7 +828,9 @@ class Validators:
             value = str(value).strip()
             if re.fullmatch(r"-?\d+", value):
                 return int(value)
-            if re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{3,31}", value) or value.startswith(("https://t.me/", "t.me/")):
+            if re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{3,31}", value) or value.startswith(
+                ("https://t.me/", "t.me/")
+            ):
                 return value
             raise ValueError("Value must be an ID, @username or t.me link")
 
@@ -816,7 +842,13 @@ class Validators:
             value = str(value)
             if any(ch.isalnum() for ch in value):
                 raise ValueError("Value must contain only emoji")
-            count = len([ch for ch in value if not ch.isspace() and ord(ch) not in (0x200D, 0xFE0F)])
+            count = len(
+                [
+                    ch
+                    for ch in value
+                    if not ch.isspace() and ord(ch) not in (0x200D, 0xFE0F)
+                ]
+            )
             if self.length is not None and count != self.length:
                 raise ValueError(f"Value must contain exactly {self.length} emoji")
             if self.min_len is not None and count < self.min_len:
@@ -905,9 +937,18 @@ class Validators:
                 value = [v.strip() for v in value.split(",") if v.strip()]
             result = []
             for item in value or []:
-                match = next((p for p in self.possible_values if item == p or str(item) == str(p)), None)
+                match = next(
+                    (
+                        p
+                        for p in self.possible_values
+                        if item == p or str(item) == str(p)
+                    ),
+                    None,
+                )
                 if match is None:
-                    raise ValueError(f"{item} is not one of: {', '.join(map(str, self.possible_values))}")
+                    raise ValueError(
+                        f"{item} is not one of: {', '.join(map(str, self.possible_values))}"
+                    )
                 if match not in result:
                     result.append(match)
             return result
@@ -1103,10 +1144,8 @@ class ModulesManager:
         extrapatchs.MessageMagic(types.Message, app)
 
         if utils.is_tl_enabled() and hasattr(app, "tl") and app.tl != "Not enabled":
-            from shizu.telethon_dispatcher import TelethonDispatcherManager
-
             await app.tl.connect() if not app.tl.is_connected() else None
-            self.telethon_dp = TelethonDispatcherManager(app.tl, self)
+            self.telethon_dp = dispatcher.TelethonDispatcherManager(app.tl, self)
             await self.telethon_dp.load()
 
         try:
@@ -1198,9 +1237,13 @@ class ModulesManager:
         sys.modules[module.__name__] = module
 
         short_name = module_name.rsplit(".", 1)[-1]
-        core_path = os.path.join(os.path.dirname(__file__), "modules", short_name + ".py")
-        trusted = short_name in BeSafe._core and bool(file_path) and (
-            os.path.realpath(file_path) == os.path.realpath(core_path)
+        core_path = os.path.join(
+            os.path.dirname(__file__), "modules", short_name + ".py"
+        )
+        trusted = (
+            short_name in BeSafe._core
+            and bool(file_path)
+            and (os.path.realpath(file_path) == os.path.realpath(core_path))
         )
         BeSafe.register_namespace(module, trusted=trusted)
         spec.loader.exec_module(module)
@@ -1459,7 +1502,9 @@ class ModulesManager:
             try:
                 await _install_requirements(requirements)
             except (subprocess.CalledProcessError, OSError):
-                logging.exception("Failed to install module dependencies: %s", requirements)
+                logging.exception(
+                    "Failed to install module dependencies: %s", requirements
+                )
                 await self.bot_manager.bot.send_message(
                     self._db.get("shizu.chat", "logs", None),
                     "🚫 Failed to install module dependencies. See the application log "
@@ -1541,7 +1586,9 @@ class ModulesManager:
                                     value = module.config.getdef(conf)
                         dict.__setitem__(module.config, conf, value)
                     except KeyError:
-                        dict.__setitem__(module.config, conf, module.config.getdef(conf))
+                        dict.__setitem__(
+                            module.config, conf, module.config.getdef(conf)
+                        )
             if isinstance(module.config, ModuleConfig):
                 module.config.bind(db, module.name)
 
@@ -1596,7 +1643,7 @@ class ModulesManager:
 
     @property
     def security(self):
-        return dispatcher.security_manager()
+        return dispatcher.DispatcherManager.security_manager()
 
     def dispatch(self, command: str) -> tuple:
         """Resolve an alias and return `(command, handler)`; handler is None when unknown"""
@@ -1605,30 +1652,60 @@ class ModulesManager:
         return command, self.command_handlers.get(command)
 
     def last_command(self, message) -> Union[tuple, None]:
-        chat_id = getattr(message, "chat_id", None) or getattr(getattr(message, "chat", None), "id", None)
+        chat_id = getattr(message, "chat_id", None) or getattr(
+            getattr(message, "chat", None), "id", None
+        )
         return self.last_commands.get(chat_id)
 
-    def log(self, type_: str, *, group: Any = None, affected_uids: Any = None, data: Any = None):
+    def log(
+        self,
+        type_: str,
+        *,
+        group: Any = None,
+        affected_uids: Any = None,
+        data: Any = None,
+    ):
         """Record an action performed by a module in the Shizu log"""
         details = ", ".join(
             f"{key}={value}"
-            for key, value in (("group", group), ("users", affected_uids), ("data", data))
+            for key, value in (
+                ("group", group),
+                ("users", affected_uids),
+                ("data", data),
+            )
             if value is not None
         )
-        logging.getLogger("shizu.actions").info("%s%s", type_, f" ({details})" if details else "")
+        logging.getLogger("shizu.actions").info(
+            "%s%s", type_, f" ({details})" if details else ""
+        )
 
     async def check_security(self, message, func) -> bool:
         """Whether the sender of `message` may run `func` (a handler or a permission bitmask)"""
         command = None
         if not isinstance(func, int):
-            command = next((name for name, handler in self.command_handlers.items() if handler == func), None)
-        return await self.security.check(message, func, command, getattr(self._app, "tl", None))
+            command = next(
+                (
+                    name
+                    for name, handler in self.command_handlers.items()
+                    if handler == func
+                ),
+                None,
+            )
+        return await self.security.check(
+            message, func, command, getattr(self._app, "tl", None)
+        )
 
     def _module_client(self):
         tl = getattr(self._app, "tl", None)
-        return tl if utils.is_tl_enabled() and tl not in (None, "Not enabled") else self._app
+        return (
+            tl
+            if utils.is_tl_enabled() and tl not in (None, "Not enabled")
+            else self._app
+        )
 
-    async def import_library(self, url: str, *, suspend_on_error: bool = False) -> "Library":
+    async def import_library(
+        self, url: str, *, suspend_on_error: bool = False
+    ) -> "Library":
         """Load a shared library from `url` once; later calls return the same instance"""
         if url in self._libraries:
             return self._libraries[url]
@@ -1648,8 +1725,12 @@ class ModulesManager:
         self._libraries[url] = library
         return library
 
-    async def _exec_library(self, url: str, code: str, source: str, retried: bool = False) -> "Library":
-        name = "shizu.modules.__lib_" + re.sub(r"\W", "_", urlparse(url).path.rsplit("/", 1)[-1][:-3] or "lib")
+    async def _exec_library(
+        self, url: str, code: str, source: str, retried: bool = False
+    ) -> "Library":
+        name = "shizu.modules.__lib_" + re.sub(
+            r"\W", "_", urlparse(url).path.rsplit("/", 1)[-1][:-3] or "lib"
+        )
         spec = ModuleSpec(name, StringLoader(code, url), origin=url)
         module = module_from_spec(spec)
         sys.modules[name] = module
@@ -1661,18 +1742,25 @@ class ModulesManager:
             if retried or not match:
                 raise LoadError(f"Library {url} failed to import: {error}") from error
             try:
-                await _install_requirements([
-                    item for item in match[1].split()
-                    if item[0] not in ("-", "_", ".")
-                ])
+                await _install_requirements(
+                    [
+                        item
+                        for item in match[1].split()
+                        if item[0] not in ("-", "_", ".")
+                    ]
+                )
             except (subprocess.CalledProcessError, OSError) as install_error:
-                raise LoadError(f"Could not install dependencies for library {url}: {install_error}") from install_error
+                raise LoadError(
+                    f"Could not install dependencies for library {url}: {install_error}"
+                ) from install_error
             return await self._exec_library(url, code, source, True)
 
         classes = [
             value
             for value in vars(module).values()
-            if inspect.isclass(value) and issubclass(value, Library) and value is not Library
+            if inspect.isclass(value)
+            and issubclass(value, Library)
+            and value is not Library
         ]
         if not classes:
             raise LoadError(f"{url} does not define a library class")
@@ -1734,12 +1822,16 @@ class ModulesManager:
                 text = "❌ Declined"
             await call.message.edit_text(text)
 
-
         markup = self.bot_manager._generate_markup(
-            [[
-                {"text": "✅ Join", "callback": functools.partial(decide, True)},
-                {"text": "❌ Decline", "callback": functools.partial(decide, False)},
-            ]]
+            [
+                [
+                    {"text": "✅ Join", "callback": functools.partial(decide, True)},
+                    {
+                        "text": "❌ Decline",
+                        "callback": functools.partial(decide, False),
+                    },
+                ]
+            ]
         )
         await self.bot_manager.bot.send_message(
             self.me.id,
@@ -1757,7 +1849,9 @@ class ModulesManager:
             client = getattr(module, "client", None) or self._app
             await func(*_hook_args(func, (client, self._db)))
         except Exception:
-            logging.exception("%s failed in module %s", hook, getattr(module, "name", module))
+            logging.exception(
+                "%s failed in module %s", hook, getattr(module, "name", module)
+            )
 
     def find_module_strict(self, name: str) -> Union[Module, None]:
         name = (name or "").strip().lower()
@@ -1820,7 +1914,11 @@ class ModulesManager:
             asyncio.ensure_future(self.call_hook(module, "on_unload"))
 
         for attr in vars(type(module)).values():
-            if isinstance(attr, InfiniteLoop) and attr.module_instance is module and attr._task:
+            if (
+                isinstance(attr, InfiniteLoop)
+                and attr.module_instance is module
+                and attr._task
+            ):
                 asyncio.ensure_future(attr.stop())
 
         module_module = inspect.getmodule(module)
@@ -1852,7 +1950,11 @@ class ModulesManager:
 
         if by_commands_too:
             commands = sorted(
-                (command for command in self.command_handlers if name in command.lower()),
+                (
+                    command
+                    for command in self.command_handlers
+                    if name in command.lower()
+                ),
                 key=len,
             )
             for command in commands:
