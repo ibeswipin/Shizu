@@ -92,6 +92,8 @@ The default prefix is `.`. Change it with `.setprefix` or from `/panel`.
 | `.setbot <token>` | Change the bot token and restart |
 | `.lang [code]` | Choose the language |
 | `.backupdb` / `.restoredb` | Back up / restore the database |
+| `.autobackup` | Turn the daily backup on or off (time: `.config ShizuBackuper`) |
+| `.apiprotect` | Turn the protection against flood bans on or off |
 | `.besafe` | BeSafe status, decisions and journal |
 | `.owner [user]` | Owners panel, or add / remove an owner |
 | `.alias [alias] [command]` | List, add or delete aliases |

@@ -222,6 +222,13 @@ class ShizuSettings(loader.Module):
 
         await message.answer(self.strings["already_enabled"])
 
+    @loader.command()
+    async def apiprotect(self, app: Client, message: types.Message):
+        """Turn the protection against flood bans on or off"""
+        enabled = not self.db.get("shizu.api", "protection", True)
+        self.db.set("shizu.api", "protection", enabled)
+        await message.answer(self.strings("api_on" if enabled else "api_off"))
+
     @loader.command(aliases=["stopshizu"])
     async def stop(self, app, message):
         """Turn off the bot"""

@@ -34,6 +34,7 @@ from telethon import TelegramClient
 
 from qrcode.main import QRCode
 from shizu import utils
+from shizu.health import Reporter
 
 try:
     from .web import core
@@ -166,9 +167,15 @@ class Auth:
         except errors.AuthKeyUnregistered:
             if args.web and web_available:
                 await self.web_auth()
+            await Reporter.notify_owner_by_token(
+                Reporter.SESSION_ENDED + Reporter.LOGIN_CONSOLE, "session_notice"
+            )
             await self.handle_auth_key_unregistered()
             me = await self.app.get_me()
         except errors.SessionRevoked:
+            await Reporter.notify_owner_by_token(
+                Reporter.SESSION_ENDED + Reporter.LOGIN_CONSOLE, "session_notice"
+            )
             await self.handle_session_revoked()
             return sys.exit(64)
 
@@ -255,6 +262,9 @@ class Auth:
                 await web.start(web.port)
 
                 logging.info(f"🌐 Web interface available at: {web.url}")
+                await Reporter.notify_owner_by_token(
+                    Reporter.SESSION_ENDED + Reporter.LOGIN_WEB.format(web.url), "session_notice"
+                )
 
                 await web.wait_for_api_token_setup()
                 await web.wait_for_clients_setup()

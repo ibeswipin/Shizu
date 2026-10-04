@@ -442,10 +442,7 @@ def setup_logger(level: Union[str, int], log_file_path: str = "shizu.log"):
         logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
     )
 
-    logging.getLogger().addHandler(file_handler)
-    logging.getLogger().addHandler(tg)
-
-    logging.basicConfig(handlers=[handler, tg], level=level, force=True)
+    logging.basicConfig(handlers=[handler, tg, file_handler], level=level, force=True)
 
     # Suppress specific Pyrogram warnings
     class PyrogramFilter(logging.Filter):

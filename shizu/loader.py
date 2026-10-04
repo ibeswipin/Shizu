@@ -40,6 +40,7 @@ from pyrogram import Client, filters, types
 
 from shizu import bot, database, dispatcher, utils, logger as logger_, extrapatchs
 from shizu.types import InfiniteLoop, StopLoop
+from shizu import health
 from shizu.translator import Strings, Translator
 from shizu.inter import inter
 
@@ -1112,6 +1113,7 @@ class ModulesManager:
             app.bot = self.bot_manager.bot
         except Exception:
             pass
+        health.reporter.bind(app, getattr(self.bot_manager, "bot", None))
 
         modules_list = sorted(
             filter(
