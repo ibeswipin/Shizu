@@ -775,6 +775,9 @@ def escape_html(text):
 
 def get_platform() -> str:
     """Возращает платформу."""
+    if os.environ.get("server_name") in {"Okak", "OkakHost"}:
+        return "☁️ OkakHost"
+
     IS_TERMUX = "com.termux" in os.environ.get("PREFIX", "")
     IS_DOCKER = "DOCKER" in os.environ
     IS_WIN = "WINDIR" in os.environ
