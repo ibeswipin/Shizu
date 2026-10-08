@@ -1454,7 +1454,7 @@ class ModulesManager:
         is_telethon = self._is_telethon_module(original_source)
 
         if is_telethon:
-            if not utils.is_tl_enabled(self._app):
+            if not await self._telethon_ready():
                 return "OTL"
             module_source = inter.transform(original_source)
         else:
@@ -1473,9 +1473,7 @@ class ModulesManager:
             if str((await self._app.get_me()).id) not in allowed_accounts:
                 return "NFA"
 
-        if re.search(r"# ?tl-only", module_source) and not utils.is_tl_enabled(
-            self._app
-        ):
+        if re.search(r"# ?tl-only", module_source) and not await self._telethon_ready():
             return "OTL"
         self.raw_modules[module_name] = original_source
         try:
@@ -1562,6 +1560,27 @@ class ModulesManager:
             return False
 
         return instance.name
+
+    async def _telethon_ready(self) -> bool:
+        """Verify Telethon again when the fast check fails and start its dispatcher"""
+        tl = getattr(self._app, "tl", None)
+        if not utils.is_tl_configured() or tl in (None, "Not enabled"):
+            return False
+        if not utils.is_tl_enabled(self._app):
+            try:
+                await self._app.telethon_connections.verify(tl, self.me.id)
+            except (TelegramConnectionError, AttributeError) as error:
+                logging.warning("Telethon is unavailable: %s", error)
+                return False
+        if not utils.is_tl_enabled(self._app):
+            return False
+        if self.telethon_dp is None:
+            self.telethon_dp = dispatcher.TelethonDispatcherManager(tl, self)
+            await self.telethon_dp.load()
+            for module in self.modules:
+                if getattr(module, "m__telethon", False):
+                    self.telethon_dp.register_raw(module)
+        return True
 
     async def send_on_loads(self) -> bool:
         """Sends commands to execute the function"""
