@@ -574,15 +574,21 @@ class Events(Item):
 
         try:
             if self._forms[query].get("type", None) == "form":
-                if self._forms[query].get("rich_message"):
+                if self._forms[query].get("rich_message") or self._forms[query].get(
+                    "rich"
+                ):
+                    markup = self._generate_markup(query, for_inline_query=True)
                     result = {
                         "type": "article",
                         "id": utils.random_id(),
                         "title": "Shizu",
                         "input_message_content": {
-                            "rich_message": self._forms[query]["rich_message"]
+                            "rich_message": self._forms[query].get("rich_message")
+                            or {"html": self._rich_html(self._forms[query])}
                         },
                     }
+                    if markup and markup.inline_keyboard:
+                        result["reply_markup"] = markup.to_python()
                     try:
                         return await self.bot.request(
                             "answerInlineQuery",
@@ -604,10 +610,13 @@ class Events(Item):
                                     id=utils.random_id(),
                                     title="Shizu",
                                     input_message_content=InputTextMessageContent(
-                                        self._forms[query]["text"],
+                                        self.RICH_BUTTON_RE.sub(
+                                            r"\2", self._forms[query]["text"]
+                                        ),
                                         "HTML",
                                         disable_web_page_preview=True,
                                     ),
+                                    reply_markup=markup,
                                 )
                             ],
                             cache_time=0,
@@ -990,6 +999,8 @@ class Events(Item):
         ):
             line = []
             for button in row:
+                if "ref" in button:
+                    continue
                 try:
                     if "url" in button:
                         line += [
@@ -1041,6 +1052,40 @@ class Events(Item):
                 markup.row(*line)
 
         return markup
+
+    RICH_BUTTON_RE = re.compile(
+        r'<tg-button\s+ref="([^"]+)"\s*>(.*?)</tg-button>', re.DOTALL
+    )
+
+    def _rich_html(self, form: dict) -> str:
+        refs = {
+            button["ref"]: button
+            for button in array_sum(form.get("buttons", []))
+            if "ref" in button
+        }
+
+        def render(match: re.Match) -> str:
+            ref, label = match.groups()
+            button = refs.get(ref)
+            if button is None:
+                logger.warning(f"Rich form has no button with ref {ref!r}")
+                return label
+
+            if "url" in button:
+                attrs = f'type="url" url="{html.escape(button["url"])}"'
+            elif "_callback_data" in button or "data" in button:
+                data = button.get("_callback_data") or button["data"]
+                attrs = f'type="callback_data" data="{html.escape(data)}"'
+            else:
+                logger.warning(f"Rich button {ref!r} must have url or callback")
+                return label
+
+            if button.get("style"):
+                attrs += f' style="{html.escape(button["style"])}"'
+
+            return f"<tg-button {attrs}>{label}</tg-button>"
+
+        return self.RICH_BUTTON_RE.sub(render, form["text"])
 
     async def _callback_query_handler(
         self, query: CallbackQuery, reply_markup: list[list[dict]] = None
@@ -1226,6 +1271,7 @@ class Events(Item):
         gif: str = None,
         audio: str = None,
         rich_message: dict = None,
+        rich: bool = False,
         **kwargs,
     ) -> str | bool:
         """Creates inline form with callback
@@ -1251,6 +1297,12 @@ class Events(Item):
 
                 rich_message
                         Raw InputRichMessage payload for Telegram Bot API 10.2+
+
+                rich
+                        Send `text` as rich HTML. Buttons with a `ref` key are placed
+                        inside the text at `<tg-button ref="...">label</tg-button>`
+                        instead of the keyboard. Optional `style`: danger, success,
+                        primary or link (link is for callback buttons only)
 
                 disable_security, manual_security, silent
                         Hikka options: anyone may press the buttons / no loading message
@@ -1362,6 +1414,7 @@ class Events(Item):
                 else {}
             ),
             **({"rich_message": rich_message} if rich_message else {}),
+            **({"rich": True} if rich else {}),
         }
 
         if isinstance(message, pyrogram.types.Message) and prev and not silent:
