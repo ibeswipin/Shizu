@@ -77,6 +77,96 @@ class BaseDispatcherManager:
         logger.exception("Watcher of module %s failed", name or "Shizu")
         reporter.failure(f"{name or 'Shizu'} · watcher", error, name)
 
+    @staticmethod
+    def _tag_rules(
+        *,
+        out: bool,
+        private: bool,
+        group: bool,
+        channel: bool,
+        media: bool,
+        photo: bool,
+        video: bool,
+        audio: bool,
+        document: bool,
+        sticker: bool,
+        forward: bool,
+        reply: bool,
+        inline: bool,
+        mentioned: bool,
+        command: bool,
+    ) -> dict:
+        return {
+            "out": out,
+            "in": not out,
+            "only_pm": private,
+            "no_pm": not private,
+            "only_groups": group,
+            "no_groups": not group,
+            "only_channels": channel,
+            "no_channels": not channel,
+            "only_media": media,
+            "no_media": not media,
+            "only_photos": photo,
+            "no_photos": not photo,
+            "only_videos": video,
+            "no_videos": not video,
+            "only_audios": audio,
+            "no_audios": not audio,
+            "only_docs": document,
+            "no_docs": not document,
+            "only_stickers": sticker,
+            "no_stickers": not sticker,
+            "only_forwards": forward,
+            "no_forwards": not forward,
+            "only_reply": reply,
+            "no_reply": not reply,
+            "only_inline": inline,
+            "no_inline": not inline,
+            "mention": mentioned,
+            "no_mention": not mentioned,
+            "only_messages": True,
+            "editable": out and not forward,
+            "only_commands": command,
+            "no_commands": not command,
+        }
+
+    def _rules(self, message, prefixes) -> dict:
+        raise NotImplementedError
+
+    def _identity(self, message) -> tuple:
+        """Text, sender ID and chat ID of `message`"""
+        raise NotImplementedError
+
+    def _values_accept(self, values: dict, message) -> bool:
+        """Check text patterns, sender/chat restrictions and custom predicates."""
+        if not values:
+            return True
+        text, sender_id, chat_id = self._identity(message)
+        checks = {
+            "startswith": lambda v: text.startswith(v),
+            "endswith": lambda v: text.endswith(v),
+            "contains": lambda v: v in text,
+            "regex": lambda v: re.search(v, text) is not None,
+            "from_id": lambda v: sender_id == v,
+            "chat_id": lambda v: chat_id == v,
+            "filter": lambda v: bool(v(message)),
+        }
+        return all(checks[key](value) for key, value in values.items() if key in checks)
+
+    def _filters_accept(
+        self, func, message, tags_attr: str, values_attr: str, prefixes=None
+    ) -> bool:
+        """Require every declared tag and value filter to match."""
+        tags = self._flag(func, tags_attr) or ()
+        if tags:
+            rules = self._rules(
+                message, self.prefixes if prefixes is None else prefixes
+            )
+            if not all(rules[tag] for tag in tags if tag in rules):
+                return False
+        return self._values_accept(self._flag(func, values_attr) or {}, message)
+
 
 class DispatcherManager(BaseDispatcherManager):
     """Dispatch Pyrogram messages to commands and watchers."""
@@ -87,12 +177,47 @@ class DispatcherManager(BaseDispatcherManager):
         "watcher_no_audios": ("audio",),
         "watcher_no_videos": ("video",),
         "watcher_no_photos": ("photo",),
-        "watcher_no_forwards": ("forward_from", "forward_from_chat"),
+        "watcher_no_forwards": ("forward_origin", "forward_from", "forward_from_chat"),
     }
 
     def __init__(self, app: Client, modules: "loader.ModulesManager") -> None:
         super().__init__(app, modules)
         self.app = app
+
+    def _identity(self, message: types.Message) -> tuple:
+        sender = message.from_user or message.sender_chat
+        return (
+            message.text or message.caption or "",
+            getattr(sender, "id", None),
+            getattr(message.chat, "id", None),
+        )
+
+    def _rules(self, message: types.Message, prefixes) -> dict:
+        """Translate Pyrogram message properties into supported filter tags."""
+        text = message.text or message.caption or ""
+        chat_type = getattr(getattr(message.chat, "type", None), "name", "")
+        return self._tag_rules(
+            out=bool(
+                message.outgoing or getattr(message.from_user, "is_self", False)
+            ),
+            private=chat_type in ("PRIVATE", "BOT"),
+            group=chat_type in ("GROUP", "SUPERGROUP"),
+            channel=chat_type == "CHANNEL",
+            media=bool(message.media),
+            photo=bool(message.photo),
+            video=bool(message.video),
+            audio=bool(message.audio or message.voice),
+            document=bool(message.document),
+            sticker=bool(message.sticker),
+            forward=any(
+                getattr(message, field, None)
+                for field in self._WATCHER_MEDIA_FIELDS["watcher_no_forwards"]
+            ),
+            reply=bool(message.reply_to_message_id or message.reply_to_message),
+            inline=bool(message.via_bot),
+            mentioned=bool(message.mentioned),
+            command=any(text.startswith(prefix) for prefix in prefixes),
+        )
 
     async def _check_filters(
         self,
@@ -151,6 +276,9 @@ class DispatcherManager(BaseDispatcherManager):
         if self._is_telethon_handler(func):
             return
 
+        if not self._filters_accept(func, message, "tags", "tag_values"):
+            return
+
         if not await self._check_filters(func, app, message, command_lower):
             return
 
@@ -206,7 +334,9 @@ class DispatcherManager(BaseDispatcherManager):
                 getattr(message, field, None) for field in fields
             ):
                 return False
-        return True
+        return self._filters_accept(
+            watcher, message, "watcher_tags", "watcher_values"
+        )
 
     @staticmethod
     async def _invoke_watcher(watcher, app: Client, message: types.Message) -> None:
@@ -249,75 +379,33 @@ class TelethonDispatcherManager(BaseDispatcherManager):
         super().__init__(client, modules)
         self._loaded = False
 
+    def _identity(self, message) -> tuple:
+        return message.raw_text or "", message.sender_id, message.chat_id
+
     def _rules(self, message, prefixes) -> dict:
         """Translate Telethon message properties into supported filter tags."""
         text = message.raw_text or ""
-        channel = bool(message.is_channel and not message.is_group)
-        mentioned = bool(getattr(message, "mentioned", False))
         audio = bool(message.audio or message.voice)
-        document = bool(message.document) and not any(
-            (message.sticker, message.video, audio, message.gif)
+        rules = self._tag_rules(
+            out=bool(message.out),
+            private=bool(message.is_private),
+            group=bool(message.is_group),
+            channel=bool(message.is_channel and not message.is_group),
+            media=bool(message.media),
+            photo=bool(message.photo),
+            video=bool(message.video),
+            audio=audio,
+            document=bool(message.document)
+            and not any((message.sticker, message.video, audio, message.gif)),
+            sticker=bool(message.sticker),
+            forward=bool(message.fwd_from),
+            reply=bool(message.is_reply),
+            inline=bool(message.via_bot_id),
+            mentioned=bool(getattr(message, "mentioned", False)),
+            command=any(text.startswith(prefix) for prefix in prefixes),
         )
-        command = any(text.startswith(prefix) for prefix in prefixes)
-        return {
-            "out": message.out,
-            "in": not message.out,
-            "only_pm": message.is_private,
-            "no_pm": not message.is_private,
-            "only_groups": message.is_group,
-            "no_groups": not message.is_group,
-            "only_channels": channel,
-            "no_channels": not channel,
-            "only_media": bool(message.media),
-            "no_media": not message.media,
-            "only_photos": bool(message.photo),
-            "no_photos": not message.photo,
-            "only_videos": bool(message.video),
-            "no_videos": not message.video,
-            "only_audios": audio,
-            "no_audios": not audio,
-            "only_docs": document,
-            "no_docs": not message.document,
-            "only_stickers": bool(message.sticker),
-            "no_stickers": not message.sticker,
-            "only_forwards": bool(message.fwd_from),
-            "no_forwards": not message.fwd_from,
-            "only_reply": bool(message.is_reply),
-            "no_reply": not message.is_reply,
-            "only_inline": bool(message.via_bot_id),
-            "no_inline": not message.via_bot_id,
-            "mention": mentioned,
-            "no_mention": not mentioned,
-            "only_messages": True,
-            "editable": bool(message.out and not message.fwd_from),
-            "only_commands": command,
-            "no_commands": not command,
-        }
-
-    def _values_accept(self, values: dict, message) -> bool:
-        """Check text patterns, sender/chat restrictions and custom predicates."""
-        text = message.raw_text or ""
-        checks = {
-            "startswith": lambda v: text.startswith(v),
-            "endswith": lambda v: text.endswith(v),
-            "contains": lambda v: v in text,
-            "regex": lambda v: re.search(v, text) is not None,
-            "from_id": lambda v: message.sender_id == v,
-            "chat_id": lambda v: message.chat_id == v,
-            "filter": lambda v: bool(v(message)),
-        }
-        return all(checks[key](value) for key, value in values.items() if key in checks)
-
-    def _filters_accept(
-        self, func, message, prefixes, tags_attr: str, values_attr: str
-    ) -> bool:
-        """Require every declared tag and value filter to match."""
-        tags = self._flag(func, tags_attr) or ()
-        if tags:
-            rules = self._rules(message, prefixes)
-            if not all(rules[tag] for tag in tags if tag in rules):
-                return False
-        return self._values_accept(self._flag(func, values_attr) or {}, message)
+        rules["no_docs"] = not message.document
+        return rules
 
     def _watcher_accepts(self, watcher, message, prefixes) -> bool:
         """Combine legacy watcher flags with tag and value filters."""
@@ -336,7 +424,7 @@ class TelethonDispatcherManager(BaseDispatcherManager):
             if not all(rules[tag] for tag in enabled):
                 return False
         return self._filters_accept(
-            watcher, message, prefixes, "watcher_tags", "watcher_values"
+            watcher, message, "watcher_tags", "watcher_values", prefixes
         )
 
     async def load(self) -> bool:
@@ -405,7 +493,7 @@ class TelethonDispatcherManager(BaseDispatcherManager):
         ):
             return
 
-        if not self._filters_accept(func, message, self.prefixes, "tags", "tag_values"):
+        if not self._filters_accept(func, message, "tags", "tag_values"):
             return
         if not await self.security.check(message, func, command, self.client):
             return
