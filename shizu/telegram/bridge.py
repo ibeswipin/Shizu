@@ -113,10 +113,22 @@ class ManagedTelegramClient(TelegramClient):
 
     session_invalidated: Callable[[], Awaitable[None]] | None = None
     _logging_out = False
+    hikka_me: Any = None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.connection_state = TelethonConnectionState()
+
+    @property
+    def tg_id(self) -> int | None:
+        """Hikka name for the account ID"""
+        return self.connection_state.user_id
+
+    _tg_id = tg_id
+
+    async def get_perms_cached(self, entity: Any, user: Any = None, **_: Any) -> Any:
+        """Hikka name for `get_permissions`"""
+        return await self.get_permissions(entity, user)
 
     async def disconnect(self) -> None:
         """Closing a connection does not revoke the saved authorization."""

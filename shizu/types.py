@@ -99,7 +99,7 @@ class InfiniteLoop:
     def __init__(
         self,
         func: FunctionType,
-        interval: int | str | None,
+        interval: int | float | str | None,
         autostart: bool,
         wait_before: bool,
         time: str | list[str] | None = None,
@@ -113,7 +113,7 @@ class InfiniteLoop:
         if isinstance(interval, bool) or (
             interval is not None
             and not isinstance(interval, str)
-            and (not isinstance(interval, int) or interval <= 0)
+            and (not isinstance(interval, (int, float)) or interval <= 0)
         ):
             raise ValueError(
                 f"{name}: loop interval must be a positive number of seconds or a config key"
@@ -143,14 +143,14 @@ class InfiniteLoop:
             raise ValueError(f"config has no key {key!r}")
         return config[key]
 
-    def current_interval(self) -> int:
+    def current_interval(self) -> float:
         try:
             value = (
                 self._config(self.interval)
                 if isinstance(self.interval, str)
                 else self.interval
             )
-            value = int(value)
+            value = float(value)
             if value <= 0:
                 raise ValueError
         except (TypeError, ValueError) as e:
