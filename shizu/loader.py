@@ -65,6 +65,14 @@ if os.path.isdir(MODULE_DEPENDENCIES):
 async def _install_requirements(requirements):
     """Install dependencies into SHIZU_DEPS_DIR, the venv or a project-local directory."""
     local = bool(os.environ.get("SHIZU_DEPS_DIR")) or sys.prefix == sys.base_prefix
+    if importlib.util.find_spec("pip") is None:
+        await utils.run_sync(
+            subprocess.run,
+            [sys.executable, "-m", "ensurepip"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     await utils.run_sync(
         subprocess.run,
         [
@@ -489,7 +497,7 @@ def on(custom_filters):
 
 
 def loop(
-    interval: int | str | None = None,
+    interval: int | float | str | None = None,
     autostart: bool | None = False,
     wait_before: bool | None = False,
     time: str | list[str] | None = None,
@@ -1648,6 +1656,14 @@ class ModulesManager:
                 return False
             except Exception:
                 logging.exception("%s failed in module %s", hook.__name__, module.name)
+
+        added = {
+            re.sub(r"_?cmd$", "", name).lower(): value
+            for name, value in vars(module).items()
+            if name.endswith("cmd") and callable(value)
+        }
+        module.command_handlers.update(added)
+        self.command_handlers.update(added)
 
         return True
 

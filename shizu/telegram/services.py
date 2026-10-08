@@ -129,6 +129,7 @@ class TelegramConnectionService:
                 "Telethon session belongs to another account. Please reconnect."
             )
         client.connection_state.authorized(user_id)
+        client.hikka_me = me
 
     async def verify(
         self, client: ManagedTelegramClient, user_id: int, *, timeout: float = 10
