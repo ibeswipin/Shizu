@@ -54,7 +54,7 @@ VALID_PIP_PACKAGES = re.compile(
 )
 
 
-MODULE_DEPENDENCIES = os.path.join(
+MODULE_DEPENDENCIES = os.environ.get("SHIZU_DEPS_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     ".module_dependencies",
 )
@@ -63,8 +63,8 @@ if os.path.isdir(MODULE_DEPENDENCIES):
 
 
 async def _install_requirements(requirements):
-    """Install dependencies into the venv or a project-local directory."""
-    local = sys.prefix == sys.base_prefix
+    """Install dependencies into SHIZU_DEPS_DIR, the venv or a project-local directory."""
+    local = bool(os.environ.get("SHIZU_DEPS_DIR")) or sys.prefix == sys.base_prefix
     await utils.run_sync(
         subprocess.run,
         [
@@ -76,6 +76,8 @@ async def _install_requirements(requirements):
             *requirements,
         ],
         check=True,
+        capture_output=True,
+        text=True,
     )
     if local:
         site.addsitedir(MODULE_DEPENDENCIES)
@@ -1106,6 +1108,14 @@ class ModulesManager:
         self.hidden = []
         app.db = db
 
+    @staticmethod
+    def _pip_error(error: Exception) -> str:
+        """pip's own error output, or the exception text when there is none"""
+        output = (
+            getattr(error, "stderr", None) or getattr(error, "stdout", None) or ""
+        ).strip()
+        return output or str(error)
+
     def _is_telethon_module(self, source_code: str) -> bool:
         """Checks if the module is a Telethon module"""
         telethon_patterns = [
@@ -1501,14 +1511,18 @@ class ModulesManager:
 
             try:
                 await _install_requirements(requirements)
-            except (subprocess.CalledProcessError, OSError):
-                logging.exception(
-                    "Failed to install module dependencies: %s", requirements
+            except (subprocess.CalledProcessError, OSError) as error:
+                output = self._pip_error(error)
+                logging.error(
+                    "Failed to install module dependencies %s:\n%s",
+                    requirements,
+                    output,
                 )
                 await self.bot_manager.bot.send_message(
                     self._db.get("shizu.chat", "logs", None),
-                    "🚫 Failed to install module dependencies. See the application log "
-                    "for the pip error; restarting will not fix the installation failure.",
+                    "🚫 <b>Failed to install module dependencies</b> "
+                    f"<code>{utils.escape_html(' '.join(requirements))}</code>\n\n"
+                    f"<pre>{utils.escape_html(output[-3000:])}</pre>",
                 )
                 return False
 
@@ -1751,7 +1765,8 @@ class ModulesManager:
                 )
             except (subprocess.CalledProcessError, OSError) as install_error:
                 raise LoadError(
-                    f"Could not install dependencies for library {url}: {install_error}"
+                    f"Could not install dependencies for library {url}: "
+                    f"{self._pip_error(install_error)[-1000:]}"
                 ) from install_error
             return await self._exec_library(url, code, source, True)
 

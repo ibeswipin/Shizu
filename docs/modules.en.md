@@ -644,7 +644,10 @@ Special comments at the top of the file:
 | `# tl-only` | loads only when Telethon mode is enabled |
 
 Packages go into the virtualenv, or into `.module_dependencies` when Shizu
-runs without one. Install time is shown in the log chat.
+runs without one. Set the `SHIZU_DEPS_DIR` environment variable to install
+them into another directory instead, for example a Docker volume, so they
+survive container rebuilds. Install time is shown in the log chat; if pip
+fails, its error is sent there too.
 
 Import heavy or optional packages inside functions if the module should load
 without them.
