@@ -68,7 +68,7 @@ class TokenManager(Item):
                 await conv.ask(text)
                 await conv.get_response()
 
-    async def _find_bot(self) -> tuple[str, str] | None:
+    async def _find_bot(self) -> str | None:
         """Find the bot"""
 
         async with fsm.Conversation(self._app, "@BotFather") as conv:
@@ -88,22 +88,20 @@ class TokenManager(Item):
 
             await asyncio.sleep(1)
 
-            if not r.reply_markup:
-                return False
+            data = getattr(r.reply_markup, "inline_keyboard", None)
+            if not data:
+                return None
 
-            data = r.reply_markup.inline_keyboard
             buttons_text = [button.text for row in data for button in row]
 
             buttons = [i for i in buttons_text if "shizu" in i]
 
             if not buttons:
-                return False
+                return None
 
             logger.info("Found bot: %s", buttons[0])
 
-            resp = await conv.get_response()
-
-            await resp.click(buttons[0])
+            await r.click(buttons[0])
 
             h2 = await conv.get_another_same()
             await h2.click(0)
