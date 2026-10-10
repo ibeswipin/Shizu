@@ -45,9 +45,9 @@
           </form>
         </section>
         <section id="view-modules" class="view" hidden>
-          <form id="load-form" class="card load-form"><label for="module-url" data-i18n="module_url"></label><div class="input-action"><input id="module-url" type="url" placeholder="https://…/module.py" required autocomplete="off"><button class="button primary" data-i18n="install_module"></button></div><p class="small muted" data-i18n="besafe_note"></p></form>
-          <div class="list-heading"><h2 data-i18n="installed_modules"></h2><button id="refresh-modules" class="text-button" data-i18n="refresh"></button><input id="module-search" type="search" data-i18n-placeholder="search_modules" autocomplete="off"></div>
+          <div class="list-heading"><input id="module-search" type="search" data-i18n-placeholder="search_modules" data-i18n-aria-label="search_modules" autocomplete="off"><button id="refresh-modules" class="text-button" data-i18n="refresh"></button></div>
           <div id="modules-list" class="module-grid"></div><p id="modules-empty" class="muted" hidden data-i18n="no_modules"></p>
+          <details class="module-install"><summary data-i18n="install_module"></summary><form id="load-form" class="card load-form"><label for="module-url" data-i18n="module_url"></label><div class="input-action"><input id="module-url" type="url" placeholder="https://…/module.py" required autocomplete="off"><button class="button primary" data-i18n="install_module"></button></div><p class="small muted" data-i18n="besafe_note"></p></form></details>
         </section>
         <section id="view-logs" class="view" hidden>
           <div class="card log-card"><div class="card-heading log-tools"><select id="log-level" data-i18n-aria-label="log_level"><option>DEBUG</option><option selected>INFO</option><option>WARNING</option><option>ERROR</option><option>CRITICAL</option></select><div><button id="download-logs" class="button secondary" data-i18n="download"></button><button id="refresh-logs" class="button secondary" data-i18n="refresh"></button></div></div><pre id="log-output" class="log-output" tabindex="0"></pre><div class="card-footer small muted" data-i18n="logs_hint"></div></div>

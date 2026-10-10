@@ -43,6 +43,7 @@ import jinja2
 from aiohttp import web
 
 from shizu.web import initial_setup
+from shizu.web.cloudflared import CloudflaredInstaller
 
 
 class TunnelManager:
@@ -51,8 +52,48 @@ class TunnelManager:
         self.process = None
         self._drain_task = None
 
-    async def open_tunnel(self, port):
+    async def open_tunnel(self, port, *, provider="localhost.run"):
+        await self.close_tunnel()
+        command = self._tunnel_command(port, provider)
+        if provider == "cloudflare":
+            command[0] = await CloudflaredInstaller().ensure()
         process = await asyncio.create_subprocess_exec(
+            *command,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        self.process = process
+
+        try:
+            url = await asyncio.wait_for(
+                self._extract_tunnel_url(process.stdout, provider), 30
+            )
+        except asyncio.TimeoutError:
+            url = None
+        except BaseException:
+            await self.close_tunnel()
+            raise
+        if not url:
+            await self.close_tunnel()
+        self.url = url or f"http://127.0.0.1:{port}"
+        return self.url
+
+    @staticmethod
+    def _tunnel_command(port, provider):
+        if provider == "cloudflare":
+            return [
+                "cloudflared",
+                "tunnel",
+                "--no-autoupdate",
+                "--protocol",
+                "http2",
+                "--url",
+                f"http://127.0.0.1:{int(port)}",
+            ]
+        if provider != "localhost.run":
+            raise ValueError("Unknown tunnel provider")
+        return [
             "ssh",
             "-o",
             "StrictHostKeyChecking=no",
@@ -63,20 +104,7 @@ class TunnelManager:
             "-R",
             f"80:127.0.0.1:{int(port)}",
             "nokey@localhost.run",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        self.process = process
-
-        try:
-            url = await asyncio.wait_for(self._extract_tunnel_url(process.stdout), 20)
-        except asyncio.TimeoutError:
-            url = None
-        if not url:
-            await self.close_tunnel()
-        self.url = url or f"http://127.0.0.1:{port}"
-        return self.url
+        ]
 
     async def close_tunnel(self):
         if self._drain_task:
@@ -95,14 +123,24 @@ class TunnelManager:
                     process.kill()
                 await process.wait()
 
-    async def _extract_tunnel_url(self, stdout):
+    async def _extract_tunnel_url(self, stdout, provider="localhost.run"):
+        url = None
         async for line in stdout:
-            match = re.search(
-                r"tunneled.*?(https://[\w.-]+)", line.decode(errors="replace")
+            text = line.decode(errors="replace")
+            pattern = (
+                r"https://[a-z0-9-]+\.trycloudflare\.com\b"
+                if provider == "cloudflare"
+                else r"tunneled.*?(https://[\w.-]+)"
             )
+            match = re.search(pattern, text)
             if match:
+                url = match[0] if provider == "cloudflare" else match[1]
+            # Cloudflare prints the hostname before establishing its connection.
+            if url and (
+                provider != "cloudflare" or "Registered tunnel connection" in text
+            ):
                 self._drain_task = asyncio.create_task(self._drain(stdout))
-                return match[1].strip()
+                return url
         return None
 
     @staticmethod

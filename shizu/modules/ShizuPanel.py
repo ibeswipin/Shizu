@@ -20,6 +20,7 @@ import sys
 import time
 
 from aiogram.types import CallbackQuery
+from aiogram.utils.exceptions import BadRequest
 from pyrogram import Client, types
 
 from shizu import loader, utils
@@ -57,6 +58,23 @@ class ShizuPanel(loader.Module):
                 text += "\n\n" + self.strings("web_local")
             return text
 
+    async def _send_web_link(self, text):
+        try:
+            return await self.bot.bot.send_message(
+                self.me.id, text, disable_web_page_preview=True
+            )
+        except BadRequest as error:
+            if not any(
+                reason in str(error).lower()
+                for reason in ("custom emoji", "custom_emoji", "premium")
+            ):
+                raise
+            return await self.bot.bot.send_message(
+                self.me.id,
+                self.bot.sanitise_text(text),
+                disable_web_page_preview=True,
+            )
+
     @loader.command()
     async def web(self, app: Client, message: types.Message):
         """Open the browser dashboard; web stop closes it and revokes browser sessions"""
@@ -84,8 +102,19 @@ class ShizuPanel(loader.Module):
         if call.from_user.id != self.me.id:
             return await call.answer(self.strings("web_owner_only"), show_alert=True)
         parts = call.data[len(DashboardServer.CALLBACK_PREFIX) :].split(":")
-        if len(parts) != 2 or parts[1] not in ("allow", "deny"):
+        if len(parts) != 2 or parts[1] not in ("allow", "deny", "revoke"):
             return await call.answer(self.strings("web_expired"), show_alert=True)
+        if parts[1] == "revoke":
+            if not self.dashboard or not await self.dashboard.revoke_session(
+                parts[0], call.from_user.id
+            ):
+                return await call.answer(
+                    self.strings("web_session_expired"), show_alert=True
+                )
+            await call.answer(self.strings("web_revoked"))
+            return await call.message.edit_text(
+                self.strings("web_revoked"), reply_markup=None
+            )
         if not self.dashboard or not self.dashboard.auth.decide(
             parts[0], call.from_user.id, parts[1] == "allow"
         ):
@@ -205,9 +234,7 @@ class ShizuPanel(loader.Module):
                 text = await self._web_link()
             except (OSError, ValueError):
                 text = self.strings("web_start_failed")
-            await self.bot.bot.send_message(
-                self.me.id, text, disable_web_page_preview=True
-            )
+            await self._send_web_link(text)
         elif action == "restart":
             if self.dashboard:
                 await self.dashboard.stop()

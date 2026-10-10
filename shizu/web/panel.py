@@ -77,7 +77,7 @@ class DashboardServer(TunnelManager):
     def text(self, key):
         return self.translator.gettext("shizu.web.panel." + key)
 
-    async def notify(self, key, *values):
+    async def notify(self, key, *values, reply_markup=None):
         try:
             await asyncio.wait_for(
                 self.module.bot.bot.send_message(
@@ -87,6 +87,7 @@ class DashboardServer(TunnelManager):
                     ),
                     parse_mode="HTML",
                     disable_web_page_preview=True,
+                    reply_markup=reply_markup,
                 ),
                 timeout=8,
             )
@@ -185,9 +186,13 @@ class DashboardServer(TunnelManager):
             self.local_url = self.url = f"http://127.0.0.1:{bound_port}"
             if tunnel:
                 try:
-                    await self.open_tunnel(bound_port)
-                except OSError:
+                    await self.open_tunnel(bound_port, provider="cloudflare")
+                except OSError as error:
                     await self.close_tunnel()
+                    logger.warning(
+                        "Cloudflare Quick Tunnel could not start; dashboard is local only: %s",
+                        error,
+                    )
             await self.notify("web_opened", self.url)
             return self.url
         except BaseException:
@@ -338,8 +343,18 @@ class DashboardServer(TunnelManager):
             path="/",
         )
         response.del_cookie(PanelAuth.PENDING_COOKIE, path="/")
-        await self.notify("web_login_notice", item["code"])
+        markup = InlineKeyboardMarkup().add(
+            InlineKeyboardButton(
+                self.module.strings("web_revoke"),
+                callback_data=f"{self.CALLBACK_PREFIX}{session['id']}:revoke",
+            )
+        )
+        await self.notify("web_login_notice", item["code"], reply_markup=markup)
         return response
+
+    async def revoke_session(self, session_id, owner_id):
+        async with self._mutation_lock:
+            return self.auth.revoke(session_id, owner_id)
 
     async def session(self, request):
         return web.json_response({"csrf": request["session"]["csrf"]})

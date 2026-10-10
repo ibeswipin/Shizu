@@ -12,6 +12,7 @@ class ShizuPanel {
     this.authTimer = null;
     this.logTimer = null;
     this.toastTimer = null;
+    this.moduleGroups = { external: true, core: false };
     this.bind();
   }
 
@@ -291,27 +292,48 @@ class ShizuPanel {
     if (!this.state) return;
     const list = this.element("modules-list");
     list.replaceChildren();
-    const query = this.element("module-search").value.toLocaleLowerCase();
+    const query = this.element("module-search").value.trim().toLocaleLowerCase();
     const modules = this.state.modules.filter(m => `${m.name} ${m.author} ${m.description}`.toLocaleLowerCase().includes(query));
     this.element("modules-empty").hidden = modules.length > 0;
-    for (const module of modules) {
-      const card = this.node("article", "module-card");
-      const head = this.node("div", "module-head");
-      head.append(this.node("h2", "", module.name), this.node("span", `badge${module.core ? "" : " external"}`, this.text(module.core ? "core_module" : "external_module")));
-      const meta = this.node("div", "module-meta");
-      meta.append(this.node("span", "", module.author), this.node("span", "", this.format("commands_count", module.commands)));
-      const actions = this.node("div", "module-actions");
-      if (module.config_count) actions.append(this.action(this.text("configure"), "button secondary", () => this.openConfig(module.name)));
-      else actions.append(this.node("span", "small muted", this.text("no_configuration")));
-      if (!module.core) actions.append(this.action(this.text("unload"), "text-button", async () => {
-        if (!confirm(this.format("unload_confirm", module.name))) return;
-        await this.api(`/api/modules/${encodeURIComponent(module.name)}/unload`, { method: "POST" });
-        await this.refresh();
-        this.toast(this.text("module_unloaded"));
-      }));
-      card.append(head, this.node("p", "", module.description), meta, actions);
-      list.append(card);
+    for (const group of ["external", "core"]) {
+      const items = modules.filter(module => Boolean(module.core) === (group === "core"));
+      if (query && !items.length) continue;
+      const section = this.node("details", `module-group ${group}`);
+      section.dataset.group = group;
+      section.open = Boolean(query) || this.moduleGroups[group];
+      const heading = this.node("summary", "module-group-heading");
+      heading.append(this.node("h2", "", this.text(`${group}_modules`)), this.node("span", "group-count", items.length));
+      section.append(heading);
+      const rows = this.node("div", "module-rows");
+      items.sort((a, b) => a.name.localeCompare(b.name)).forEach(module => rows.append(this.moduleCard(module)));
+      if (!items.length) rows.append(this.node("p", "group-empty muted", this.text("no_modules")));
+      section.append(rows);
+      section.addEventListener("toggle", () => {
+        if (!this.element("module-search").value.trim()) this.moduleGroups[group] = section.open;
+      });
+      list.append(section);
     }
+  }
+
+  moduleCard(module) {
+    const card = this.node("article", "module-card");
+    const icon = this.node("span", "module-icon", module.name.slice(0, 2).toUpperCase());
+    icon.setAttribute("aria-hidden", "true");
+    const info = this.node("div", "module-info");
+    const meta = this.node("div", "module-meta");
+    meta.append(this.node("span", "", module.author), this.node("span", "", this.format("commands_count", module.commands)));
+    info.append(this.node("h3", "", module.name), this.node("p", "", module.description), meta);
+    const actions = this.node("div", "module-actions");
+    if (module.config_count) actions.append(this.action(this.text("configure"), "button secondary", () => this.openConfig(module.name)));
+    else actions.append(this.node("span", "small muted", this.text("no_configuration")));
+    if (!module.core) actions.append(this.action(this.text("unload"), "text-button", async () => {
+      if (!confirm(this.format("unload_confirm", module.name))) return;
+      await this.api(`/api/modules/${encodeURIComponent(module.name)}/unload`, { method: "POST" });
+      await this.refresh();
+      this.toast(this.text("module_unloaded"));
+    }));
+    card.append(icon, info, actions);
+    return card;
   }
 
   async openConfig(name) {

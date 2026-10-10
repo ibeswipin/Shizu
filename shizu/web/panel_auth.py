@@ -74,6 +74,7 @@ class PanelAuth:
         del self.pending[pending_token]
         token = secrets.token_urlsafe(32)
         session = {
+            "id": secrets.token_hex(12),
             "csrf": secrets.token_urlsafe(32),
             "expires": time.monotonic() + self.SESSION_TTL,
         }
@@ -83,6 +84,16 @@ class PanelAuth:
     def session(self, token):
         self.prune()
         return self.sessions.get(token)
+
+    def revoke(self, session_id, owner_id):
+        self.prune()
+        if owner_id != self.owner_id:
+            return False
+        for token, session in list(self.sessions.items()):
+            if session["id"] == session_id:
+                del self.sessions[token]
+                return True
+        return False
 
     def clear(self):
         self.invites.clear()
