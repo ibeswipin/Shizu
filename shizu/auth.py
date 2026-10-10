@@ -32,6 +32,8 @@ from qrcode.main import QRCode
 
 from shizu import database, utils
 from shizu.health import Reporter, reporter
+from shizu.private_files import PrivateFiles
+from shizu.redaction import SecretRedactor
 from shizu.telegram.device import TelegramDeviceProfile
 from shizu.telegram.exceptions import (
     AccountMismatch,
@@ -92,15 +94,16 @@ args = argument_parser()
 
 class Auth:
     def __init__(self, session_name: str = "../shizu") -> None:
-
         self._check_api_tokens()
 
         cfg = cp.ConfigParser()
+        PrivateFiles.secure_existing("config.ini")
         cfg.read("./config.ini")
 
         device = TelegramDeviceProfile.from_config(cfg)
         api_id = cfg.get("pyrogram", "api_id", fallback="123")
         api_hash = cfg.get("pyrogram", "api_hash", fallback="hash")
+        SecretRedactor.remember(api_hash)
 
         self.app = Client(
             name=session_name,
@@ -183,7 +186,9 @@ class Auth:
                 logging.error("Incorrect password, please try again")
 
     async def authorize(self) -> tuple[types.User, Client] | NoReturn:
+        PrivateFiles.secure_sqlite(self.app.storage.database)
         await self.app.connect()
+        SecretRedactor.remember(await self.app.storage.auth_key())
 
         try:
             me = await self.app.get_me()
@@ -221,11 +226,11 @@ class Auth:
             cfg.add_section("pyrogram")
         cfg.set("pyrogram", "api_id", api_id)
         cfg.set("pyrogram", "api_hash", api_hash)
+        SecretRedactor.remember(api_hash)
         if not cfg.get("pyrogram", "device_model", fallback="").strip():
             cfg.set("pyrogram", "device_model", self.app.device_model)
 
-        with open("config.ini", "w", encoding="utf-8") as file:
-            cfg.write(file)
+        PrivateFiles.write_config("config.ini", cfg)
 
         qr = colored_input("Log in with a QR code? y/n: ").strip().lower()
         if qr in ("y", "yes"):

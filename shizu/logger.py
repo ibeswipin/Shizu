@@ -18,7 +18,6 @@ import asyncio
 import contextlib
 import html
 import io
-import json
 import logging
 import os
 import re
@@ -37,6 +36,8 @@ from loguru._colorizer import Colorizer
 
 from shizu import utils
 from shizu.database import db
+from shizu.private_files import PrivateFiles
+from shizu.redaction import SecretRedactor
 
 FORMAT_FOR_FILES = "[{level}] {name}: {message}"
 
@@ -63,39 +64,18 @@ class CustomException:
         full_stack: str,
         sysinfo: tuple[object, Exception, traceback.TracebackException] | None = None,
     ):
-        self.message = message
-        self.local_vars = local_vars
-        self.full_stack = full_stack
-        self.sysinfo = sysinfo
+        self.message = SecretRedactor.text(message)
+        self.local_vars = "<code>Local variables omitted to protect credentials.</code>"
+        self.full_stack = SecretRedactor.text(full_stack)
+        self.sysinfo = None
         self.debug_url = None
 
     @classmethod
     def from_exc_info(
         cls, exc_type: object, exc_value: Exception, tb: traceback.TracebackException
     ) -> "CustomException":
-        def to_hashable(dictionary: dict) -> dict:
-            dictionary = dictionary.copy()
-            for key, value in dictionary.items():
-                if isinstance(value, dict):
-                    dictionary[key] = to_hashable(value)
-                else:
-                    try:
-                        if (
-                            getattr(getattr(value, "__class__", None), "__name__", None)
-                            == "Database"
-                        ):
-                            dictionary[key] = "<Database>"
-                        elif len(str(value)) > 512:
-                            dictionary[key] = f"{str(value)[:512]}..."
-                        else:
-                            dictionary[key] = str(value)
-                    except Exception:
-                        dictionary[key] = f"<{value.__class__.__name__}>"
-
-            return dictionary
-
-        full_stack = "".join(
-            traceback.format_exception(exc_type, exc_value, tb)
+        full_stack = SecretRedactor.text(
+            "".join(traceback.format_exception(exc_type, exc_value, tb))
         ).replace("Traceback (most recent call last):\n", "")
 
         # part HIkka: https://github.com/hikariatama/Hikka/blob/ce1f24f03313f8500de671815dde065fc8d86897/hikka/log.py#L76
@@ -137,16 +117,39 @@ class CustomException:
 
         return CustomException(
             message=(
-                f"<b>🌎 Where:</b> <code>{html.escape(filename)}:{lineno}</code> <b>in </b><code>{html.escape(name)}</code>\n"
+                f"<b>🌎 Where:</b> <code>{html.escape(filename or '?')}:{lineno}</code> <b>in </b><code>{html.escape(name or '?')}</code>\n"
                 f"<b>⏳ When:</b> <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
-                f"<b>🤔 What:</b> <code>{html.escape(''.join(traceback.format_exception_only(exc_type, exc_value)).strip())}</code>"
+                f"<b>🤔 What:</b> <code>{html.escape(SecretRedactor.text(''.join(traceback.format_exception_only(exc_type, exc_value)).strip()))}</code>"
             ),
-            local_vars=(
-                f"<code>{html.escape(json.dumps(to_hashable(tb.tb_frame.f_locals), indent=4))}</code>"
-            ),
+            local_vars="",
             full_stack=full_stack,
             sysinfo=(exc_type, exc_value, tb),
         )
+
+
+class SecretFilter(logging.Filter):
+    def filter(self, record):
+        record.msg = SecretRedactor.text(record.getMessage())
+        record.args = ()
+        if record.exc_info and record.exc_info[0]:
+            record._shizu_exception = CustomException.from_exc_info(*record.exc_info)
+            record.exc_text = SecretRedactor.text(
+                logging.Formatter().formatException(record.exc_info)
+            )
+            # Buffers must not keep raw tracebacks and their local credentials.
+            record.exc_info = None
+        else:
+            record.exc_info = None
+        if record.exc_text:
+            record.exc_text = SecretRedactor.text(record.exc_text)
+        if record.stack_info:
+            record.stack_info = SecretRedactor.text(record.stack_info)
+        return True
+
+
+class SecretFormatter(logging.Formatter):
+    def format(self, record):
+        return SecretRedactor.text(super().format(record))
 
 
 class StreamHandler(logging.Handler):
@@ -166,6 +169,7 @@ class StreamHandler(logging.Handler):
             exception_formatter = ExceptionFormatter(
                 encoding="utf-8",
                 backtrace=True,
+                diagnose=False,
                 prefix="\n",
                 hidden_frames_filename=logger.catch.__code__.co_filename,
             )
@@ -173,13 +177,17 @@ class StreamHandler(logging.Handler):
             type_, value, tb = record.exc_info
             exception_list = exception_formatter.format_exception(type_, value, tb)
             exception_lines = "".join(exception_list)
+        elif record.exc_text:
+            exception_lines = "\n" + record.exc_text
 
-        return stripped_formatter.format(
-            level=record.levelname,
-            name=record.name,
-            function=record.funcName,
-            message=record.msg,
-            exception=exception_lines,
+        return SecretRedactor.text(
+            stripped_formatter.format(
+                level=record.levelname,
+                name=record.name,
+                function=record.funcName,
+                message=record.getMessage(),
+                exception=exception_lines,
+            )
         )
 
 
@@ -205,6 +213,7 @@ class MemoryHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord):
         """Emit a log record"""
+        SecretFilter().filter(record)
         if len(self.buffer + self.handled_buffer) >= self.capacity:
             if self.handled_buffer:
                 del self.handled_buffer[0]
@@ -230,9 +239,10 @@ class MemoryHandler(logging.Handler):
             frame = frame.f_back
             depth += 1
 
-        logger.opt(depth=depth, exception=record.exc_info).log(
-            level, record.getMessage()
-        )
+        text = record.getMessage()
+        if record.exc_text:
+            text += "\n" + record.exc_text
+        logger.opt(depth=depth).log(level, SecretRedactor.text(text))
 
         self.handled_buffer = (
             self.handled_buffer[-(self.capacity - len(self.buffer)) :] + self.buffer
@@ -266,19 +276,18 @@ class Telegramhandler(logging.Handler):
         return map(self.target.format, sorted_logs)
 
     def emit(self, record: logging.LogRecord):
+        SecretFilter().filter(record)
         current_time = time.time()
 
         if self.last_log_time is None:
             self.last_log_time = current_time
 
-        item = None
-        if record.exc_info and record.exc_info[1]:
-            with contextlib.suppress(Exception):
-                item = CustomException.from_exc_info(*record.exc_info)
-                head = utils.escape_html(record.getMessage()[:300])
-                item.message = f"<b>⛔ {head}</b>\n\n{item.message}"
+        item = getattr(record, "_shizu_exception", None)
+        if item:
+            head = utils.escape_html(record.getMessage()[:300])
+            item.message = f"<b>⛔ {head}</b>\n\n{item.message}"
 
-        self.msgs.append(item or FORMAT_FOR_TGLOG.format(record))
+        self.msgs.append(item or SecretRedactor.text(FORMAT_FOR_TGLOG.format(record)))
 
         if (
             current_time - self.last_log_time >= self.time_threshold
@@ -429,6 +438,10 @@ def setup_logger(level: str | int, log_file_path: str = "shizu.log"):
     """Setup logger"""
 
     level = get_valid_level(level) or 20
+    PrivateFiles.restrict_process()
+    for suffix in ("", ".1", ".2", ".3", ".4", ".5"):
+        PrivateFiles.secure_existing(f"{log_file_path}{suffix}")
+    logger.configure(patcher=SecretRedactor.loguru_record)
 
     handler = MemoryHandler(level)
 
@@ -438,9 +451,10 @@ def setup_logger(level: str | int, log_file_path: str = "shizu.log"):
         log_file_path, maxBytes=5 * 1024 * 1024, backupCount=5
     )
 
-    file_handler.setFormatter(
-        logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
-    )
+    file_handler.setFormatter(SecretFormatter("[%(levelname)s] %(name)s: %(message)s"))
+
+    for destination in (handler, tg, file_handler):
+        destination.addFilter(SecretFilter())
 
     logging.basicConfig(handlers=[handler, tg, file_handler], level=level, force=True)
 

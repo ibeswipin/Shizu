@@ -7,15 +7,21 @@ venv/
 .installer/
 .module_dependencies/
 .compat_cache/
+/data/modules_cache/
 compat_report/
 
 config.ini
 db.json
 shizu-*.json
+*.shizu-backup
+backup.key
 shizu.log
+shizu.log.*
 downloads
 shizu.session
 shizu.session-journal
+shizu.session-wal
+shizu.session-shm
 shizu-tl.session
 shizu-tl.session-journal
 telethon_sessions.sqlite3*
@@ -25,6 +31,6 @@ telethon_sessions.key
 .DS_Store
 
 /tests
-/docs
+# /docs
 /scripts/*
 !/scripts/install.py

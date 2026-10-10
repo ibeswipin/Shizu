@@ -18,6 +18,10 @@ import logging
 import platform
 import sys
 
+from .private_files import PrivateFiles
+
+PrivateFiles.restrict_process()
+
 ascii_ = """
 
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢲⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀

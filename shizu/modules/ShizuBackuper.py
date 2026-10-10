@@ -14,7 +14,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import io
-import json
 import os
 import time
 from datetime import datetime
@@ -22,6 +21,7 @@ from datetime import datetime
 from pyrogram import Client, enums, types
 
 from shizu import loader, utils
+from shizu.backups import BackupError, EncryptedBackup
 
 LOADED_MODULES_DIR = os.path.join(os.getcwd(), "shizu/modules")
 
@@ -30,9 +30,24 @@ LOADED_MODULES_DIR = os.path.join(os.getcwd(), "shizu/modules")
 class BackupMod(loader.Module):
     """Back up modules and the entire userbot"""
 
-    strings = {}
+    strings = {
+        "owner_only": "Only the Telegram account owner can manage database backups.",
+        "backup_error": "❌ <b>Backup error:</b> <code>{}</code>",
+        "key_info": "🔐 Encrypted backup. Recovery key: <code>{}</code>\nKeep a separate copy of this file outside Telegram. Without it these backups cannot be restored.",
+    }
+    strings_ru = {
+        "owner_only": "Управлять бэкапами БД может только владелец Telegram-аккаунта.",
+        "backup_error": "❌ <b>Ошибка бэкапа:</b> <code>{}</code>",
+        "key_info": "🔐 Бэкап зашифрован. Ключ восстановления: <code>{}</code>\nСохраните отдельную копию этого файла вне Telegram. Без него эти бэкапы не восстановить.",
+    }
+    strings_uz = {
+        "owner_only": "Baza zaxiralarini faqat Telegram akkaunti egasi boshqarishi mumkin.",
+        "backup_error": "❌ <b>Zaxira xatosi:</b> <code>{}</code>",
+        "key_info": "🔐 Zaxira shifrlangan. Tiklash kaliti: <code>{}</code>\nBu fayl nusxasini Telegramdan tashqarida saqlang. Kalitsiz zaxiralarni tiklab bo‘lmaydi.",
+    }
 
     def __init__(self):
+        self.backups = EncryptedBackup()
         self.config = loader.ModuleConfig(
             "auto_backup",
             True,
@@ -43,8 +58,8 @@ class BackupMod(loader.Module):
         )
 
     async def _send_backup(self, app: Client, caption_key: str = "backup") -> None:
-        txt = io.BytesIO(json.dumps(self.db).encode("utf-8"))
-        txt.name = f"shizu-{datetime.now().strftime('%d-%m-%Y-%H-%M')}.json"
+        txt = io.BytesIO(self.backups.encrypt(self.db, self.me.id))
+        txt.name = f"shizu-{datetime.now().strftime('%d-%m-%Y-%H-%M')}.shizu-backup"
         chat = self.db.get("shizu.chat", "backup")
         await utils.ensure_bot_in_chat(app, chat)
         await app.inline_bot.send_document(
@@ -52,7 +67,27 @@ class BackupMod(loader.Module):
             document=txt,
             caption=self.strings(caption_key).format(
                 datetime.now().strftime("%d-%m-%Y %H:%M")
-            ),
+            )
+            + "\n\n"
+            + self._key_info(),
+        )
+
+    def _key_info(self) -> str:
+        return self.strings("key_info").format(
+            utils.escape_html(str(self.backups.key_path))
+        )
+
+    async def _account_owner(self, message) -> bool:
+        if getattr(message.from_user, "id", None) == self.me.id or (
+            not message.from_user and message.outgoing
+        ):
+            return True
+        await message.answer(self.strings("owner_only"))
+        return False
+
+    async def _error(self, message, error) -> None:
+        await message.answer(
+            self.strings("backup_error").format(utils.escape_html(str(error)))
         )
 
     @loader.loop(time="backup_time", autostart=True)
@@ -64,12 +99,25 @@ class BackupMod(loader.Module):
     @loader.command()
     async def backupdb(self, app: Client, message: types.Message):
         """Create a database backup [sent to the backups chat]"""
-        await self._send_backup(app)
+        if not await self._account_owner(message):
+            return
+        try:
+            await self._send_backup(app)
+        except BackupError as error:
+            return await self._error(message, error)
         await message.answer(self.strings("done"))
+
+    @loader.command()
+    async def backupkey(self, app: Client, message: types.Message):
+        """Show the recovery key file path; its contents are never sent to Telegram"""
+        if await self._account_owner(message):
+            await message.answer(self._key_info())
 
     @loader.command()
     async def autobackup(self, app: Client, message: types.Message):
         """Turn the daily backup on or off. Set its time with .config ShizuBackuper"""
+        if not await self._account_owner(message):
+            return
         self.config["auto_backup"] = not self.config["auto_backup"]
         text = self.strings("enabled" if self.config["auto_backup"] else "disabled")
         if self.config["auto_backup"]:
@@ -80,24 +128,36 @@ class BackupMod(loader.Module):
 
     @loader.command()
     async def restoredb(self, app: Client, message: types.Message):
-        """Restore the database from a backup"""
+        """Reply to an encrypted backup to restore; --legacy permits an old JSON file"""
+        if not await self._account_owner(message):
+            return
         reply = message.reply_to_message
         if not reply or not reply.document:
             return await message.answer(self.strings("invalid"))
 
-        await message.answer(self.strings("restoring"))
-        file = await app.download_media(reply.document)
-        if not file.endswith(".json"):
+        args = str(utils.get_args_raw(message) or "").strip()
+        if args not in ("", "--legacy"):
             return await message.answer(self.strings("invalid"))
-
-        with open(file, encoding="utf-8") as f:
-            decoded_text = json.load(f)
-
-        self.db.reset()
-
-        self.db.update(**decoded_text)
-
-        self.db.save()
+        await message.answer(self.strings("restoring"))
+        try:
+            if (reply.document.file_size or 0) > self.backups.MAX_BYTES:
+                raise BackupError("The backup exceeds the 64 MiB limit.")
+            archive = bytearray()
+            async for chunk in app.stream_media(reply.document):
+                if len(archive) + len(chunk) > self.backups.MAX_BYTES:
+                    raise BackupError("The backup exceeds the 64 MiB limit.")
+                archive.extend(chunk)
+            decoded = self.backups.decrypt(
+                bytes(archive), self.me.id, allow_legacy=args == "--legacy"
+            )
+            self.db.replace(decoded)
+        except BackupError as error:
+            return await self._error(message, error)
+        except OSError:
+            return await self._error(
+                message,
+                "Could not write the database. The previous database was preserved.",
+            )
 
         await app.send_message(
             message.chat.id,

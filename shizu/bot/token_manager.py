@@ -119,7 +119,7 @@ class TokenManager(Item):
         logging.info("Searching for a bot...")
 
         if token := await self._find_bot():
-            logger.info("Found bot: %s", token)
+            logger.info("Found an existing bot")
             return token
 
         async with fsm.Conversation(self._app, "@BotFather", True) as conv:

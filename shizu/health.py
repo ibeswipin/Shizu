@@ -20,6 +20,7 @@ import time
 from collections import defaultdict, deque
 
 from shizu import database, utils
+from shizu.redaction import SecretRedactor
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ class Reporter:
             html.escape(source),
             count,
             self.WINDOW // 60,
-            html.escape(f"{type(error).__name__}: {error}")[:500],
+            html.escape(SecretRedactor.text(f"{type(error).__name__}: {error}"))[:500],
             self.UNLOAD_HINT.format(html.escape(module)) if module else "",
         )
         self.problem(f"failing:{source}", text)
@@ -99,6 +100,7 @@ class Reporter:
 
     async def send(self, text: str, prefer_userbot: bool = False) -> bool:
         """Logs chat through the bot, falling back to the userbot (or the other way round)"""
+        text = SecretRedactor.text(text)
         chat = self._chat()
         senders = [self._via_bot, self._via_userbot]
         if prefer_userbot:
@@ -131,6 +133,7 @@ class Reporter:
     @classmethod
     async def notify_owner_by_token(cls, text: str, key: str) -> bool:
         """Message the owner from the bot when the userbot itself cannot run; once an hour per `key`, across restarts"""
+        text = SecretRedactor.text(text)
         token = database.db.get("shizu.bot", "token", None)
         owner = database.db.get("shizu.me", "me", None)
         if not token or not owner:

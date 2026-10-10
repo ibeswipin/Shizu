@@ -50,6 +50,8 @@ from pyrogram import errors, raw
 
 from shizu import utils
 from shizu.bot.token_manager import TokenManager
+from shizu.private_files import PrivateFiles
+from shizu.redaction import SecretRedactor
 from shizu.telegram.device import TelegramDeviceProfile
 from shizu.web.telethon_setup import TelethonSetupController
 
@@ -132,8 +134,8 @@ class Web:
             "api_hash": api_hash,
             "device_model": await utils.run_sync(utils.get_random_smartphone),
         }
-        with open("./config.ini", "w", encoding="utf-8") as file:
-            cfg.write(file)
+        SecretRedactor.remember(api_hash)
+        PrivateFiles.write_config("./config.ini", cfg)
 
         self.api_token = collections.namedtuple("api_token", ("ID", "HASH"))(
             api_id, api_hash
@@ -166,7 +168,10 @@ class Web:
             api_hash=self.api_token.HASH,
             **TelegramDeviceProfile.from_config().client_options(),
         )
+        SecretRedactor.remember(self.api_token.HASH)
+        PrivateFiles.secure_sqlite(self.client.storage.database)
         await self.client.connect()
+        SecretRedactor.remember(await self.client.storage.auth_key())
         return self.client
 
     async def migrate_dc(self, dc_id):

@@ -27,6 +27,8 @@ from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from shizu.private_files import PrivateFiles
+from shizu.redaction import SecretRedactor
 from shizu.telegram.exceptions import SessionStorageError
 
 
@@ -54,6 +56,7 @@ class SessionStorage:
 
     def __init__(self, path: str | Path, encryption_key: str | bytes) -> None:
         self.path = Path(path)
+        SecretRedactor.remember(encryption_key)
         try:
             self._cipher = Fernet(encryption_key)
         except (ValueError, TypeError):
@@ -72,23 +75,15 @@ class SessionStorage:
     def _key_file(db_path: Path) -> bytes:
         key_path = db_path.with_suffix(".key")
         try:
-            if key_path.exists():
-                return key_path.read_bytes().strip()
-            key_path.parent.mkdir(parents=True, exist_ok=True)
-            key = Fernet.generate_key()
-            fd = os.open(key_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            with os.fdopen(fd, "wb") as file:
-                file.write(key)
-            return key
+            return PrivateFiles.create_once(key_path, Fernet.generate_key()).strip()
         except OSError:
             raise SessionStorageError(
                 "Could not read or create the Telethon session key file."
             ) from None
 
     def _execute(self, query: str, parameters: tuple[Any, ...]) -> sqlite3.Row | None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600)
-        os.close(fd)
+        PrivateFiles.secure_sqlite(self.path)
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with closing(sqlite3.connect(self.path)) as connection:
             connection.row_factory = sqlite3.Row
             with connection:
@@ -130,7 +125,9 @@ class SessionStorage:
     def decrypt(self, record: TelethonSessionRecord) -> str:
         """Decrypt a row for login or explicit logout, including invalid rows."""
         try:
-            return self._cipher.decrypt(record.encrypted_session.encode()).decode()
+            session = self._cipher.decrypt(record.encrypted_session.encode()).decode()
+            SecretRedactor.remember(session)
+            return session
         except (InvalidToken, UnicodeError):
             raise SessionStorageError(
                 "The stored session cannot be decrypted with this key."
@@ -140,6 +137,7 @@ class SessionStorage:
         """Replace a user's authorization atomically after successful login."""
         if not session:
             raise SessionStorageError("Cannot save an empty Telethon session.")
+        SecretRedactor.remember(session)
         encrypted = self._cipher.encrypt(session.encode()).decode()
         created = datetime.now(timezone.utc).isoformat()
         await self._run(

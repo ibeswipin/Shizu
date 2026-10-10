@@ -15,28 +15,45 @@
 
 
 import json
-import os
+from pathlib import Path
 from typing import KT, VT
 
 from lightdb import LightDB
 
+from shizu.private_files import PrivateFiles
+from shizu.redaction import SecretRedactor
+
 
 class Database(LightDB):
     """Local database in the file"""
+
+    def __init__(self, location):
+        PrivateFiles.secure_existing(location)
+        # A previous interrupted save may have left a plaintext temporary file.
+        PrivateFiles.secure_existing(
+            Path(location).with_name(Path(location).name + ".tmp")
+        )
+        super().__init__(location)
+        SecretRedactor.remember_mapping(self)
 
     def __repr__(self):
         return object.__repr__(self)
 
     def save(self) -> None:
         """Save the current state of the database to a JSON file"""
-        tmp = self.location.with_name(self.location.name + ".tmp")
+        SecretRedactor.remember_mapping(self)
+        self._write(self)
 
-        with tmp.open("w", encoding="utf-8") as file:
-            json.dump(self, file, ensure_ascii=False, indent=4)
-            file.flush()
-            os.fsync(file.fileno())
+    def _write(self, data: dict) -> None:
+        text = json.dumps(data, ensure_ascii=False, indent=4)
+        PrivateFiles.write(self.location, text.encode("utf-8"))
 
-        os.replace(tmp, self.location)
+    def replace(self, data: dict) -> None:
+        """Keep the current database if serialization or disk replacement fails."""
+        self._write(data)
+        self.clear()
+        self.update(data)
+        SecretRedactor.remember_mapping(self)
 
     def set(self, name: str, key: KT, value: VT):
         self.setdefault(name, {})[key] = value
