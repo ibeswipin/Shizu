@@ -14,6 +14,10 @@ from shizu.redaction import SecretRedactor
 class BackupError(ValueError):
     """A safe, credential-free explanation suitable for the owner."""
 
+    def __init__(self, message: str, code: str = "invalid_structure"):
+        super().__init__(message)
+        self.code = code
+
 
 class EncryptedBackup:
     MAGIC = b"SHIZU-BACKUP:1\n"
@@ -43,10 +47,13 @@ class EncryptedBackup:
             return Fernet(key)
         except FileNotFoundError:
             raise BackupError(
-                "Recovery key is missing. Restore the original key file first."
+                "Recovery key is missing. Restore the original key file first.",
+                code="key_missing",
             ) from None
         except (OSError, ValueError, TypeError):
-            raise BackupError("Could not read a valid backup key file.") from None
+            raise BackupError(
+                "Could not read a valid backup key file.", code="key_invalid"
+            ) from None
 
     @staticmethod
     def _unique_object(pairs):
@@ -83,7 +90,9 @@ class EncryptedBackup:
         if saved_owner is not None and (
             type(saved_owner) is not int or saved_owner != owner_id
         ):
-            raise BackupError("This backup belongs to another Telegram account.")
+            raise BackupError(
+                "This backup belongs to another Telegram account.", code="wrong_owner"
+            )
         try:
             json.dumps(data, allow_nan=False)
         except (ValueError, TypeError, RecursionError):
@@ -106,10 +115,13 @@ class EncryptedBackup:
                 allow_nan=False,
             ).encode("utf-8")
         except (ValueError, TypeError, RecursionError):
-            raise BackupError("The database cannot be serialized safely.") from None
+            raise BackupError(
+                "The database cannot be serialized safely.", code="serialization_failed"
+            ) from None
         if len(payload) > (self.MAX_BYTES - len(self.MAGIC)) * 3 // 4 - 128:
             raise BackupError(
-                "The database is too large for an encrypted backup (64 MiB limit)."
+                "The database is too large for an encrypted backup (64 MiB limit).",
+                code="too_large",
             )
         return self.MAGIC + self._cipher(create=True).encrypt(payload)
 
@@ -117,18 +129,20 @@ class EncryptedBackup:
         self, archive: bytes, owner_id: int, *, allow_legacy: bool = False
     ) -> dict:
         if len(archive) > self.MAX_BYTES:
-            raise BackupError("The backup exceeds the 64 MiB limit.")
+            raise BackupError("The backup exceeds the 64 MiB limit.", code="too_large")
         if not archive.startswith(self.MAGIC):
             if allow_legacy:
                 return self._validate_database(self._decode_json(archive), owner_id)
             raise BackupError(
-                "Expected an encrypted backup. For an old JSON backup use .restoredb --legacy."
+                "Expected an encrypted backup. For an old JSON backup use .restoredb --legacy.",
+                code="encrypted_required",
             )
         try:
             payload = self._cipher(create=False).decrypt(archive[len(self.MAGIC) :])
         except InvalidToken:
             raise BackupError(
-                "Wrong recovery key or damaged backup. The database was not changed."
+                "Wrong recovery key or damaged backup. The database was not changed.",
+                code="decryption_failed",
             ) from None
         envelope = self._decode_json(payload)
         if (
@@ -136,10 +150,12 @@ class EncryptedBackup:
             or type(envelope.get("version")) is not int
             or envelope["version"] != 1
         ):
-            raise BackupError("Unsupported backup version.")
+            raise BackupError("Unsupported backup version.", code="version_unsupported")
         if (
             type(envelope.get("owner_id")) is not int
             or envelope["owner_id"] != owner_id
         ):
-            raise BackupError("This backup belongs to another Telegram account.")
+            raise BackupError(
+                "This backup belongs to another Telegram account.", code="wrong_owner"
+            )
         return self._validate_database(envelope.get("data"), owner_id)

@@ -25,7 +25,7 @@ from shizu import loader, utils
 class ShizuPermissions(loader.Module):
     """Give command permissions to users and manage command groups"""
 
-    strings = {"name": "ShizuPermissions"}
+    strings = {}
 
     async def inline__close(self, call: CallbackQuery) -> None:
         """Close inline form"""

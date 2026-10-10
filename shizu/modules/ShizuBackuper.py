@@ -30,21 +30,7 @@ LOADED_MODULES_DIR = os.path.join(os.getcwd(), "shizu/modules")
 class BackupMod(loader.Module):
     """Back up modules and the entire userbot"""
 
-    strings = {
-        "owner_only": "Only the Telegram account owner can manage database backups.",
-        "backup_error": "❌ <b>Backup error:</b> <code>{}</code>",
-        "key_info": "🔐 Encrypted backup. Recovery key: <code>{}</code>\nKeep a separate copy of this file outside Telegram. Without it these backups cannot be restored.",
-    }
-    strings_ru = {
-        "owner_only": "Управлять бэкапами БД может только владелец Telegram-аккаунта.",
-        "backup_error": "❌ <b>Ошибка бэкапа:</b> <code>{}</code>",
-        "key_info": "🔐 Бэкап зашифрован. Ключ восстановления: <code>{}</code>\nСохраните отдельную копию этого файла вне Telegram. Без него эти бэкапы не восстановить.",
-    }
-    strings_uz = {
-        "owner_only": "Baza zaxiralarini faqat Telegram akkaunti egasi boshqarishi mumkin.",
-        "backup_error": "❌ <b>Zaxira xatosi:</b> <code>{}</code>",
-        "key_info": "🔐 Zaxira shifrlangan. Tiklash kaliti: <code>{}</code>\nBu fayl nusxasini Telegramdan tashqarida saqlang. Kalitsiz zaxiralarni tiklab bo‘lmaydi.",
-    }
+    strings = {}
 
     def __init__(self):
         self.backups = EncryptedBackup()
@@ -85,9 +71,9 @@ class BackupMod(loader.Module):
         await message.answer(self.strings("owner_only"))
         return False
 
-    async def _error(self, message, error) -> None:
+    async def _error(self, message, key: str) -> None:
         await message.answer(
-            self.strings("backup_error").format(utils.escape_html(str(error)))
+            self.strings("backup_error").format(utils.escape_html(self.strings(key)))
         )
 
     @loader.loop(time="backup_time", autostart=True)
@@ -104,7 +90,7 @@ class BackupMod(loader.Module):
         try:
             await self._send_backup(app)
         except BackupError as error:
-            return await self._error(message, error)
+            return await self._error(message, error.code)
         await message.answer(self.strings("done"))
 
     @loader.command()
@@ -141,23 +127,20 @@ class BackupMod(loader.Module):
         await message.answer(self.strings("restoring"))
         try:
             if (reply.document.file_size or 0) > self.backups.MAX_BYTES:
-                raise BackupError("The backup exceeds the 64 MiB limit.")
+                return await self._error(message, "too_large")
             archive = bytearray()
             async for chunk in app.stream_media(reply.document):
                 if len(archive) + len(chunk) > self.backups.MAX_BYTES:
-                    raise BackupError("The backup exceeds the 64 MiB limit.")
+                    return await self._error(message, "too_large")
                 archive.extend(chunk)
             decoded = self.backups.decrypt(
                 bytes(archive), self.me.id, allow_legacy=args == "--legacy"
             )
             self.db.replace(decoded)
         except BackupError as error:
-            return await self._error(message, error)
+            return await self._error(message, error.code)
         except OSError:
-            return await self._error(
-                message,
-                "Could not write the database. The previous database was preserved.",
-            )
+            return await self._error(message, "write_failed")
 
         await app.send_message(
             message.chat.id,

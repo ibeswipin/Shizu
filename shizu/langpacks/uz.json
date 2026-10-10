@@ -160,6 +160,7 @@
   "shizu.modules.ShizuTerminal.web_idle": "🔒 <b>Veb-terminal yopildi: 15 daqiqa ulanish bo'lmadi</b>",
   "shizu.modules.ShizuTerminal.web_locked": "🚨 <b>Veb-terminal yopildi: parol 5 marta noto'g'ri kiritildi</b>",
   "shizu.modules.ShizuEval.name": "ShizuEval",
+  "shizu.modules.ShizuPermissions.name": "ShizuPermissions",
   "shizu.modules.ShizuOnload.cfg_doc_enable_start_text": "Bot ishga tushirilganda start matnini yoqish yoki o'chirish",
   "shizu.modules.ShizuOnload.cfg_doc_start_text": "Bot ishga tushirilganda ko'rsatiladigan start matni",
   "shizu.modules.wakatime.name": "Wakatime",
@@ -338,5 +339,18 @@
   "shizu.modules.ShizuPermissions.button_owners": "👑 Egalar",
   "shizu.modules.ShizuSettings.api_on": "🛡 <b>API himoyasi yoqildi.</b>\nShizu modullar akkauntni flud-banga olib kelmasligi uchun yuborish tezligini cheklaydi.",
   "shizu.modules.ShizuSettings.api_off": "⚠️ <b>API himoyasi o‘chirildi.</b>\nModullar istalgancha tez yuborishi mumkin, flud-ban xavfi bor.",
-  "shizu.modules.ShizuSettings.telethon_disabled": "Telethon uzildi va alohida avtorizatsiya bekor qilindi. Modullarni o‘chirish uchun Shizu’ni qayta ishga tushiring."
+  "shizu.modules.ShizuSettings.telethon_disabled": "Telethon uzildi va alohida avtorizatsiya bekor qilindi. Modullarni o‘chirish uchun Shizu’ni qayta ishga tushiring.",
+  "shizu.modules.ShizuBackuper.owner_only": "Baza zaxiralarini faqat Telegram akkaunti egasi boshqarishi mumkin.",
+  "shizu.modules.ShizuBackuper.backup_error": "❌ <b>Zaxira xatosi:</b> <code>{}</code>",
+  "shizu.modules.ShizuBackuper.key_info": "🔐 Zaxira shifrlangan. Tiklash kaliti: <code>{}</code>\nBu fayl nusxasini Telegramdan tashqarida saqlang. Kalitsiz zaxiralarni tiklab bo‘lmaydi.",
+  "shizu.modules.ShizuBackuper.key_missing": "Tiklash kaliti yo‘q. Avval asl kalit faylini tiklang.",
+  "shizu.modules.ShizuBackuper.key_invalid": "Zaxira uchun yaroqli kalit faylini o‘qib bo‘lmadi.",
+  "shizu.modules.ShizuBackuper.invalid_structure": "Zaxira tuzilishi yoki undagi sonlar noto‘g‘ri. Baza o‘zgarmadi.",
+  "shizu.modules.ShizuBackuper.wrong_owner": "Bu zaxira boshqa Telegram akkauntiga tegishli.",
+  "shizu.modules.ShizuBackuper.serialization_failed": "Bazani xavfsiz ravishda JSON formatiga o‘tkazib bo‘lmadi.",
+  "shizu.modules.ShizuBackuper.too_large": "Zaxira hajmi 64 MiB chegarasidan oshdi.",
+  "shizu.modules.ShizuBackuper.encrypted_required": "Shifrlangan zaxira kerak. Eski JSON uchun .restoredb --legacy buyrug‘ini ishlating.",
+  "shizu.modules.ShizuBackuper.decryption_failed": "Tiklash kaliti noto‘g‘ri yoki zaxira buzilgan. Baza o‘zgarmadi.",
+  "shizu.modules.ShizuBackuper.version_unsupported": "Zaxira formatining bu versiyasi qo‘llab-quvvatlanmaydi.",
+  "shizu.modules.ShizuBackuper.write_failed": "Bazani yozib bo‘lmadi. Avvalgi baza saqlandi."
 }

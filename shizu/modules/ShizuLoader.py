@@ -64,31 +64,7 @@ logger = logging.getLogger(__name__)
 class Loader(loader.Module):
     """Mainly used to load modules"""
 
-    strings = {
-        "remote_error": "🛡 <b>The remote source was not loaded:</b> {}",
-        "update_usage": "Use <code>.updatemod &lt;module name | https URL&gt;</code> for an installed remote module or library.",
-        "up_to_date": "✅ The downloaded source matches the installed SHA-256.",
-        "update_review": "🛡 <b>Review the module update</b>\n<code>{}</code>\n\n<b>Installed SHA-256:</b>\n<code>{}</code>\n<b>New SHA-256:</b>\n<code>{}</code>\n\nRead the code before confirming. This request expires in 10 minutes. BeSafe may also request approval.",
-        "update_confirm": "✅ Confirm update",
-        "update_cancel": "❌ Cancel",
-        "update_cancelled": "Update cancelled; the pinned source was not changed.",
-        "update_owner": "Only the account owner can confirm updates.",
-        "library_updated": "✅ Library source approved and pinned. Restart Shizu to use it in all modules.",
-        "update_failed": "❌ The update was not loaded. The previous pinned source was restored. Check the logs.",
-    }
-
-    strings_ru = {
-        "remote_error": "🛡 <b>Удалённый исходник не загружен:</b> {}",
-        "update_usage": "Используйте <code>.updatemod &lt;имя модуля | https URL&gt;</code> для установленного удалённого модуля или библиотеки.",
-        "up_to_date": "✅ SHA-256 скачанного исходника совпадает с установленным.",
-        "update_review": "🛡 <b>Проверьте обновление модуля</b>\n<code>{}</code>\n\n<b>Установленный SHA-256:</b>\n<code>{}</code>\n<b>Новый SHA-256:</b>\n<code>{}</code>\n\nПрочитайте код перед подтверждением. Запрос действует 10 минут. BeSafe может также запросить одобрение.",
-        "update_confirm": "✅ Подтвердить обновление",
-        "update_cancel": "❌ Отмена",
-        "update_cancelled": "Обновление отменено; закреплённый исходник не изменён.",
-        "update_owner": "Подтверждать обновления может только владелец аккаунта.",
-        "library_updated": "✅ Исходник библиотеки одобрен и закреплён. Перезапустите Shizu, чтобы все модули использовали его.",
-        "update_failed": "❌ Обновление не загружено. Предыдущий исходник восстановлен. Проверьте логи.",
-    }
+    strings = {}
 
     def __init__(self):
         self.config = loader.ModuleConfig(
