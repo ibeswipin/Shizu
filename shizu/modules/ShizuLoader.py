@@ -38,11 +38,13 @@ import logging
 import os
 import re
 import time
+from urllib.parse import urlparse
 
 import requests
 from pyrogram import Client, enums, types
 
 from shizu import loader, utils
+from shizu.remote import RemoteModuleError
 
 VALID_URL = r"[-[\]_.~:/?#@!$&'()*+,;%<=>a-zA-Z0-9]+"
 
@@ -51,7 +53,7 @@ VALID_PIP_PACKAGES = re.compile(
     re.MULTILINE,
 )
 GIT_REGEX = re.compile(
-    r"^https?://github\.com((?:/[a-z0-9-]+){2})(?:/tree/([a-z0-9-]+)((?:/[a-z0-9-]+)*))?/?$",
+    r"^https://github\.com((?:/[a-z0-9-]+){2})(?:/tree/([a-z0-9-]+)((?:/[a-z0-9-]+)*))?/?$",
     flags=re.IGNORECASE,
 )
 
@@ -62,7 +64,31 @@ logger = logging.getLogger(__name__)
 class Loader(loader.Module):
     """Mainly used to load modules"""
 
-    strings = {}
+    strings = {
+        "remote_error": "🛡 <b>The remote source was not loaded:</b> {}",
+        "update_usage": "Use <code>.updatemod &lt;module name | https URL&gt;</code> for an installed remote module or library.",
+        "up_to_date": "✅ The downloaded source matches the installed SHA-256.",
+        "update_review": "🛡 <b>Review the module update</b>\n<code>{}</code>\n\n<b>Installed SHA-256:</b>\n<code>{}</code>\n<b>New SHA-256:</b>\n<code>{}</code>\n\nRead the code before confirming. This request expires in 10 minutes. BeSafe may also request approval.",
+        "update_confirm": "✅ Confirm update",
+        "update_cancel": "❌ Cancel",
+        "update_cancelled": "Update cancelled; the pinned source was not changed.",
+        "update_owner": "Only the account owner can confirm updates.",
+        "library_updated": "✅ Library source approved and pinned. Restart Shizu to use it in all modules.",
+        "update_failed": "❌ The update was not loaded. The previous pinned source was restored. Check the logs.",
+    }
+
+    strings_ru = {
+        "remote_error": "🛡 <b>Удалённый исходник не загружен:</b> {}",
+        "update_usage": "Используйте <code>.updatemod &lt;имя модуля | https URL&gt;</code> для установленного удалённого модуля или библиотеки.",
+        "up_to_date": "✅ SHA-256 скачанного исходника совпадает с установленным.",
+        "update_review": "🛡 <b>Проверьте обновление модуля</b>\n<code>{}</code>\n\n<b>Установленный SHA-256:</b>\n<code>{}</code>\n<b>Новый SHA-256:</b>\n<code>{}</code>\n\nПрочитайте код перед подтверждением. Запрос действует 10 минут. BeSafe может также запросить одобрение.",
+        "update_confirm": "✅ Подтвердить обновление",
+        "update_cancel": "❌ Отмена",
+        "update_cancelled": "Обновление отменено; закреплённый исходник не изменён.",
+        "update_owner": "Подтверждать обновления может только владелец аккаунта.",
+        "library_updated": "✅ Исходник библиотеки одобрен и закреплён. Перезапустите Shizu, чтобы все модули использовали его.",
+        "update_failed": "❌ Обновление не загружено. Предыдущий исходник восстановлен. Проверьте логи.",
+    }
 
     def __init__(self):
         self.config = loader.ModuleConfig(
@@ -79,183 +105,252 @@ class Loader(loader.Module):
 
     @loader.command(aliases=["dlm"])
     async def dlmod(self, app: Client, message: types.Message):
-        """Download a module by link. Usage: dlmod <link | all | nothing>"""
-
-        args = message.get_args_raw()
-
-        dop_help = "<emoji id=5100652175172830068>▫️</emoji>"
-        modules_repo = self.config["repo"]
-        private = self.config["private_repo"], self.config["private_token"]
-
-        api_result = await self.get_git_raw_link(modules_repo)
-
-        if not api_result:
-            return await message.answer(self.strings("invalid_repo"))
-
-        raw_link = api_result
-
-        modules = await utils.run_sync(requests.get, f"{raw_link}all.txt", timeout=30)
-
-        if modules.status_code != 200:
-            return await message.answer(
-                self.strings("no_all").format(raw_link), disable_web_page_preview=True
-            )
-
-        modules: list[str] = modules.text.splitlines()
-
-        if self.config["private_repo"] and self.config["private_token"]:
-            api_resultP = await self.get_git_raw_link(private[0], private[1])
-
-            if not api_resultP:
-                return await message.answer(self.strings("invalid_repo"))
-
-            headers = {"Authorization": f"token {private[1]}"}
-
-            modulesP = await utils.run_sync(
-                requests.get, f"{api_resultP}all.txt", headers=headers, timeout=30
-            )
-
-            if modulesP.status_code != 200:
-                return await message.answer(
-                    self.strings("no_all").format(api_resultP),
-                    disable_web_page_preview=True,
-                )
-
-            modulesP: list[str] = modulesP.text.splitlines()
-
-        if not args:
-            text = self.strings("mods_in_repo").format("🎍", modules_repo) + "\n".join(
-                map("• <code>{}</code>".format, modules)
-            )
-
-            if self.config["private_repo"] and self.config["private_token"]:
-                textP = self.strings("mods_in_repo").format(
-                    "🫦", private[0]
-                ) + "\n".join(map("• <code>{}</code>".format, modulesP))
-
-                return await self.bot.list(
-                    message,
-                    [text, textP],
-                    disable_web_page_preview=True,
-                )
-
-            return await message.answer(text, disable_web_page_preview=True)
-
-        error_text: str = None
-        module_name: str = None
-        is_private = False
-
-        if args not in modules and (
-            not self.config["private_repo"]
-            or not self.config["private_token"]
-            or args not in modulesP
-        ):
-            r = await utils.run_sync(requests.get, args, timeout=30)
-            if r.status_code != 200:
-                raise requests.exceptions.ConnectionError
-
-            await message.answer(self.strings("check"))
-
-            module_name = await self.all_modules.load_module(r.text, r.url)
-
-        if args in modules:
-            args = raw_link + args + ".py"
-            r = await utils.run_sync(requests.get, args, timeout=30)
-            if r.status_code != 200:
-                raise requests.exceptions.ConnectionError
-
-            await message.answer(self.strings("check"))
-
-            module_name = await self.all_modules.load_module(r.text, r.url)
-
-        if (
-            self.config["private_repo"]
-            and self.config["private_token"]
-            and args in modulesP
-        ):
-            args = api_resultP + args + ".py"
-
-            headers = {"Authorization": f"token {private[1]}"}
-
-            r = await utils.run_sync(requests.get, args, headers=headers, timeout=30)
-
-            if r.status_code != 200:
-                raise requests.exceptions.ConnectionError
-
-            await message.answer(self.strings("check"))
-
-            module_name = await self.all_modules.load_module(r.text, "<string>")
-            is_private = True
-
-        if module_name == "PENDING":
-            return await self._review(message, r.text, dop_help)
+        """Download a module by link or repository name; installed URLs use their pinned source"""
+        args = (message.get_args_raw() or "").strip()
+        registry = self.all_modules.remote_modules
+        if registry.is_remote(args):
+            return await self._install_remote(message, args)
 
         try:
-            if module_name == "DENIED":
-                error_text = self.strings("denied")
-            if module_name == "NFA":
-                error_text = self.strings("not_for_this_account")
-            if module_name is True:
-                error_text = self.strings("dep_installed_req_res")
-            if not module_name:
-                error_text = self.strings("not_module")
-
-        except requests.exceptions.MissingSchema:
-            error_text = self.strings("inc_link")
-        except requests.exceptions.ConnectionError:
-            error_text = self.strings("inc_link")
-        except requests.exceptions.RequestException:
-            error_text = self.strings("unex_error")
-
-        if error_text:
-            return await message.answer(error_text)
-
-        if not is_private:
-            self.db.set(
-                "shizu.loader",
-                "modules",
-                list(set(self.db.get("shizu.loader", "modules", []) + [args])),
-            )
-
-        if is_private:
-            with open(
-                f"./shizu/modules/{module_name}.py", "w", encoding="utf-8"
-            ) as file:
-                file.write(r.text)
-
-        if not (module := self.all_modules.get_module(module_name, True)):
+            repositories = [(self.config["repo"], None)]
+            if self.config["private_repo"] and self.config["private_token"]:
+                repositories.append(
+                    (self.config["private_repo"], self.config["private_token"])
+                )
+            catalogs = []
+            for repo, token in repositories:
+                raw = await self.get_git_raw_link(repo, token)
+                if not raw:
+                    return await message.answer(self.strings("invalid_repo"))
+                headers = {"Authorization": f"token {token}"} if token else None
+                response = await registry.request(raw + "all.txt", headers)
+                try:
+                    if response.status_code != 200:
+                        return await message.answer(
+                            self.strings("no_all").format(utils.escape_html(raw)),
+                            disable_web_page_preview=True,
+                        )
+                    catalogs.append((repo, raw, response.text.splitlines(), headers))
+                finally:
+                    response.close()
+        except (
+            RemoteModuleError,
+            requests.exceptions.RequestException,
+            OSError,
+        ) as error:
             return await message.answer(
-                "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
+                self.strings("remote_error").format(utils.escape_html(str(error)))
             )
 
-        await self.all_modules.call_hook(module, "on_dlmod")
+        if not args:
+            pages = [
+                self.strings("mods_in_repo").format(
+                    "🫦" if headers else "🎍", utils.escape_html(repo)
+                )
+                + "\n".join(
+                    f"• <code>{utils.escape_html(name)}</code>" for name in names
+                )
+                for repo, _, names, headers in catalogs
+            ]
+            if len(pages) > 1:
+                return await self.bot.list(
+                    message, pages, disable_web_page_preview=True
+                )
+            return await message.answer(pages[0], disable_web_page_preview=True)
 
+        for _, raw, names, headers in catalogs:
+            if args in names:
+                return await self._install_remote(message, raw + args + ".py", headers)
+        return await message.answer(self.strings("inc_link"))
+
+    def _remote_headers(self, url: str):
+        repo, token = self.config["private_repo"], self.config["private_token"]
+        match = GIT_REGEX.search(repo or "")
+        parsed = urlparse(url)
+        if (
+            token
+            and match
+            and parsed.hostname == "raw.githubusercontent.com"
+            and parsed.port in (None, 443)
+            and parsed.path.startswith(match[1] + "/")
+        ):
+            return {"Authorization": f"token {token}"}
+        return None
+
+    async def _install_remote(self, message, url: str, headers=None):
+        dop_help = "<emoji id=5100652175172830068>▫️</emoji>"
+        try:
+            item = await self.all_modules._remote_source(url, headers)
+            await message.answer(self.strings("check"))
+            name = await self.all_modules.load_module(item.source, item.url)
+        except (
+            RemoteModuleError,
+            requests.exceptions.RequestException,
+            OSError,
+        ) as error:
+            return await message.answer(
+                self.strings("remote_error").format(utils.escape_html(str(error)))
+            )
+        if name == "PENDING":
+            return await self._review(message, item.source, dop_help)
+        errors = {
+            "DENIED": "denied",
+            "NFA": "not_for_this_account",
+            "OTL": "only_telethon",
+        }
+        if name in errors:
+            return await message.answer(self.strings(errors[name]))
+        if name is True:
+            return await message.answer(self.strings("dep_installed_req_res"))
+        if not name or not (module := self.all_modules.find_module_strict(name)):
+            return await message.answer(self.strings("not_module"))
+        await self.all_modules.call_hook(module, "on_dlmod")
         return await message.answer(await self._loaded_text(module, dop_help))
 
+    @loader.command()
+    async def updatemod(self, app: Client, message: types.Message):
+        """Review a remote module or library update. Usage: updatemod <module name | https URL>"""
+        if not message.from_user or message.from_user.id != self.me.id:
+            return
+        args = (message.get_args_raw() or "").strip()
+        registry = self.all_modules.remote_modules
+        if registry.is_remote(args):
+            url = args
+        elif module := self.all_modules.find_module_strict(args):
+            url = self._origin(module)
+        else:
+            urls = [
+                url
+                for url, lib in self.all_modules._libraries.items()
+                if lib.name.lower() == args.lower()
+            ]
+            url = urls[0] if len(urls) == 1 else None
+        if not url or not registry.is_remote(url):
+            return await message.answer(self.strings("update_usage"))
+        try:
+            registry.validate_url(url)
+            token, update = await registry.prepare_update(
+                url, self._remote_headers(url)
+            )
+        except (
+            RemoteModuleError,
+            requests.exceptions.RequestException,
+            OSError,
+        ) as error:
+            return await message.answer(
+                self.strings("remote_error").format(utils.escape_html(str(error)))
+            )
+        if update.candidate.sha256 == update.previous_sha256:
+            registry.cancel_update(token)
+            return await message.answer(self.strings("up_to_date"))
+        return await message.answer(
+            self.strings("update_review").format(
+                utils.escape_html(url), update.previous_sha256, update.candidate.sha256
+            ),
+            reply_markup=[
+                [
+                    {
+                        "text": self.strings("update_confirm"),
+                        "callback": self.inline__update,
+                        "args": (token, True),
+                    },
+                    {
+                        "text": self.strings("update_cancel"),
+                        "callback": self.inline__update,
+                        "args": (token, False),
+                    },
+                ],
+                [
+                    {
+                        "text": self.strings("code"),
+                        "callback": self.inline__update_code,
+                        "args": (token,),
+                    }
+                ],
+            ],
+            force_me=True,
+        )
+
+    async def inline__update_code(self, call, token: str):
+        if call.from_user.id != self.me.id:
+            return await call.answer(self.strings("update_owner"), show_alert=True)
+        try:
+            update = self.all_modules.remote_modules.pending_update(token)
+        except RemoteModuleError as error:
+            return await call.answer(str(error), show_alert=True)
+        await call.answer()
+        file = io.BytesIO(update.candidate.source.encode("utf-8"))
+        file.name = "module-update.py"
+        await self.app.send_document(call.form["chat"], file)
+
+    async def inline__update(self, call, token: str, allow: bool):
+        if call.from_user.id != self.me.id:
+            return await call.answer(self.strings("update_owner"), show_alert=True)
+        registry = self.all_modules.remote_modules
+        if not allow:
+            try:
+                registry.pending_update(token)
+            except RemoteModuleError as error:
+                return await call.answer(str(error), show_alert=True)
+            registry.cancel_update(token)
+            await call.answer()
+            return await call.edit(self.strings("update_cancelled"))
+        try:
+            item = registry.confirm_update(token)
+        except (RemoteModuleError, OSError) as error:
+            return await call.answer(str(error), show_alert=True)
+        await call.answer()
+        try:
+            if registry.kind(item.url) == "library":
+                result = (
+                    await self.all_modules.load_guard(item.source, item.url)
+                    if self.all_modules.load_guard
+                    else True
+                )
+                if result is True:
+                    result = await self.all_modules.review_remote_library(
+                        item.source, item.url
+                    )
+            else:
+                result = await self.all_modules.load_module(item.source, item.url)
+        except Exception as error:
+            registry.rollback_update(item.url, item.sha256)
+            logger.exception("Failed to apply confirmed update of %s", item.url)
+            return await call.edit(
+                self.strings("remote_error").format(utils.escape_html(str(error)))
+            )
+        if result == "PENDING":
+            return await call.edit(self.strings("pending"))
+        if result in ("LIBRARY_UPDATED", "LIBRARY_READY"):
+            return await call.edit(self.strings("library_updated"))
+        if (
+            isinstance(result, str)
+            and result not in ("DENIED", "NFA", "OTL")
+            and (module := self.all_modules.find_module_strict(result))
+        ):
+            await self.all_modules.call_hook(module, "on_dlmod")
+            return await call.edit(await self._loaded_text(module, "▫️"))
+        registry.rollback_update(item.url, item.sha256)
+        await call.edit(self.strings("update_failed"))
+
     async def get_git_raw_link(self, repo_url: str, token: str = None):
+        self.all_modules.remote_modules.validate_url(repo_url)
         match = GIT_REGEX.search(repo_url)
         if not match:
             return False
 
         repo_path, branch, path = match.group(1), match.group(2), match.group(3)
 
-        if token:
-            headers = {"Authorization": f"token {token}"}
-            r = await utils.run_sync(
-                requests.get,
-                f"https://api.github.com/repos{repo_path}",
-                headers=headers,
-                timeout=30,
-            )
-        else:
-            r = await utils.run_sync(
-                requests.get, f"https://api.github.com/repos{repo_path}", timeout=30
-            )
-
-        if r.status_code != 200:
-            return False
-
-        branch = branch or r.json().get("default_branch", "")
+        headers = {"Authorization": f"token {token}"} if token else None
+        r = await self.all_modules.remote_modules.request(
+            f"https://api.github.com/repos{repo_path}", headers
+        )
+        try:
+            if r.status_code != 200:
+                return False
+            branch = branch or r.json().get("default_branch", "")
+        finally:
+            r.close()
 
         return f"https://raw.githubusercontent.com{repo_path}/{branch}{path or ''}/"
 
@@ -329,8 +424,16 @@ class Loader(loader.Module):
         name = utils.escape_html(item["name"])
         if not allow:
             return await call.edit(besafe.strings("denied").format(name))
+        if item.get("load_error"):
+            return await call.edit(
+                self.strings("remote_error").format(
+                    utils.escape_html(item["load_error"])
+                )
+            )
         if result is True:
             return await call.edit(self.strings("dep_installed_req_res"))
+        if result in ("LIBRARY_UPDATED", "LIBRARY_READY"):
+            return await call.edit(self.strings("library_updated"))
         if isinstance(result, str) and (
             module := self.all_modules.find_module_strict(result)
         ):
@@ -438,7 +541,7 @@ class Loader(loader.Module):
 
         self._local_modules_path: str = "./shizu/modules"
 
-        self.db.set("shizu.loader", "modules", [])
+        self.all_modules.remote_modules.clear_modules()
 
         for local_module in filter(
             lambda file_name: (
@@ -492,6 +595,8 @@ class Loader(loader.Module):
         path = os.path.realpath(
             os.path.join(cls.CORE_DIR, name.removesuffix(".py") + ".py")
         )
+        if not os.path.isfile(path):
+            path = os.path.realpath(os.path.join(path[:-3], "__init__.py"))
         if not path.startswith(cls.CORE_DIR + os.sep) or not os.path.isfile(path):
             return None
         return path

@@ -31,6 +31,7 @@ from pyrogram import Client, types
 
 from shizu import loader, utils
 from shizu.besafe import BeSafe as BeSafeGuard
+from shizu.remote import RemoteModuleError
 
 URL_RE = re.compile(r"https?://[^\s'\"<>)\]]+")
 NAME_RE = re.compile(r"class\s+(\w+)\s*\(")
@@ -108,6 +109,8 @@ class BeSafe(loader.Module):
         "loaded": "✅ <b>Approved and loaded</b> <code>{}</code>",
         "approved_only": "✅ <b>Approved</b> <code>{}</code>, but it did not load: <code>{}</code>",
         "approved_restart": "✅ <b>Approved</b> <code>{}</code>. Dependencies are installed, restart required",
+        "library_approved": "✅ <b>Library approved</b> <code>{}</code>. Restart Shizu to use it in all modules",
+        "blocked_source": "🛡 <b>The source was not loaded:</b> {}",
         "denied": "❌ <b>Denied</b> <code>{}</code>. This version will not load",
         "gone": "This request is no longer active",
         "not_you": "Only the account owner can decide",
@@ -166,6 +169,8 @@ class BeSafe(loader.Module):
         "loaded": "✅ <b>Одобрено и загружено</b> <code>{}</code>",
         "approved_only": "✅ <b>Одобрено</b> <code>{}</code>, но не загрузилось: <code>{}</code>",
         "approved_restart": "✅ <b>Одобрено</b> <code>{}</code>. Зависимости установлены, нужна перезагрузка",
+        "library_approved": "✅ <b>Библиотека одобрена</b> <code>{}</code>. Перезапустите Shizu, чтобы все модули использовали её",
+        "blocked_source": "🛡 <b>Исходник не загружен:</b> {}",
         "denied": "❌ <b>Отклонено</b> <code>{}</code>. Эта версия не загрузится",
         "gone": "Запрос уже неактивен",
         "not_you": "Решать может только владелец аккаунта",
@@ -306,9 +311,11 @@ class BeSafe(loader.Module):
             self.db.set(self.name, "sources", sources)
 
     def _trusted(self, origin: str) -> bool:
-        return is_url(origin) and any(
-            origin.startswith(prefix) for prefix in self._get("trusted", [])
-        )
+        if not is_url(origin):
+            return False
+        # A trusted URL must not grant its trust to a redirect destination.
+        origin = self.all_modules.remote_modules.review_origin(origin)
+        return any(origin.startswith(prefix) for prefix in self._get("trusted", []))
 
     def _is_local_file(self, origin: str) -> bool:
         modules_dir = os.path.abspath(self.all_modules._local_modules_path)
@@ -413,9 +420,7 @@ class BeSafe(loader.Module):
 
     def _persist(self, name: str, source: str, origin: str):
         if is_url(origin):
-            modules = self.db.get("shizu.loader", "modules", [])
-            if origin not in modules:
-                self.db.set("shizu.loader", "modules", modules + [origin])
+            self.all_modules.remote_modules.install(origin, source)
         elif not self._is_local_file(origin):
             path = os.path.join(
                 self.all_modules._local_modules_path,
@@ -435,29 +440,67 @@ class BeSafe(loader.Module):
         name = utils.escape_html(item["name"])
         result = None
         if allow:
-            self._approve(digest, item["source"], item["origin"], item["name"], "allow")
-            result = await self.all_modules.load_module(item["source"], item["origin"])
-            if result is True:
-                text = self.strings("approved_restart").format(name)
-            elif isinstance(result, str) and result not in (
-                "NFA",
-                "OTL",
-                "PENDING",
-                "DENIED",
-            ):
-                self._persist(result, item["source"], item["origin"])
-                if module := self.all_modules.find_module_strict(result):
-                    await self.all_modules.call_hook(module, "on_dlmod")
-                text = self.strings("loaded").format(utils.escape_html(result))
-            else:
-                text = self.strings("approved_only").format(
-                    name, utils.escape_html(str(result))
+            try:
+                registry = self.all_modules.remote_modules
+                remote = registry.is_remote(item["origin"])
+                if remote:
+                    registry.check_source(item["origin"], item["source"])
+                self._approve(
+                    digest, item["source"], item["origin"], item["name"], "allow"
                 )
+                if remote and registry.kind(item["origin"]) == "library":
+                    result = await self.all_modules.review_remote_library(
+                        item["source"], item["origin"]
+                    )
+                else:
+                    result = await self.all_modules.load_module(
+                        item["source"], item["origin"]
+                    )
+            except (RemoteModuleError, loader.LoadError, OSError) as error:
+                item["load_error"] = str(error)
+                logging.exception(
+                    "BeSafe could not load approved source %s", item["origin"]
+                )
+                text = self.strings("blocked_source").format(
+                    utils.escape_html(str(error))
+                )
+            else:
+                if result is True:
+                    text = self.strings("approved_restart").format(name)
+                elif result in ("LIBRARY_READY", "LIBRARY_UPDATED"):
+                    text = self.strings("library_approved").format(name)
+                elif isinstance(result, str) and result not in (
+                    "NFA",
+                    "OTL",
+                    "PENDING",
+                    "DENIED",
+                ):
+                    self._persist(result, item["source"], item["origin"])
+                    if module := self.all_modules.find_module_strict(result):
+                        await self.all_modules.call_hook(module, "on_dlmod")
+                    text = self.strings("loaded").format(utils.escape_html(result))
+                else:
+                    text = self.strings("approved_only").format(
+                        name, utils.escape_html(str(result))
+                    )
+            if result is None or result is False or result in ("NFA", "OTL", "DENIED"):
+                if is_url(item["origin"]):
+                    self.all_modules.remote_modules.rollback_update(
+                        item["origin"], digest
+                    )
         else:
             self._record("denied", digest, item["name"], item["origin"])
             self._log("deny", digest, item["name"], item["origin"])
             modules = self.db.get("shizu.loader", "modules", [])
-            if item["origin"] in modules:
+            registry = self.all_modules.remote_modules
+            if is_url(item["origin"]):
+                record = registry.record(item["origin"])
+                if not record:
+                    registry.forget(item["origin"])
+                elif record.get("sha256") == digest:
+                    if not registry.rollback_update(item["origin"], digest):
+                        registry.forget(item["origin"])
+            elif item["origin"] in modules:
                 self.db.set(
                     "shizu.loader",
                     "modules",

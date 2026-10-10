@@ -295,10 +295,8 @@ async def create_chat(
 
 
 def get_base_dir() -> str:
-    """Get directory of this file"""
-    from . import loader
-
-    return get_dir(loader.__file__)
+    """Return the Shizu directory containing modules and language packs."""
+    return get_dir(__file__)
 
 
 def get_dir(mod: str) -> str:
