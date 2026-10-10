@@ -33,6 +33,7 @@
 
 
 import asyncio
+import contextlib
 import inspect
 import os
 import re
@@ -48,24 +49,57 @@ class TunnelManager:
     def __init__(self):
         self.url = None
         self.process = None
+        self._drain_task = None
 
     async def open_tunnel(self, port):
-        ssh_command = f"ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -R 80:localhost:{port} nokey@localhost.run"
-        process = await asyncio.create_subprocess_shell(
-            ssh_command,
+        process = await asyncio.create_subprocess_exec(
+            "ssh",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "ServerAliveInterval=30",
+            "-o",
+            "ExitOnForwardFailure=yes",
+            "-R",
+            f"80:127.0.0.1:{int(port)}",
+            "nokey@localhost.run",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
         self.process = process
 
-        url = await self._extract_tunnel_url(process.stdout)
-        self.url = url or f"https://localhost:{port}"
+        try:
+            url = await asyncio.wait_for(self._extract_tunnel_url(process.stdout), 20)
+        except asyncio.TimeoutError:
+            url = None
+        if not url:
+            await self.close_tunnel()
+        self.url = url or f"http://127.0.0.1:{port}"
         return self.url
+
+    async def close_tunnel(self):
+        if self._drain_task:
+            self._drain_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._drain_task
+            self._drain_task = None
+        process, self.process = self.process, None
+        if process and process.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), 3)
+            except asyncio.TimeoutError:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
+                await process.wait()
 
     async def _extract_tunnel_url(self, stdout):
         async for line in stdout:
-            match = re.search(r"tunneled.*?(https:\/\/.+)", line.decode())
+            match = re.search(
+                r"tunneled.*?(https://[\w.-]+)", line.decode(errors="replace")
+            )
             if match:
                 self._drain_task = asyncio.create_task(self._drain(stdout))
                 return match[1].strip()
@@ -117,6 +151,7 @@ class Web(initial_setup.Web, TunnelManager):
         self.running.set()
 
     async def stop(self):
+        await self.close_tunnel()
         await self.runner.shutdown()
         await self.runner.cleanup()
         self.running.clear()

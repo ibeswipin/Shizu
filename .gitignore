@@ -34,3 +34,4 @@ telethon_sessions.key
 # /docs
 /scripts/*
 !/scripts/install.py
+!/scripts/panel_demo.py

@@ -58,6 +58,11 @@ async def main():
 
         await idle()
     finally:
+        if getattr(app, "web_panel", None):
+            try:
+                await app.web_panel.stop()
+            except Exception:
+                logging.exception("Could not close the web dashboard")
         if tapp is not None:
             await tapp.disconnect()
         if getattr(app, "telethon_connections", None):
