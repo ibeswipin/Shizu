@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>Shizu</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23b9a3ff'/%3E%3Ctext x='12' y='29' font-size='28' font-family='sans-serif' fill='%231b1826'%3Es%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%237de2b0'/%3E%3Ctext x='12' y='29' font-size='28' font-family='sans-serif' fill='%23163224'%3Es%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/panel.css">
   <script src="/panel.js" defer></script>
 </head>
@@ -15,7 +15,6 @@
   <main id="login" class="login" hidden>
     <div class="login-card">
       <div class="brand"><span class="sakura-flower" aria-hidden="true">✿</span><span>Shizu</span></div>
-      <span class="eyebrow" data-i18n="private_panel"></span>
       <h1 data-i18n="login_title"></h1>
       <p class="muted" data-i18n="login_description"></p>
       <div id="login-code" class="login-code" hidden><span data-i18n="verification_code"></span><strong id="code-value"></strong></div>
@@ -23,55 +22,48 @@
       <button id="login-button" class="button primary" data-i18n="login_button"></button>
       <p class="footnote" data-i18n="login_hint"></p>
     </div>
-    <div class="login-decoration" aria-hidden="true"><div class="orbit"></div><div class="orbit second"></div><span class="large-s">✿</span></div>
   </main>
   <div id="dashboard" class="shell" hidden>
-    <aside class="sidebar">
-      <div class="brand"><span class="sakura-flower" aria-hidden="true">✿</span><span>Shizu</span></div>
-      <span class="sidebar-label" data-i18n="workspace"></span>
-      <nav aria-label="Shizu">
-        <button class="nav active" data-view="settings"><span aria-hidden="true">◈</span><span data-i18n="settings_title"></span></button>
-        <button class="nav" data-view="modules"><span aria-hidden="true">⊞</span><span data-i18n="modules_title"></span><span id="module-count" class="nav-count"></span></button>
-        <button class="nav" data-view="logs"><span aria-hidden="true">≋</span><span data-i18n="logs_title"></span></button>
-        <button class="nav" data-view="backups"><span aria-hidden="true">↳</span><span data-i18n="backups_title"></span></button>
+    <main class="panel-window">
+      <header class="panel-header">
+        <div class="brand"><span class="sakura-flower" aria-hidden="true">✿</span><span>Shizu</span></div>
+      </header>
+      <nav class="tabs" aria-label="Shizu">
+        <button class="nav active" data-view="settings" data-i18n="settings_title"></button>
+        <button class="nav" data-view="modules" data-i18n="modules_title"></button>
+        <button class="nav" data-view="logs" data-i18n="logs_title"></button>
+        <button class="nav" data-view="backups" data-i18n="backups_title"></button>
       </nav>
-      <div class="sidebar-footer"><button id="logout" class="text-button" data-i18n="logout"></button><p data-i18n="session_note"></p></div>
-    </aside>
-    <div class="main">
-      <header class="topbar"><span data-i18n="private_panel"></span><div class="account"><span id="account-avatar" class="avatar"></span><div><strong id="account-name"></strong><small id="account-id"></small></div></div></header>
       <div class="content">
         <div id="demo-notice" class="demo-notice" hidden data-i18n="demo_notice"></div>
         <section id="view-settings" class="view">
-          <div class="page-heading"><div><span class="eyebrow" data-i18n="your_userbot"></span><h1 data-i18n="settings_title"></h1><p class="muted" data-i18n="settings_description"></p></div></div>
-          <div class="stats"><div class="stat"><span data-i18n="modules_loaded"></span><strong id="stat-modules">—</strong></div><div class="stat"><span data-i18n="active_prefix"></span><strong id="stat-prefix">—</strong></div><div class="stat"><span data-i18n="inline_bot"></span><strong id="stat-bot">—</strong></div></div>
           <form id="settings-form" class="card">
-            <div class="card-heading"><h2 data-i18n="general_settings"></h2><span class="muted small" data-i18n="changes_live"></span></div>
             <div class="field-row"><label for="prefixes"><strong data-i18n="prefixes"></strong><span data-i18n="prefixes_hint"></span></label><input id="prefixes" name="prefixes" required autocomplete="off" maxlength="160"></div>
             <div class="field-row"><label for="language"><strong data-i18n="language"></strong><span data-i18n="language_hint"></span></label><select id="language" name="language"><option value="en">English</option><option value="ru">Русский</option><option value="uz">O‘zbekcha</option></select></div>
             <div class="field-row"><label for="api-protection"><strong data-i18n="api_protection"></strong><span data-i18n="api_protection_hint"></span></label><input class="switch" id="api-protection" name="api_protection" type="checkbox"></div>
-            <div class="card-footer"><span class="small muted" data-i18n="settings_footer"></span><button class="button primary" type="submit" data-i18n="save_changes"></button></div>
+            <div class="card-footer"><button class="button primary" type="submit" data-i18n="save_changes"></button></div>
           </form>
-          <div class="note"><span aria-hidden="true">↗</span><div><strong data-i18n="module_settings_note"></strong><p data-i18n="module_settings_hint"></p></div><button class="text-button" data-view="modules" data-i18n="open_modules"></button></div>
         </section>
         <section id="view-modules" class="view" hidden>
-          <div class="page-heading"><div><span class="eyebrow" data-i18n="extend_shizu"></span><h1 data-i18n="modules_title"></h1><p class="muted" data-i18n="modules_description"></p></div><button id="refresh-modules" class="button secondary" data-i18n="refresh"></button></div>
           <form id="load-form" class="card load-form"><label for="module-url" data-i18n="module_url"></label><div class="input-action"><input id="module-url" type="url" placeholder="https://…/module.py" required autocomplete="off"><button class="button primary" data-i18n="install_module"></button></div><p class="small muted" data-i18n="besafe_note"></p></form>
-          <div class="list-heading"><h2 data-i18n="installed_modules"></h2><input id="module-search" type="search" data-i18n-placeholder="search_modules" autocomplete="off"></div>
+          <div class="list-heading"><h2 data-i18n="installed_modules"></h2><button id="refresh-modules" class="text-button" data-i18n="refresh"></button><input id="module-search" type="search" data-i18n-placeholder="search_modules" autocomplete="off"></div>
           <div id="modules-list" class="module-grid"></div><p id="modules-empty" class="muted" hidden data-i18n="no_modules"></p>
         </section>
         <section id="view-logs" class="view" hidden>
-          <div class="page-heading"><div><span class="eyebrow" data-i18n="diagnostics"></span><h1 data-i18n="logs_title"></h1><p class="muted" data-i18n="logs_description"></p></div></div>
           <div class="card log-card"><div class="card-heading log-tools"><select id="log-level" data-i18n-aria-label="log_level"><option>DEBUG</option><option selected>INFO</option><option>WARNING</option><option>ERROR</option><option>CRITICAL</option></select><div><button id="download-logs" class="button secondary" data-i18n="download"></button><button id="refresh-logs" class="button secondary" data-i18n="refresh"></button></div></div><pre id="log-output" class="log-output" tabindex="0"></pre><div class="card-footer small muted" data-i18n="logs_hint"></div></div>
         </section>
         <section id="view-backups" class="view" hidden>
-          <div class="page-heading"><div><span class="eyebrow" data-i18n="recovery"></span><h1 data-i18n="backups_title"></h1><p class="muted" data-i18n="backups_description"></p></div></div>
-          <div class="backup-grid"><div class="card backup-download"><span class="tile-icon" aria-hidden="true">↓</span><h2 data-i18n="encrypted_backup"></h2><p class="muted" data-i18n="encrypted_backup_hint"></p><button id="download-backup" class="button primary" data-i18n="create_backup"></button></div><div class="card key-card"><span class="tile-icon" aria-hidden="true">⌁</span><h2 data-i18n="recovery_key"></h2><p class="muted" data-i18n="recovery_key_hint"></p><code id="key-path"></code><p class="small muted" data-i18n="key_not_included"></p></div></div>
+          <div class="backup-grid"><div class="card backup-download"><h2 data-i18n="encrypted_backup"></h2><p class="muted" data-i18n="encrypted_backup_hint"></p><button id="download-backup" class="button primary" data-i18n="create_backup"></button></div><div class="card key-card"><h2 data-i18n="recovery_key"></h2><p class="muted" data-i18n="recovery_key_hint"></p><code id="key-path"></code><p class="small muted" data-i18n="key_not_included"></p></div></div>
           <div id="backup-schedule" class="card"><div class="card-heading"><h2 data-i18n="backup_schedule"></h2><span class="small muted" data-i18n="server_time"></span></div><div class="field-row"><label for="auto-backup"><strong data-i18n="daily_backup"></strong><span data-i18n="daily_backup_hint"></span></label><input id="auto-backup" class="switch" type="checkbox"></div><form id="backup-time-form" class="field-row"><label for="backup-time"><strong data-i18n="backup_time"></strong></label><div class="input-action"><input id="backup-time" type="time" required><button class="button secondary" data-i18n="save"></button></div></form></div>
           <form id="restore-form" class="card"><div class="card-heading"><h2 data-i18n="restore_backup"></h2></div><p class="muted" data-i18n="restore_hint"></p><label class="file-input"><span data-i18n="backup_file"></span><input id="restore-file" type="file" accept=".shizu-backup,.json,application/octet-stream,application/json" required></label><label class="check-row"><input id="restore-legacy" type="checkbox"><span data-i18n="allow_legacy"></span></label><button class="button secondary" data-i18n="inspect_backup"></button><div id="restore-preview" class="restore-preview" hidden><strong data-i18n="restore_confirm_title"></strong><p id="restore-summary"></p><p class="muted" data-i18n="restore_confirm_hint"></p><button id="confirm-restore" class="button danger" type="button" data-i18n="confirm_restore"></button></div></form>
         </section>
-        <footer class="page-footer"><span>Shizu</span><span data-i18n="footer"></span></footer>
       </div>
-    </div>
+      <footer class="panel-footer">
+        <div class="account"><strong id="account-name"></strong><small id="account-id"></small></div>
+        <button id="logout" class="text-button" data-i18n="logout"></button>
+      </footer>
+      <p class="session-note" data-i18n="session_note"></p>
+    </main>
   </div>
   <dialog id="config-dialog"><div class="dialog-heading"><div><span class="eyebrow" data-i18n="module_configuration"></span><h2 id="config-title"></h2></div><button id="close-config" class="icon-button" data-i18n-title="close" data-i18n-aria-label="close">×</button></div><p class="muted small" data-i18n="hidden_values_hint"></p><div id="config-fields"></div></dialog>
   <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>

@@ -128,6 +128,29 @@ class ShizuPanel {
       });
     }
     this.on("close-config", "click", () => this.element("config-dialog").close());
+    this.bindConfigBackdrop();
+  }
+
+  bindConfigBackdrop() {
+    const dialog = this.element("config-dialog");
+    let startedOutside = false;
+    dialog.addEventListener("pointerdown", event => {
+      startedOutside = this.isConfigBackdrop(event);
+    });
+    dialog.addEventListener("pointercancel", () => { startedOutside = false; });
+    dialog.addEventListener("click", event => {
+      if (startedOutside && this.isConfigBackdrop(event)) dialog.close();
+      startedOutside = false;
+    });
+  }
+
+  isConfigBackdrop(event) {
+    const dialog = this.element("config-dialog");
+    const bounds = dialog.getBoundingClientRect();
+    return event.target === dialog && (
+      event.clientX < bounds.left || event.clientX > bounds.right ||
+      event.clientY < bounds.top || event.clientY > bounds.bottom
+    );
   }
 
   async start() {
@@ -221,23 +244,19 @@ class ShizuPanel {
 
   async refresh() {
     this.state = await this.api("/api/state");
-    const { account, settings, modules, backups } = this.state;
+    const { account, settings, backups } = this.state;
     this.element("account-name").textContent = account.name || account.username || String(account.id);
     this.element("account-id").textContent = account.username ? `@${account.username}` : String(account.id);
-    this.element("account-avatar").textContent = (account.name || "S").slice(0, 1).toUpperCase();
     this.element("prefixes").value = settings.prefixes.join(" ");
     this.element("language").value = settings.language;
     this.element("api-protection").checked = settings.api_protection;
-    this.element("stat-modules").textContent = String(modules.length);
-    this.element("module-count").textContent = String(modules.length);
-    this.element("stat-prefix").textContent = settings.prefixes.join(" · ");
-    this.element("stat-bot").textContent = settings.bot ? `@${settings.bot}` : "—";
     this.element("key-path").textContent = backups.key_path;
     this.renderModules();
   }
 
   async showView(name) {
     if (!this.csrf) return;
+    if (this.view !== name) document.querySelector(".content").scrollTop = 0;
     this.view = name;
     document.querySelectorAll(".view").forEach(section => { section.hidden = section.id !== `view-${name}`; });
     document.querySelectorAll(".nav").forEach(button => {

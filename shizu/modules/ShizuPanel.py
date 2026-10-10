@@ -73,10 +73,7 @@ class ShizuPanel(loader.Module):
             text = await self._web_link()
         except (OSError, ValueError):
             return await message.answer(self.strings("web_start_failed"))
-        if message.chat.id == self.me.id:
-            return await message.answer(text, disable_web_page_preview=True)
-        await app.send_message(self.me.id, text, disable_web_page_preview=True)
-        await message.answer(self.strings("web_sent"))
+        return await message.answer(text, disable_web_page_preview=True)
 
     @loader.callback_handler()
     async def web_callback_handler(self, call: CallbackQuery):
