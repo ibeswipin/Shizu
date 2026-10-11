@@ -477,9 +477,11 @@ class DashboardServer(TunnelManager):
         return web.json_response({"ok": True})
 
     async def module_config(self, request):
+        await utils.refresh_premium(self.data.manager)
         return web.json_response(self.data.configuration(request.match_info["name"]))
 
     async def module_save(self, request):
+        await utils.refresh_premium(self.data.manager)
         data = await self._json(request)
         if "value" not in data:
             raise PanelError("invalid_value")

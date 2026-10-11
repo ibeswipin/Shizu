@@ -35,12 +35,18 @@ class BackupMod(loader.Module):
     def __init__(self):
         self.backups = EncryptedBackup()
         self.config = loader.ModuleConfig(
-            "auto_backup",
-            True,
-            lambda m: self.strings("cfg_auto_backup"),
-            "backup_time",
-            "03:00",
-            lambda m: self.strings("cfg_backup_time"),
+            loader.ConfigValue(
+                "auto_backup",
+                True,
+                lambda m: self.strings("cfg_auto_backup"),
+                label=lambda: self.strings("cfg_label_auto_backup"),
+            ),
+            loader.ConfigValue(
+                "backup_time",
+                "03:00",
+                lambda m: self.strings("cfg_backup_time"),
+                label=lambda: self.strings("cfg_label_backup_time"),
+            ),
         )
 
     async def _send_backup(self, app: Client, caption_key: str = "backup") -> None:

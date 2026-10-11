@@ -27,7 +27,11 @@ if TYPE_CHECKING:
 
 
 def module(
-    name: str, author: str | None = None, version: int | float | None = None
+    name: str,
+    author: str | None = None,
+    version: int | float | None = None,
+    *,
+    is_premium: bool = False,
 ) -> FunctionType:
     """Processes the module class
 
@@ -46,6 +50,8 @@ def module(
         instance.name = name
         instance.author = author
         instance.version = version
+        if is_premium:
+            instance.is_premium = True
         return instance
 
     return decorator
@@ -160,7 +166,13 @@ def debug_method(*args, **kwargs):
     return decorator
 
 
-def command(aliases: list = None, hidden: bool = False, **kwargs: Any) -> FunctionType:
+def command(
+    aliases: list = None,
+    hidden: bool = False,
+    *,
+    is_premium: bool = False,
+    **kwargs: Any,
+) -> FunctionType:
     """Command decorator with support for documentation parameters"""
 
     def decorator(func):
@@ -180,6 +192,8 @@ def command(aliases: list = None, hidden: bool = False, **kwargs: Any) -> Functi
                 setattr(func, key, value)
 
         func.is_command = True
+        if is_premium:
+            func.is_premium = True
         return func
 
     return decorator

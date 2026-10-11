@@ -14,6 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import ast
 import io
 import re
 import tokenize
@@ -23,7 +24,7 @@ CLASS_RE = re.compile(
     re.MULTILINE,
 )
 LOADER_DECORATOR_RE = re.compile(
-    r"^[ \t]*@loader\.(?:tds|module\([^\n]*\))[ \t]*\n", re.MULTILINE
+    r"^[ \t]*@loader\.(?:tds(?:\([^\n]*\))?|module\([^\n]*\))[ \t]*\n", re.MULTILINE
 )
 NAME_RE = re.compile(r"""["']name["']\s*:\s*["']([^"']+)["']""")
 
@@ -33,9 +34,18 @@ def _decorate_modules(code: str) -> str:
 
     def repl(match):
         decorators = LOADER_DECORATOR_RE.sub("", match.group(1))
+        premium = ""
+        for decorator in LOADER_DECORATOR_RE.finditer(match.group(1)):
+            expression = ast.parse(
+                decorator[0].strip().removeprefix("@"), mode="eval"
+            ).body
+            if isinstance(expression, ast.Call):
+                for keyword in expression.keywords:
+                    if keyword.arg == "is_premium":
+                        premium = f", is_premium={ast.unparse(keyword.value)}"
         module_name = name_match.group(1) if name_match else match.group(2)
         return (
-            f'{decorators}@loader.module("{module_name}", "telethon", "")\n'
+            f'{decorators}@loader.module("{module_name}", "telethon", ""{premium})\n'
             f"class {match.group(2)}({match.group(3).strip()}):"
         )
 

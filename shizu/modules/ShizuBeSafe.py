@@ -356,6 +356,7 @@ class BeSafe(loader.Module):
                     "OTL",
                     "PENDING",
                     "DENIED",
+                    "PREMIUM_REQUIRED",
                 ):
                     self._persist(result, item["source"], item["origin"])
                     if module := self.all_modules.find_module_strict(result):
@@ -365,7 +366,11 @@ class BeSafe(loader.Module):
                     text = self.strings("approved_only").format(
                         name, utils.escape_html(str(result))
                     )
-            if result is None or result is False or result in ("NFA", "OTL", "DENIED"):
+            if (
+                result is None
+                or result is False
+                or result in ("NFA", "OTL", "DENIED", "PREMIUM_REQUIRED")
+            ):
                 if is_url(item["origin"]):
                     self.all_modules.remote_modules.rollback_update(
                         item["origin"], digest

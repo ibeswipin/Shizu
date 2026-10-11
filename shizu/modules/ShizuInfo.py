@@ -42,23 +42,29 @@ class InformationMod(loader.Module):
     def __init__(self):
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
-                "custom_message", None, lambda: self.strings("custom_msg")
+                "custom_message",
+                None,
+                lambda: self.strings("custom_msg"),
+                label=lambda: self.strings("cfg_label_custom_message"),
             ),
             loader.ConfigValue(
                 "custom_buttons",
                 {"text": "Support", "url": "https://t.me/shizu_talks"},
                 lambda: self.strings("custom_button"),
+                label=lambda: self.strings("cfg_label_custom_buttons"),
             ),
             loader.ConfigValue(
                 "photo_url",
                 "https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/shizubanner.jpg",
                 lambda: self.strings("photo_url"),
+                label=lambda: self.strings("cfg_label_photo_url"),
             ),
             loader.ConfigValue(
                 "rich",
                 False,
                 lambda: self.strings("rich"),
                 validator=loader.validators.Boolean(),
+                label=lambda: self.strings("cfg_label_rich"),
             ),
         )
 

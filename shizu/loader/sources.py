@@ -99,6 +99,8 @@ class ModuleSources:
                 manager.register_instance(module_name, spec=spec, is_telethon=True)
             else:
                 manager.register_instance(module_name, file_path)
+        except utils.PremiumRequired:
+            logging.info("Skipped Premium module %s", file_path)
         except Exception:
             logging.exception("Failed to load local module %s", file_path)
 

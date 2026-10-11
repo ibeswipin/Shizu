@@ -105,12 +105,14 @@ class Loader(loader.Module):
                 "https://github.com/AmoreForever/ShizuMods",
                 lambda: self.strings("cfg_repo"),
                 validator=RepositoryLink(),
+                label=lambda: self.strings("cfg_label_repo"),
             ),
             loader.ConfigValue(
                 "additional_repos",
                 [],
                 lambda: self.strings("cfg_additional_repos"),
                 validator=loader.validators.Series(validator=RepositoryLink()),
+                label=lambda: self.strings("cfg_label_additional_repos"),
             ),
             loader.ConfigValue(
                 "private_repo",
@@ -119,12 +121,14 @@ class Loader(loader.Module):
                 validator=loader.validators.Union(
                     loader.validators.NoneType(), RepositoryLink()
                 ),
+                label=lambda: self.strings("cfg_label_private_repo"),
             ),
             loader.ConfigValue(
                 "private_token",
                 None,
                 lambda: self.strings("cfg_private_token"),
                 validator=loader.validators.Hidden(),
+                label=lambda: self.strings("cfg_label_private_token"),
             ),
             loader.ConfigValue(
                 "private_repos",
@@ -133,18 +137,21 @@ class Loader(loader.Module):
                 validator=loader.validators.Hidden(
                     loader.validators.Series(validator=PrivateRepository())
                 ),
+                label=lambda: self.strings("cfg_label_private_repos"),
             ),
             loader.ConfigValue(
                 "notify_updates",
                 True,
                 lambda: self.strings("cfg_notify_updates"),
                 validator=loader.validators.Boolean(),
+                label=lambda: self.strings("cfg_label_notify_updates"),
             ),
             loader.ConfigValue(
                 "update_check_interval",
                 3600,
                 lambda: self.strings("cfg_update_check_interval"),
                 validator=loader.validators.Integer(minimum=300),
+                label=lambda: self.strings("cfg_label_update_check_interval"),
             ),
         )
 
@@ -436,6 +443,7 @@ class Loader(loader.Module):
             "DENIED": "denied",
             "NFA": "not_for_this_account",
             "OTL": "only_telethon",
+            "PREMIUM_REQUIRED": "premium_required",
         }
         if name in errors:
             return await message.answer(self.strings(errors[name]))
@@ -618,7 +626,7 @@ class Loader(loader.Module):
             )
         if (
             isinstance(result, str)
-            and result not in ("DENIED", "NFA", "OTL")
+            and result not in ("DENIED", "NFA", "OTL", "PREMIUM_REQUIRED")
             and (module := self.all_modules.find_module_strict(result))
         ):
             await self.all_modules.call_hook(module, "on_dlmod")
@@ -798,6 +806,9 @@ class Loader(loader.Module):
 
         if module_name == "OTL":
             return await message.answer(self.strings("only_telethon"))
+
+        if module_name == "PREMIUM_REQUIRED":
+            return await message.answer(self.strings("premium_required"))
 
         if module_name == "BAN":
             return await message.answer(self.strings("loaded_banned"))

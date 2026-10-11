@@ -40,7 +40,20 @@ class ModuleRegistrar:
         spec: ModuleSpec = None,
         is_telethon: bool = False,
     ) -> Module:
+        previous = sys.modules.get(module_name)
         module = ModuleCompiler.execute_module(module_name, file_path, spec)
+
+        if not utils.owner_premium(self.manager) and any(
+            inspect.isclass(value)
+            and issubclass(value, Module)
+            and utils.requires_premium(value)
+            for value in vars(module).values()
+        ):
+            if previous is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous
+            raise utils.PremiumRequired("This module requires Telegram Premium")
         instance = None
         handlers = HandlerRegistry(self.manager)
         for value in vars(module).values():

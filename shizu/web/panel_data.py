@@ -9,6 +9,7 @@ from datetime import datetime
 
 from shizu import loader, security, utils, version
 from shizu.backups import EncryptedBackup
+from shizu.loader.config import has_validator, unwrap_validator
 from shizu.redaction import SecretRedactor
 
 
@@ -64,7 +65,7 @@ class PanelData:
             "name": str(module.name),
             "author": str(getattr(module, "author", "")),
             "core": self.manager.is_core(module),
-            "config_count": len(config),
+            "config_count": len(self.config_keys(config)),
             "commands": len(getattr(module, "command_handlers", {})),
             "description": SecretRedactor.text(module.__doc__ or ""),
         }
@@ -178,12 +179,12 @@ class PanelData:
 
     @classmethod
     def hidden_validator(cls, validator):
-        if isinstance(validator, loader.validators.Hidden):
-            return True
-        return any(
-            cls.hidden_validator(child)
-            for child in getattr(validator, "validators", ())
-        )
+        return has_validator(validator, loader.validators.Hidden)
+
+    def config_keys(self, config):
+        if hasattr(config, "visible_keys"):
+            return config.visible_keys(utils.owner_premium(self.manager))
+        return list(config)
 
     @classmethod
     def hidden_value(cls, value):
@@ -224,6 +225,7 @@ class PanelData:
             editable = True
         except (TypeError, ValueError, RecursionError):
             editable = False
+        validator = unwrap_validator(validator)
         choices = (
             getattr(validator, "possible_values", None)
             if isinstance(validator, loader.validators.Choice)
@@ -231,6 +233,9 @@ class PanelData:
         )
         return {
             "key": key,
+            "label": SecretRedactor.text(config.getlabel(key))
+            if hasattr(config, "getlabel")
+            else key,
             "type": kind,
             "hidden": hidden,
             "configured": value not in (None, ""),
@@ -249,7 +254,7 @@ class PanelData:
         config = getattr(module, "config", {})
         return {
             "name": module.name,
-            "fields": [self.field(config, key) for key in config],
+            "fields": [self.field(config, key) for key in self.config_keys(config)],
         }
 
     def save_config(self, name, key, value):
@@ -257,7 +262,7 @@ class PanelData:
         config = getattr(module, "config", {})
         if (
             not isinstance(key, str)
-            or key not in config
+            or key not in self.config_keys(config)
             or not self.field(config, key)["editable"]
         ):
             raise PanelError("invalid_value")
@@ -306,7 +311,12 @@ class PanelData:
         result = await self.manager.load_module(item.source, item.url)
         if result == "PENDING":
             return "module_pending"
-        if isinstance(result, str) and result not in ("DENIED", "NFA", "OTL"):
+        if isinstance(result, str) and result not in (
+            "DENIED",
+            "NFA",
+            "OTL",
+            "PREMIUM_REQUIRED",
+        ):
             module = self.manager.find_module_strict(result)
             if module:
                 await self.manager.call_hook(module, "on_dlmod")
@@ -316,6 +326,7 @@ class PanelData:
                 "DENIED": "module_denied",
                 "NFA": "module_account",
                 "OTL": "module_telethon",
+                "PREMIUM_REQUIRED": "module_premium",
             }.get(str(result), "module_failed")
         )
 

@@ -56,18 +56,30 @@ class UpdateMod(loader.Module):
 
     def __init__(self):
         self.config = loader.ModuleConfig(
-            "enabled",
-            True,
-            lambda m: self.strings("cfg_doc_enable"),
-            "check_interval",
-            300,
-            lambda m: self.strings("cfg_doc_check_interval"),
-            "repo_owner",
-            "ibeswipin",
-            lambda m: self.strings("cfg_doc_repo_owner"),
-            "repo_name",
-            "Shizu",
-            lambda m: self.strings("cfg_doc_repo_name"),
+            loader.ConfigValue(
+                "enabled",
+                True,
+                lambda m: self.strings("cfg_doc_enable"),
+                label=lambda: self.strings("cfg_label_enabled"),
+            ),
+            loader.ConfigValue(
+                "check_interval",
+                300,
+                lambda m: self.strings("cfg_doc_check_interval"),
+                label=lambda: self.strings("cfg_label_check_interval"),
+            ),
+            loader.ConfigValue(
+                "repo_owner",
+                "ibeswipin",
+                lambda m: self.strings("cfg_doc_repo_owner"),
+                label=lambda: self.strings("cfg_label_repo_owner"),
+            ),
+            loader.ConfigValue(
+                "repo_name",
+                "Shizu",
+                lambda m: self.strings("cfg_doc_repo_name"),
+                label=lambda: self.strings("cfg_label_repo_name"),
+            ),
         )
 
     async def on_load(self, app):

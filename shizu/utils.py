@@ -25,6 +25,7 @@ import random
 import re
 import string
 import sys
+import time
 import typing
 from collections.abc import AsyncIterator
 from types import FunctionType
@@ -93,6 +94,45 @@ ListLike = list | set | tuple
 db = database.db
 
 logger = logging.getLogger(__name__)
+
+
+class PremiumRequired(ValueError):
+    pass
+
+
+def requires_premium(target):
+    return bool(
+        getattr(target, "is_premium", False)
+        or "is_premium" in getattr(target, "tags", ())
+        or getattr(target, "__self__", None)
+        and requires_premium(target.__self__)
+    )
+
+
+def owner_premium(manager):
+    return bool(
+        getattr(
+            manager,
+            "_premium_status",
+            getattr(getattr(manager, "me", None), "is_premium", False),
+        )
+    )
+
+
+async def refresh_premium(manager, *, force=False):
+    if not force and time.monotonic() < getattr(manager, "_premium_expires", 0):
+        return owner_premium(manager)
+    try:
+        me = await manager._app.get_me()
+    except Exception:
+        logger.debug("Could not refresh Telegram Premium status", exc_info=True)
+        manager._premium_status = False
+        manager._premium_expires = time.monotonic() + 5
+    else:
+        manager.me = me
+        manager._premium_status = bool(getattr(me, "is_premium", False))
+        manager._premium_expires = time.monotonic() + 60
+    return owner_premium(manager)
 
 
 def get_random_smartphone() -> str:

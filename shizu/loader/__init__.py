@@ -118,7 +118,13 @@ async def download_and_install(url: str, message: Any = None) -> bool:
         name = await _manager.load_remote_module(url)
     except requests.exceptions.HTTPError:
         return False
-    if not isinstance(name, str) or name in ("NFA", "OTL", "PENDING", "DENIED"):
+    if not isinstance(name, str) or name in (
+        "NFA",
+        "OTL",
+        "PENDING",
+        "DENIED",
+        "PREMIUM_REQUIRED",
+    ):
         return False
     if module := _manager.find_module_strict(name):
         await _manager.call_hook(module, "on_dlmod")

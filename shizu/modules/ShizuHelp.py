@@ -29,12 +29,18 @@ class Help(loader.Module):
 
     def __init__(self):
         self.config = loader.ModuleConfig(
-            "core_modules",
-            "▫️",
-            lambda m: self.strings("core_modules_emoji"),
-            "custom_modules",
-            "👩‍🎤",
-            lambda m: self.strings("custom_module_emoji"),
+            loader.ConfigValue(
+                "core_modules",
+                "▫️",
+                lambda m: self.strings("core_modules_emoji"),
+                label=lambda: self.strings("cfg_label_core_modules"),
+            ),
+            loader.ConfigValue(
+                "custom_modules",
+                "👩‍🎤",
+                lambda m: self.strings("custom_module_emoji"),
+                label=lambda: self.strings("cfg_label_custom_modules"),
+            ),
         )
 
     PAGE_LIMIT = 3500

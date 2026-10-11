@@ -29,6 +29,7 @@ from aiogram.types import CallbackQuery
 from pyrogram.types import Message
 
 from shizu import loader, utils
+from shizu.loader.config import has_validator, unwrap_validator
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +55,28 @@ class ShizuConfig(loader.Module):
         return config_value.validator if config_value else None
 
     def _base_validator(self, module, option):
-        validator = self._validator(module, option)
-        if isinstance(validator, loader.Validators.Hidden):
-            return validator.validator
-        return validator
+        return unwrap_validator(self._validator(module, option))
 
     def _is_hidden(self, module, option) -> bool:
-        return isinstance(self._validator(module, option), loader.Validators.Hidden)
+        return has_validator(self._validator(module, option), loader.Validators.Hidden)
+
+    def _options(self, module):
+        config = getattr(module, "config", None) or {}
+        if hasattr(config, "visible_keys"):
+            return config.visible_keys(utils.owner_premium(self.all_modules))
+        return list(config)
+
+    @staticmethod
+    def _label(module, option):
+        return (
+            module.config.getlabel(option)
+            if hasattr(module.config, "getlabel")
+            else option
+        )
+
+    async def _available(self, module, option):
+        await utils.refresh_premium(self.all_modules)
+        return module is not None and option in self._options(module)
 
     def _is_modified(self, module, option) -> bool:
         return option in self.db.get(module.name, "__config__", {})
@@ -138,6 +154,17 @@ class ShizuConfig(loader.Module):
         self.db.save()
         self.reconfmod(module, self.db)
 
+    def _reset_configs(self, module):
+        stored = dict(self.db.get(module.name, "__config__", {}))
+        options = set(self._options(module)) & stored.keys()
+        if not options:
+            return False
+        for option in options:
+            stored.pop(option)
+        self.db.set(module.name, "__config__", stored)
+        self.reconfmod(module, self.db)
+        return True
+
     async def _show(self, target, text: str, markup: list, inline_message_id=None):
         if isinstance(target, Message):
             return await target.answer(text, reply_markup=markup)
@@ -160,7 +187,7 @@ class ShizuConfig(loader.Module):
     def _configurable(self) -> dict:
         sections = {section: [] for section in self.SECTIONS}
         for module in sorted(self.all_modules.modules, key=lambda m: m.name.lower()):
-            if getattr(module, "config", None):
+            if self._options(module):
                 sections[self._section_of(module)].append(module.name)
         return sections
 
@@ -206,7 +233,7 @@ class ShizuConfig(loader.Module):
         return f"{self.strings('configure')}\n\n{title}", markup
 
     def _module_view(self, module, page: int = 0):
-        options = list(module.config)
+        options = self._options(module)
         pages = max(1, -(-len(options) // self.OPTIONS_PER_PAGE))
         page = min(page, pages - 1)
         chunk = options[
@@ -217,7 +244,7 @@ class ShizuConfig(loader.Module):
             [
                 {
                     "text": ("✏️ " if self._is_modified(module, option) else "")
-                    + option,
+                    + self._label(module, option),
                     "callback": self.inline__configure_option,
                     "args": (module.name, option),
                 }
@@ -332,7 +359,7 @@ class ShizuConfig(loader.Module):
             doc = f"{doc}\n\n{info}"
 
         text = self.strings("configuring_option").format(
-            utils.escape_html(option),
+            utils.escape_html(self._label(module, option)),
             utils.escape_html(mod),
             utils.escape_html(doc),
             self._display(module, option, module.config.getdef(option)),
@@ -347,6 +374,10 @@ class ShizuConfig(loader.Module):
         self, call, module, option, note: str = "", inline_message_id=None
     ):
         inline_message_id = inline_message_id or call.inline_message_id
+        if not await self._available(module, option):
+            return await call.edit(
+                "🚫", reply_markup=[], inline_message_id=inline_message_id
+            )
         text, markup = self._option_view(module, option, inline_message_id, note)
         await call.edit(text, reply_markup=markup, inline_message_id=inline_message_id)
 
@@ -354,7 +385,7 @@ class ShizuConfig(loader.Module):
         self, call, mod: str, option: str, get_value, inline_message_id=None
     ):
         module = self._module(mod)
-        if not module or option not in module.config:
+        if not await self._available(module, option):
             return await call.edit(
                 "🚫", reply_markup=[], inline_message_id=inline_message_id
             )
@@ -410,7 +441,7 @@ class ShizuConfig(loader.Module):
         self, call: CallbackQuery, mod: str, option: str
     ) -> None:
         module = self._module(mod)
-        if module:
+        if await self._available(module, option):
             self._reset(module, option)
             await self._refresh_option(call, module, option, self.strings("restored"))
 
@@ -442,7 +473,7 @@ class ShizuConfig(loader.Module):
 
     async def inline__choose(self, call: CallbackQuery, mod: str, option: str) -> None:
         module = self._module(mod)
-        if not module:
+        if not await self._available(module, option):
             return
 
         current = [str(item) for item in module.config[option] or []]
@@ -466,7 +497,7 @@ class ShizuConfig(loader.Module):
         self, call: CallbackQuery, mod: str, option: str, index: int
     ) -> None:
         module = self._module(mod)
-        if not module:
+        if not await self._available(module, option):
             return
 
         item = module.config.getdef(option)[index]
@@ -487,24 +518,27 @@ class ShizuConfig(loader.Module):
         self, call: CallbackQuery, mod: str, config_opt: str
     ) -> None:
         module = self._module(mod)
-        if module and config_opt in module.config:
+        if await self._available(module, config_opt):
             await self._refresh_option(call, module, config_opt)
 
     async def inline__configure(
         self, call: CallbackQuery, mod: str, page: int = 0
     ) -> None:
         module = self._module(mod)
+        await utils.refresh_premium(self.all_modules)
         if module:
             await self._show(call, *self._module_view(module, page))
 
     async def inline__global_config(
         self, call: Message | CallbackQuery, section: str = None, page: int = 0
     ) -> None:
+        await utils.refresh_premium(self.all_modules)
         await self._show(call, *self._global_view(section, page))
 
     async def configcmd(self, app, message: Message) -> None:
         """[module] - Configure modules"""
         args = utils.get_args_raw(message)
+        await utils.refresh_premium(self.all_modules)
         module = self.all_modules.get_module(args) if args else None
 
         if module and getattr(module, "config", None):
@@ -515,6 +549,7 @@ class ShizuConfig(loader.Module):
     async def resetcfgcmd(self, app, message: Message) -> None:
         """Reset all configs to defaults (or specific module if provided)"""
         args = utils.get_args_raw(message)
+        await utils.refresh_premium(self.all_modules)
 
         if args:
             # Reset specific module
@@ -526,9 +561,8 @@ class ShizuConfig(loader.Module):
                 )
                 return
 
-            if self.db.pop(module.name, "__config__"):
+            if self._reset_configs(module):
                 self.db.save()
-                self.reconfmod(module, self.db)
                 await utils.answer(
                     message,
                     f"✅ Reset configs for module '{utils.escape_html(module.name)}'",
@@ -543,8 +577,7 @@ class ShizuConfig(loader.Module):
             reset_count = 0
             for module in self.all_modules.modules:
                 if hasattr(module, "config"):
-                    if self.db.pop(module.name, "__config__"):
-                        self.reconfmod(module, self.db)
+                    if self._reset_configs(module):
                         reset_count += 1
 
             self.db.save()

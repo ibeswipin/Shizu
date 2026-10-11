@@ -75,7 +75,9 @@ class ModuleLoader:
             module_source = original_source
 
         module_name = f"shizu.modules.{manager.me.id}-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(10))}"
-        pattern = re.compile(r"@loader\.module\((.*?)\)\nclass\s+(\w+)\(")
+        pattern = re.compile(
+            r"@loader\.module\((.*?)\)\s*(?:@[^\n]+\n\s*)*class\s+(\w+)\(", re.S
+        )
 
         if match := pattern.search(module_source):
             module_name = f"shizu.modules.{match[2]}"
@@ -94,7 +96,9 @@ class ModuleLoader:
             return "OTL"
         if remote:
             manager.remote_modules.check_source(origin, original_source)
+        previous_source = manager.raw_modules.get(module_name)
         manager.raw_modules[module_name] = original_source
+        await utils.refresh_premium(manager)
         try:
             spec = ModuleCompiler.source_spec(
                 module_name,
@@ -107,6 +111,12 @@ class ModuleLoader:
                 module_name, spec=spec, is_telethon=is_telethon
             )
 
+        except utils.PremiumRequired:
+            if previous_source is None:
+                manager.raw_modules.pop(module_name, None)
+            else:
+                manager.raw_modules[module_name] = previous_source
+            return "PREMIUM_REQUIRED"
         except ImportError:
             logging.exception("Failed to import module %s", module_name)
 

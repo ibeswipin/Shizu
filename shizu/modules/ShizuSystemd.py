@@ -534,18 +534,30 @@ class SystemdMod(loader.Module):
 
     def __init__(self):
         self.config = loader.ModuleConfig(
-            "USE_SUDO",
-            True,
-            lambda m: self.strings("cfg_sudo"),
-            "WATCH",
-            True,
-            lambda m: self.strings("cfg_watch"),
-            "LIVE_TTL",
-            15,
-            lambda m: self.strings("cfg_ttl"),
-            "TUNNEL",
-            "auto",
-            lambda m: self.strings("cfg_tunnel"),
+            loader.ConfigValue(
+                "USE_SUDO",
+                True,
+                lambda m: self.strings("cfg_sudo"),
+                label=lambda: self.strings("cfg_label_use_sudo"),
+            ),
+            loader.ConfigValue(
+                "WATCH",
+                True,
+                lambda m: self.strings("cfg_watch"),
+                label=lambda: self.strings("cfg_label_watch"),
+            ),
+            loader.ConfigValue(
+                "LIVE_TTL",
+                15,
+                lambda m: self.strings("cfg_ttl"),
+                label=lambda: self.strings("cfg_label_live_ttl"),
+            ),
+            loader.ConfigValue(
+                "TUNNEL",
+                "auto",
+                lambda m: self.strings("cfg_tunnel"),
+                label=lambda: self.strings("cfg_label_tunnel"),
+            ),
         )
         self.live: LiveLogServer | None = None
         self.tunnel = TunnelManager()

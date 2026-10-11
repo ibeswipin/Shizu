@@ -663,7 +663,7 @@ class ShizuPanel {
     fields.replaceChildren();
     config.fields.forEach((field, index) => {
       const row = this.node("div", "config-field");
-      const label = this.node("label", "", field.key);
+      const label = this.node("label", "", field.label || field.key);
       label.htmlFor = `config-input-${index}`;
       row.append(label, this.node("p", "", field.description));
       const action = this.node("div", "input-action");

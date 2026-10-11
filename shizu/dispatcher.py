@@ -159,6 +159,10 @@ class BaseDispatcherManager:
     ) -> bool:
         """Require every declared tag and value filter to match."""
         tags = self._flag(func, tags_attr) or ()
+        if (
+            utils.requires_premium(func) or "is_premium" in tags
+        ) and not utils.owner_premium(self.modules):
+            return False
         if tags:
             rules = self._rules(
                 message, self.prefixes if prefixes is None else prefixes
@@ -197,9 +201,7 @@ class DispatcherManager(BaseDispatcherManager):
         text = message.text or message.caption or ""
         chat_type = getattr(getattr(message.chat, "type", None), "name", "")
         return self._tag_rules(
-            out=bool(
-                message.outgoing or getattr(message.from_user, "is_self", False)
-            ),
+            out=bool(message.outgoing or getattr(message.from_user, "is_self", False)),
             private=chat_type in ("PRIVATE", "BOT"),
             group=chat_type in ("GROUP", "SUPERGROUP"),
             channel=chat_type == "CHANNEL",
@@ -276,6 +278,11 @@ class DispatcherManager(BaseDispatcherManager):
         if self._is_telethon_handler(func):
             return
 
+        if utils.requires_premium(func) and not await utils.refresh_premium(
+            self.modules
+        ):
+            return
+
         if not self._filters_accept(func, message, "tags", "tag_values"):
             return
 
@@ -334,9 +341,7 @@ class DispatcherManager(BaseDispatcherManager):
                 getattr(message, field, None) for field in fields
             ):
                 return False
-        return self._filters_accept(
-            watcher, message, "watcher_tags", "watcher_values"
-        )
+        return self._filters_accept(watcher, message, "watcher_tags", "watcher_values")
 
     @staticmethod
     async def _invoke_watcher(watcher, app: Client, message: types.Message) -> None:
@@ -493,6 +498,10 @@ class TelethonDispatcherManager(BaseDispatcherManager):
         ):
             return
 
+        if utils.requires_premium(func) and not await utils.refresh_premium(
+            self.modules
+        ):
+            return
         if not self._filters_accept(func, message, "tags", "tag_values"):
             return
         if not await self.security.check(message, func, command, self.client):

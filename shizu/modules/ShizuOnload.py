@@ -98,12 +98,18 @@ class ShizuOnload(loader.Module):
 
     def __init__(self):
         self.config = loader.ModuleConfig(
-            "status",
-            True,
-            lambda m: self.strings("cfg_doc_enable_start_text"),
-            "custom text",
-            None,
-            lambda m: self.strings("cfg_doc_start_text"),
+            loader.ConfigValue(
+                "status",
+                True,
+                lambda m: self.strings("cfg_doc_enable_start_text"),
+                label=lambda: self.strings("cfg_label_status"),
+            ),
+            loader.ConfigValue(
+                "custom text",
+                None,
+                lambda m: self.strings("cfg_doc_start_text"),
+                label=lambda: self.strings("cfg_label_custom_text"),
+            ),
         )
 
     async def _greet(self):

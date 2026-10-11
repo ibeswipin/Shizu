@@ -25,11 +25,24 @@ from .models import Module
 class ConfigValue:
     """Config value descriptor for ModuleConfig compatibility"""
 
-    def __init__(self, key, default, doc=None, validator=None):
+    def __init__(
+        self,
+        key,
+        default,
+        doc=None,
+        validator=None,
+        *,
+        label=None,
+        is_premium=False,
+        tags=(),
+    ):
         self.key = key
         self.default = default
         self.doc = doc
         self.validator = validator
+        self.label = label
+        self.tags = {tags} if isinstance(tags, str) else set(tags)
+        self.is_premium = bool(is_premium or "is_premium" in self.tags)
 
     def validate(self, value):
         """Validate value using validator if present"""
@@ -258,6 +271,13 @@ class Validators:
         def validate(self, value):
             return self.validator.validate(value) if self.validator else value
 
+    class IsPremium:
+        def __init__(self, validator=None):
+            self.validator = validator
+
+        def validate(self, value):
+            return self.validator.validate(value) if self.validator else value
+
     class Choice:
         def __init__(self, possible_values):
             self.possible_values = list(possible_values)
@@ -322,6 +342,25 @@ class Validators:
 validators = Validators()
 
 
+def has_validator(validator, kind):
+    return isinstance(validator, kind) or (
+        validator is not None
+        and (
+            has_validator(getattr(validator, "validator", None), kind)
+            or any(
+                has_validator(child, kind)
+                for child in getattr(validator, "validators", ())
+            )
+        )
+    )
+
+
+def unwrap_validator(validator):
+    while isinstance(validator, (Validators.Hidden, Validators.IsPremium)):
+        validator = validator.validator
+    return validator
+
+
 class ModuleConfig(dict):
     """Like a dict but contains doc for each key"""
 
@@ -375,6 +414,29 @@ class ModuleConfig(dict):
     def getdef(self, key):
         """Get the default value by key"""
         return copy.deepcopy(self._defaults.get(key))
+
+    def getlabel(self, key, message=None):
+        label = getattr(self._config_values.get(key), "label", None)
+        if callable(label):
+            try:
+                label = label(message)
+            except TypeError:
+                label = label()
+        return str(label) if label else str(key)
+
+    def is_available(self, key, is_premium=False):
+        descriptor = self._config_values.get(key)
+        return key in self and (
+            is_premium
+            or descriptor is None
+            or not (
+                descriptor.is_premium
+                or has_validator(descriptor.validator, Validators.IsPremium)
+            )
+        )
+
+    def visible_keys(self, is_premium=False):
+        return [key for key in self if self.is_available(key, is_premium)]
 
     def bind(self, db, section: str) -> None:
         """Save values assigned from now on to `section` in `db`"""
