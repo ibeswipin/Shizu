@@ -7,7 +7,9 @@ venv/
 .installer/
 .module_dependencies/
 .compat_cache/
-/data/modules_cache/
+/data/
+/shizu/modules/*
+!/shizu/modules/Shizu*.py
 compat_report/
 
 config.ini
