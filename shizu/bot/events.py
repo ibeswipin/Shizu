@@ -360,6 +360,19 @@ class Events(Item):
                 )
         return message
 
+    async def _edited_message_handler(self, message: Message) -> None:
+        for module in list(self._all_modules.modules):
+            watcher = getattr(module, "aiogram_edited_watcher", None)
+            if not callable(watcher):
+                continue
+            try:
+                await watcher(message)
+            except Exception:
+                logger.exception(
+                    "aiogram_edited_watcher of %s failed",
+                    getattr(module, "name", module),
+                )
+
     async def gallery(
         self,
         message,

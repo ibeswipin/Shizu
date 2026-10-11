@@ -104,6 +104,9 @@ class BotManager(Events, TokenManager):
         self._dp.register_message_handler(
             self._message_handler, lambda _: True, content_types=["any"]
         )
+        self._dp.register_edited_message_handler(
+            self._edited_message_handler, lambda _: True, content_types=["any"]
+        )
         self._dp.register_chosen_inline_handler(
             self._chosen_inline_handler, lambda chosen_inline_query: True
         )
