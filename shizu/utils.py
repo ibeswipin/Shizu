@@ -544,6 +544,8 @@ async def answer(
     doc: bool = False,
     photo_: bool = False,
     reply_markup: Any = None,
+    rich: bool = False,
+    rich_message: Any = None,
     **kwargs,
 ):
     """
@@ -559,6 +561,33 @@ async def answer(
 
 
     """
+    if rich_message is not None:
+        from shizu.telegram.rich import send_rich
+
+        return await send_rich(
+            message, rich_message, str(response), reply_markup=reply_markup, **kwargs
+        )
+    if rich:
+        from shizu.telegram.rich import needs_bot, send_rich
+
+        if not needs_bot(reply_markup) and not re.search(
+            r"<tg-button\b[^>]*\bref\s*=", str(response), re.I
+        ):
+            return await send_rich(
+                message,
+                {"html": str(response)},
+                str(response),
+                reply_markup=reply_markup,
+                **kwargs,
+            )
+        return await message._client._inline.form(
+            text=str(response),
+            message=message,
+            reply_markup=reply_markup,
+            rich=True,
+            **kwargs,
+        )
+
     messages = []
     is_telethon = hasattr(message, "reply_to_msg_id") or (
         hasattr(message, "reply_to") and not hasattr(message, "reply_to_message")
@@ -969,18 +998,11 @@ def _rich_table_payload(rows, header=None, title=None) -> dict:
 
 
 async def _rich_table(message, rows, header, title, fallback_text):
-    inline = getattr(message._client, "_inline", None)
-    if inline is None or not hasattr(inline, "form"):
-        raise RuntimeError("Inline bot is unavailable")
+    from shizu.telegram.rich import send_rich
 
-    result = await inline.form(
-        text=fallback_text,
-        message=message,
-        rich_message=_rich_table_payload(rows, header, title),
+    return await send_rich(
+        message, _rich_table_payload(rows, header, title), fallback_text
     )
-    if result is False:
-        raise RuntimeError("Could not send a rich table through the inline bot")
-    return result
 
 
 async def send_table(message, rows, header=None, title=None):

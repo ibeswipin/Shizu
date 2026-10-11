@@ -28,6 +28,7 @@ import logging
 from pyrogram import Client, types
 
 from shizu import loader, utils, version
+from shizu.telegram.rich import send_direct, send_rich
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class InformationMod(loader.Module):
             ),
             loader.ConfigValue(
                 "custom_buttons",
-                {"text": "🤝 Support", "url": "https://t.me/shizu_talks"},
+                {"text": "Support", "url": "https://t.me/shizu_talks"},
                 lambda: self.strings("custom_button"),
             ),
             loader.ConfigValue(
@@ -81,7 +82,10 @@ class InformationMod(loader.Module):
 
         stats = utils.render_table(
             [
-                [self.strings("label_version"), ".".join(map(str, version.__version__))],
+                [
+                    self.strings("label_version"),
+                    ".".join(map(str, version.__version__)),
+                ],
                 [self.strings("label_branch"), version.branch],
                 [self.strings("label_platform"), utils.get_platform()],
                 [self.strings("label_prefix"), prefix],
@@ -90,43 +94,9 @@ class InformationMod(loader.Module):
         )
         return f"🐙 <b>Shizu</b> — {mention}\n{stats}"
 
-    async def _rich_banner(self, bot_user) -> str | None:
-        """Inline rich media must already be uploaded by the same bot."""
-        source = self.config["photo_url"]
-        if not source:
-            return None
-
-        cached = self.get("rich_banner", {})
-        if (
-            cached.get("source") == source
-            and cached.get("bot_id") == bot_user.id
-            and cached.get("file_id")
-        ):
-            return cached["file_id"]
-
-        uploaded = await self.bot.bot.send_photo(
-            self.db.get("shizu.chat", "logs") or self.me.id,
-            photo=source,
-            disable_notification=True,
-        )
-        try:
-            file_id = uploaded.photo[-1].file_id
-            self.set(
-                "rich_banner",
-                {"source": source, "bot_id": bot_user.id, "file_id": file_id},
-            )
-            return file_id
-        finally:
-            try:
-                await self.bot.bot.delete_message(
-                    uploaded.chat.id, uploaded.message_id
-                )
-            except Exception:
-                logger.debug("Could not delete temporary info banner", exc_info=True)
-
-    async def _rich_message(self, bot_user, fallback_text: str) -> dict:
-        """Banner, quoted info table and one button in its own rich row."""
-        photo_id = await self._rich_banner(bot_user)
+    async def _rich_message(
+        self, username: str, fallback_text: str
+    ) -> types.InputRichMessage:
         if self.config["custom_message"]:
             content = fallback_text
         else:
@@ -135,34 +105,41 @@ class InformationMod(loader.Module):
                 f"{utils.escape_html(utils.get_display_name(self.me))}</a>"
             )
             rows = [
-                ("🪐 Version:", "🎯 " + ".".join(map(str, version.__version__))),
-                ("✻ Branch:", f"🕯 {version.branch}"),
-                ("🌐 Platform:", f"💎 {utils.get_platform()}"),
-                ("🪶 Prefix:", "▹ " + ", ".join(self.prefix)),
+                (
+                    self.strings("label_version"),
+                    ".".join(map(str, version.__version__)),
+                ),
+                (self.strings("label_branch"), version.branch),
+                (
+                    self.strings("label_platform"),
+                    utils.get_platform().split(" ", 1)[-1],
+                ),
+                (self.strings("label_prefix"), ", ".join(self.prefix)),
             ]
             cells = "".join(
                 f"<tr><td>{utils.escape_html(label)}</td>"
                 f"<td>{utils.escape_html(value)}</td></tr>"
                 for label, value in rows
             )
-            username = utils.escape_html(bot_user.username)
-            cells += (
-                '<tr><td>🤖 Bot:</td><td>'
-                f'<a href="https://t.me/{username}">@{username}</a></td></tr>'
-            )
-            content = (
-                f"<h2>🐙 Shizu — {mention}</h2>"
-                f"<table bordered>{cells}</table>"
-            )
+            if username:
+                username = utils.escape_html(username)
+                cells += (
+                    f"<tr><td>{utils.escape_html(self.strings('label_bot'))}</td><td>"
+                    f'<a href="https://t.me/{username}">@{username}</a></td></tr>'
+                )
+            content = f"<h2>Shizu — {mention}</h2><table bordered>{cells}</table>"
 
-        payload = {"html": f"<blockquote>{content}</blockquote>"}
-        if photo_id:
-            payload["html"] = (
-                '<blockquote><img src="tg://photo?id=banner"/></blockquote>'
-                + payload["html"]
+        markup = f"<blockquote>{content}</blockquote>"
+        media = None
+        if self.config["photo_url"]:
+            markup = (
+                '<blockquote><img src="tg://photo?id=banner"/></blockquote>' + markup
             )
-            payload["media"] = [
-                {"id": "banner", "media": {"type": "photo", "media": photo_id}}
+            media = [
+                types.InputRichMessageMedia(
+                    id="banner",
+                    media=types.InputMediaPhoto(self.config["photo_url"]),
+                )
             ]
 
         button = self.config["custom_buttons"]
@@ -170,40 +147,46 @@ class InformationMod(loader.Module):
             style = button.get("style", "danger")
             if style not in {"primary", "success", "danger"}:
                 style = "danger"
-            payload["html"] += (
-                '<tg-button-row>'
+            label = self._button_label(button)
+            markup += (
+                "<tg-button-row>"
                 f'<tg-button type="url" style="{style}" '
                 f'url="{html.escape(button["url"])}">'
-                f'{utils.escape_html(button["text"])}</tg-button>'
-                '</tg-button-row>'
+                f"{utils.escape_html(label)}</tg-button>"
+                "</tg-button-row>"
             )
-        return payload
+        return types.InputRichMessage(html=markup, media=media)
+
+    def _button_label(self, button):
+        if button["url"] == "https://t.me/shizu_talks" and button["text"] in {
+            "Support",
+            "🤝 Support",
+        }:
+            return self.strings("label_support")
+        return button["text"]
 
     @loader.command(aliases=["ubinfo", "support"])
     async def info(self, app: Client, message: types.Message):
         """Info about Shizu"""
-        bot_user = await self.bot.bot.get_me()
-        text = await self.text_(self.me, bot_user.username)
+        username = self.db.get("shizu.bot", "username", "")
+        text = await self.text_(self.me, username)
         if self.config["rich"]:
+            rich_text = text
+            button = self.config["custom_buttons"]
+            if button:
+                text += (
+                    f'\n<a href="{html.escape(button["url"])}">'
+                    f"{utils.escape_html(self._button_label(button))}</a>"
+                )
             try:
-                payload = await self._rich_message(bot_user, text)
+                payload = await self._rich_message(username, rich_text)
+                return await send_rich(message, payload, text, app=app)
             except Exception:
                 logger.warning(
-                    "Could not prepare rich info; using the regular info card",
+                    "Could not send rich info; using a text card",
                     exc_info=True,
                 )
-            else:
-                button = self.config["custom_buttons"]
-                if button:
-                    text += (
-                        f'\n<a href="{html.escape(button["url"])}">'
-                        f'{utils.escape_html(button["text"])}</a>'
-                    )
-                return await self.inline.form(
-                    text=text,
-                    message=message,
-                    rich_message=payload,
-                )
+            return await send_direct(app, message, text)
 
         if self.config["custom_buttons"]:
             await message.answer(

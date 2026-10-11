@@ -70,6 +70,7 @@ from shizu import database, utils
 from shizu import logger as lo
 from shizu.bot.types import Item
 from shizu.security import EVERYONE, mask_of
+from shizu.telegram.rich import needs_bot, send_rich
 from shizu.translator import Translator
 
 logger = logging.getLogger(__name__)
@@ -1310,6 +1311,7 @@ class Events(Item):
         disable_security = kwargs.pop("disable_security", False)
         manual_security = kwargs.pop("manual_security", False)
         silent = kwargs.pop("silent", False)
+        rich_routed = kwargs.pop("_rich_routed", False)
         if disable_security or manual_security:
             force_me = False
 
@@ -1388,6 +1390,46 @@ class Events(Item):
             logger.error("Cannot determine chat for inline form")
             return False
 
+        if (rich or rich_message) and not rich_routed and not needs_bot(reply_markup):
+            payload = rich_message or {
+                "html": self._rich_html({"text": text, "buttons": reply_markup})
+            }
+            result = await send_rich(
+                message,
+                payload,
+                text,
+                app=self._app,
+                inline=self,
+                reply_markup=[
+                    [button for button in row if "ref" not in button]
+                    for row in reply_markup
+                ],
+                reply_to_message_id=msg_id,
+                prev=prev,
+                force_me=force_me,
+                always_allow=always_allow,
+                ttl=ttl,
+                silent=silent,
+            )
+            if isinstance(result, str):
+                return result
+            if result is None:
+                return False
+            form_uid = utils.rand(30)
+            self._forms[form_uid] = {
+                "type": "form",
+                "uid": form_uid,
+                "text": text,
+                "buttons": reply_markup,
+                "force_me": force_me,
+                "always_allow": always_allow,
+                "chat": chat_id,
+                "message_id": result.id,
+            }
+            if ttl:
+                asyncio.get_running_loop().call_later(ttl, self._expire, form_uid)
+            return form_uid
+
         form_uid = utils.rand(30)
 
         self._forms[form_uid] = {
@@ -1418,7 +1460,10 @@ class Events(Item):
         }
 
         if isinstance(message, pyrogram.types.Message) and prev and not silent:
-            if message.from_user.id != self._me:
+            sender_id = getattr(message.from_user, "id", None)
+            if sender_id is None and getattr(message, "outgoing", False):
+                sender_id = self._me
+            if sender_id != self._me:
                 soo = await message.reply("🐙 Loading inline form...")
             else:
                 soo = await message.edit("🐙")
