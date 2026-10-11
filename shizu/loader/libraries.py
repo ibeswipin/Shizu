@@ -36,6 +36,7 @@ class LibraryLoader:
     async def load(self, url: str, *, suspend_on_error: bool = False) -> "Library":
         """Load a shared library from `url` once; later calls return the same instance"""
         manager = self.manager
+        url = manager.remote_modules.source_url(url)
         if url in manager._libraries:
             return manager._libraries[url]
         try:

@@ -657,5 +657,7 @@
   "shizu.modules.ShizuSystemd.cfg_label_tunnel": "Jurnal tunneli",
   "shizu.modules.ShizuLoader.premium_required": "<b>Bu modul uchun Shizu hisobida Telegram Premium kerak.</b>",
   "shizu.web.panel.module_premium": "Bu modul uchun Telegram Premium kerak",
-  "shizu.modules.ShizuLoader.load_failed": "<b>Modulni yuklab boʻlmadi:</b>\n<code>{}</code>"
+  "shizu.modules.ShizuLoader.load_failed": "<b>Modulni yuklab boʻlmadi:</b>\n<code>{}</code>",
+  "shizu.modules.ShizuLoader.no_modules": "Modullar topilmadi.",
+  "shizu.modules.ShizuLoader.no_repositories": "Modul repozitoriylari sozlanmagan."
 }

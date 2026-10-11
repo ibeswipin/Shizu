@@ -121,9 +121,12 @@ class ModuleSources:
     async def resolve(self, url: str, headers=None, *, kind="module"):
         manager = self.manager
         try:
-            manager.remote_modules.validate_url(url)
+            url = manager.remote_modules.source_url(url)
             return await manager.remote_modules.resolve(
-                url, headers or manager._remote_headers(url), kind=kind
+                url,
+                headers
+                or manager._remote_headers(manager.remote_modules.normalize_url(url)),
+                kind=kind,
             )
         except (
             RemoteModuleError,

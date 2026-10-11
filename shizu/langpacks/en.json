@@ -708,5 +708,7 @@
   "shizu.modules.ShizuSystemd.cfg_label_tunnel": "Log tunnel",
   "shizu.modules.ShizuLoader.premium_required": "<b>This module requires Telegram Premium for the Shizu account.</b>",
   "shizu.web.panel.module_premium": "This module requires Telegram Premium",
-  "shizu.modules.ShizuLoader.load_failed": "<b>Module could not be loaded:</b>\n<code>{}</code>"
+  "shizu.modules.ShizuLoader.load_failed": "<b>Module could not be loaded:</b>\n<code>{}</code>",
+  "shizu.modules.ShizuLoader.no_modules": "No modules found.",
+  "shizu.modules.ShizuLoader.no_repositories": "No module repositories configured."
 }

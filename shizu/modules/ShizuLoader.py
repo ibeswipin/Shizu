@@ -33,13 +33,14 @@
 
 
 import difflib
+import hashlib
 import inspect
 import io
 import logging
 import os
 import re
 import time
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import requests
 from aiogram.types import InputFile
@@ -99,6 +100,8 @@ class Loader(loader.Module):
     strings = {}
 
     def __init__(self):
+        self._catalog_cache = {}
+        self._repo_cache = {}
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "repo",
@@ -353,16 +356,7 @@ class Loader(loader.Module):
                 if not raw:
                     return await message.answer(self.strings("invalid_repo"))
                 headers = {"Authorization": f"token {token}"} if token else None
-                response = await registry.request(raw + "all.txt", headers)
-                try:
-                    if response.status_code != 200:
-                        return await message.answer(
-                            self.strings("no_all").format(utils.escape_html(raw)),
-                            disable_web_page_preview=True,
-                        )
-                    catalogs.append((repo, raw, response.text.splitlines(), headers))
-                finally:
-                    response.close()
+                catalogs.append((repo, raw, await self._catalog(raw, headers), headers))
         except (
             RemoteModuleError,
             requests.exceptions.RequestException,
@@ -373,15 +367,9 @@ class Loader(loader.Module):
             )
 
         if not args:
-            pages = [
-                self.strings("mods_in_repo").format(
-                    "🫦" if headers else "🎍", utils.escape_html(repo)
-                )
-                + "\n".join(
-                    f"• <code>{utils.escape_html(name)}</code>" for name in names
-                )
-                for repo, _, names, headers in catalogs
-            ]
+            pages = self._catalog_pages(catalogs)
+            if not pages:
+                return await message.answer(self.strings("no_repositories"))
             if len(pages) > 1:
                 return await self.bot.list(
                     message, pages, disable_web_page_preview=True
@@ -390,8 +378,136 @@ class Loader(loader.Module):
 
         for _, raw, names, headers in catalogs:
             if args in names:
-                return await self._install_remote(message, raw + args + ".py", headers)
+                return await self._install_remote(
+                    message, raw + quote(names[args], safe="/"), headers
+                )
         return await message.answer(self.strings("inc_link"))
+
+    @staticmethod
+    def _catalog_entry(path):
+        if not isinstance(path, str) or not path.lower().endswith(".py"):
+            return None
+        decoded = unquote(path)
+        if (
+            decoded.startswith("/")
+            or "\\" in decoded
+            or "://" in decoded
+            or any(ord(char) < 32 or ord(char) == 127 for char in decoded)
+            or any(part in ("", ".", "..") for part in decoded.split("/"))
+        ):
+            return None
+        return path[:-3], path
+
+    async def _catalog(self, raw, headers=None):
+        key = self._repo_cache_key(raw, (headers or {}).get("Authorization", ""))
+        cached = self._catalog_cache.get(key)
+        if cached and cached[0] > time.monotonic():
+            return dict(cached[1])
+        response = await self.all_modules.remote_modules.request(
+            raw + "all.txt", headers
+        )
+        try:
+            if response.status_code == 200:
+                names = {}
+                for line in response.text.splitlines():
+                    name = line.strip()
+                    if not name or name.startswith("#"):
+                        continue
+                    entry = self._catalog_entry(
+                        name if name.lower().endswith(".py") else name + ".py"
+                    )
+                    if entry is None:
+                        raise RemoteModuleError("Invalid module path in all.txt.")
+                    names.setdefault(*entry)
+                self._cache_repo(self._catalog_cache, key, dict(names))
+                return names
+            if response.status_code != 404:
+                raise RemoteModuleError(
+                    f"Could not read the repository catalog (HTTP {response.status_code})."
+                )
+        finally:
+            response.close()
+        names = await self._github_catalog(raw, headers)
+        self._cache_repo(self._catalog_cache, key, dict(names))
+        return names
+
+    @staticmethod
+    def _repo_cache_key(url, token):
+        return url, hashlib.sha256((token or "").encode()).hexdigest()
+
+    @staticmethod
+    def _cache_repo(cache, key, value):
+        if len(cache) >= 64 and key not in cache:
+            cache.pop(next(iter(cache)))
+        cache[key] = (time.monotonic() + 300, value)
+
+    async def _github_catalog(self, raw, headers=None):
+        parsed = urlparse(raw)
+        parts = parsed.path.strip("/").split("/", 3)
+        if parsed.hostname != "raw.githubusercontent.com" or len(parts) < 3:
+            raise RemoteModuleError("Cannot discover files for this repository URL.")
+        owner, repo, branch = parts[:3]
+        prefix = parts[3].rstrip("/") + "/" if len(parts) == 4 else ""
+        url = f"https://api.github.com/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/git/trees/{quote(branch, safe='')}?recursive=1"
+        response = await self.all_modules.remote_modules.request(
+            url, {**(headers or {}), "Accept": "application/vnd.github+json"}
+        )
+        try:
+            if response.status_code != 200:
+                raise RemoteModuleError(
+                    f"Could not list repository files (HTTP {response.status_code})."
+                )
+            try:
+                data = response.json()
+            except ValueError as error:
+                raise RemoteModuleError(
+                    "GitHub returned an invalid repository file list."
+                ) from error
+        finally:
+            response.close()
+        if not isinstance(data, dict) or not isinstance(data.get("tree"), list):
+            raise RemoteModuleError("GitHub returned an invalid repository file list.")
+        if data.get("truncated"):
+            raise RemoteModuleError(
+                "GitHub returned an incomplete file list. Add an all.txt catalog to this repository."
+            )
+        names = {}
+        for item in data["tree"]:
+            if (
+                not isinstance(item, dict)
+                or item.get("type") != "blob"
+                or item.get("mode") == "120000"
+            ):
+                continue
+            path = item.get("path", "")
+            if not isinstance(path, str) or not path.startswith(prefix):
+                continue
+            path = path[len(prefix) :]
+            if any(part.startswith((".", "_")) for part in path.split("/")):
+                continue
+            entry = self._catalog_entry(path)
+            if entry:
+                names.setdefault(*entry)
+        return dict(sorted(names.items(), key=lambda item: item[0].casefold()))
+
+    def _catalog_pages(self, catalogs):
+        pages = []
+        for repo, _, names, headers in catalogs:
+            title = self.strings("mods_in_repo").format(
+                "🫦" if headers else "🎍", utils.escape_html(repo)
+            )
+            page = title
+            if not names:
+                pages.append(title + self.strings("no_modules"))
+                continue
+            for name in names:
+                line = f"• <code>{utils.escape_html(name)}</code>\n"
+                if len(page) + len(line) > 3500 and page != title:
+                    pages.append(page.rstrip())
+                    page = title
+                page += line
+            pages.append(page.rstrip())
+        return pages
 
     def _remote_headers(self, url: str):
         try:
@@ -482,9 +598,9 @@ class Loader(loader.Module):
         if not url or not registry.is_remote(url):
             return await message.answer(self.strings("update_usage"))
         try:
-            registry.validate_url(url)
+            url = registry.source_url(url)
             token, update = await registry.prepare_update(
-                url, self._remote_headers(url)
+                url, self._remote_headers(registry.normalize_url(url))
             )
         except (
             RemoteModuleError,
@@ -656,6 +772,11 @@ class Loader(loader.Module):
         if not match:
             return False
 
+        key = self._repo_cache_key(repo_url, token)
+        cached = self._repo_cache.get(key)
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
+
         repo_path, branch, path = match.group(1), match.group(2), match.group(3)
 
         headers = {"Authorization": f"token {token}"} if token else None
@@ -669,7 +790,9 @@ class Loader(loader.Module):
         finally:
             r.close()
 
-        return f"https://raw.githubusercontent.com{repo_path}/{branch}{path or ''}/"
+        raw = f"https://raw.githubusercontent.com{repo_path}/{branch}{path or ''}/"
+        self._cache_repo(self._repo_cache, key, raw)
+        return raw
 
     async def _loaded_text(self, module, dop_help: str) -> str:
         bot_username = (await self.bot.bot.get_me()).username

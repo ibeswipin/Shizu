@@ -84,10 +84,53 @@ class RemoteModuleRegistry:
             raise RemoteModuleError("Credentials in module URLs are not supported.")
         return url
 
+    @classmethod
+    def normalize_url(cls, url: str) -> str:
+        cls.validate_url(url)
+        parsed = urlparse(url)
+        parts = parsed.path.split("/")
+        if (
+            parsed.hostname == "github.com"
+            and parsed.port in (None, 443)
+            and len(parts) >= 6
+            and all(parts[1:3])
+            and parts[3] in ("blob", "raw")
+        ):
+            path = "/".join(parts[4:])
+            for prefix in ("refs/heads/", "refs/tags/"):
+                if path.startswith(prefix):
+                    path = path[len(prefix) :]
+                    break
+            return f"https://raw.githubusercontent.com/{parts[1]}/{parts[2]}/{path}"
+        return url
+
+    def source_url(self, url: str) -> str:
+        normalized = self.normalize_url(url)
+        record = self.record(url) if normalized != url else None
+        if record and record.get("sha256"):
+            source = record.get("source")
+            if isinstance(source, str):
+                try:
+                    self._check_html(source)
+                except RemoteModuleError:
+                    return normalized
+            return url
+        return normalized
+
     @staticmethod
     def _http_origin(url: str):
         parsed = urlparse(url)
         return parsed.scheme, parsed.hostname, parsed.port or 443
+
+    @staticmethod
+    def _check_html(source: str, content_type: str = ""):
+        mime_type = content_type.split(";", 1)[0].strip().lower()
+        if mime_type == "text/html" or source.lstrip().lower().startswith(
+            ("<!doctype html", "<html")
+        ):
+            raise RemoteModuleError(
+                "The URL returned an HTML page instead of Python source. Use a raw file URL."
+            )
 
     def _get(self, url: str, headers: dict | None = None):
         url = self.validate_url(url)
@@ -110,7 +153,7 @@ class RemoteModuleRegistry:
         raise RemoteModuleError("The source returned too many redirects.")
 
     async def request(self, url: str, headers: dict | None = None):
-        self.validate_url(url)
+        url = self.normalize_url(url)
         parsed = urlparse(url)
         if (
             parsed.hostname == "raw.githubusercontent.com"
@@ -143,6 +186,9 @@ class RemoteModuleRegistry:
                     response=response,
                 )
             resolved_url = self.validate_url(getattr(response, "url", None) or url)
+            self._check_html(
+                response.text, getattr(response, "headers", {}).get("Content-Type", "")
+            )
             return RemoteModuleSource.from_source(url, response.text, resolved_url)
         finally:
             response.close()
@@ -172,6 +218,7 @@ class RemoteModuleRegistry:
 
     def check_source(self, url: str, source: str) -> RemoteModuleSource:
         self.validate_url(url)
+        self._check_html(source)
         item = RemoteModuleSource.from_source(url, source)
         record = self.record(url)
         if record and record.get("sha256"):
@@ -246,7 +293,7 @@ class RemoteModuleRegistry:
         return True
 
     async def resolve(self, url: str, headers: dict | None = None, *, kind="module"):
-        self.validate_url(url)
+        url = self.source_url(url)
         record = self.record(url)
         if record and record.get("sha256"):
             path = self.cache_dir / (record["sha256"] + ".py")
@@ -260,8 +307,10 @@ class RemoteModuleRegistry:
             actual = hashlib.sha256(data).hexdigest()
             if actual != record["sha256"]:
                 raise RemoteModuleIntegrityError(url, record["sha256"], actual)
+            source = data.decode("utf-8")
+            self._check_html(source)
             return RemoteModuleSource(
-                url, actual, data.decode("utf-8"), record.get("resolved_url") or url
+                url, actual, source, record.get("resolved_url") or url
             )
 
         approved_sources = self.db.get("ShizuBeSafe", "sources", {})
@@ -287,7 +336,8 @@ class RemoteModuleRegistry:
         return item
 
     async def prepare_update(self, url: str, headers: dict | None = None):
-        record = self.record(self.validate_url(url))
+        url = self.source_url(url)
+        record = self.record(url)
         if not record or not record.get("sha256"):
             raise RemoteModuleError("Install the module before requesting an update.")
         if record.get("previous"):
