@@ -678,5 +678,8 @@
   "shizu.modules.ShizuFeedback.banned_title": "🚫 <b>Botda bloklanganlar</b> ({})",
   "shizu.modules.ShizuFeedback.empty": "Bo'sh",
   "shizu.modules.ShizuFeedback.btn_users": "👥 Foydalanuvchilar",
-  "shizu.modules.ShizuFeedback.btn_banned": "🚫 Bloklanganlar"
+  "shizu.modules.ShizuFeedback.btn_banned": "🚫 Bloklanganlar",
+  "shizu.modules.ShizuFeedback.cfg_doc_greeting": "Fikr-mulohaza boti yoqilganda /start dan keyin ko'rinadigan matn",
+  "shizu.modules.ShizuFeedback.cfg_label_greeting": "Salomlashuv",
+  "shizu.modules.ShizuFeedback.greeting": "👋 <b>Salom!</b>\n\nXabaringizni shu yerga yozing, men uni olaman. Shu chatda javob beraman."
 }

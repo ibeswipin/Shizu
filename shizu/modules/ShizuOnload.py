@@ -137,7 +137,17 @@ class ShizuOnload(loader.Module):
         )
         self.db.set("shizu.me", "notified", True)
 
-    @loader.on_bot(lambda self, app, m: m.text == "/start" and m.chat.type == "private")
+    def _feedback_enabled(self):
+        feedback = self.all_modules.find_module_strict("ShizuFeedback")
+        return bool(feedback and feedback.config["enabled"])
+
+    @loader.on_bot(
+        lambda self, app, m: (
+            m.text == "/start"
+            and m.chat.type == "private"
+            and (self.bot._is_owner(m.from_user.id) or not self._feedback_enabled())
+        )
+    )
     async def start_message_handler(self, app, message):
         markup = self.bot._generate_markup(
             [

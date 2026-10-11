@@ -45,6 +45,12 @@ class ShizuFeedback(loader.Module):
                 validator=loader.validators.Boolean(),
                 label=lambda: self.strings("cfg_label_enabled"),
             ),
+            loader.ConfigValue(
+                "greeting",
+                None,
+                lambda m: self.strings("cfg_doc_greeting"),
+                label=lambda: self.strings("cfg_label_greeting"),
+            ),
         )
         self._flood = {}
 
@@ -120,6 +126,10 @@ class ShizuFeedback(loader.Module):
             await self._bot.send_message(
                 self.me.id, self.strings("new_user").format(self._mention(user))
             )
+
+        if message.text == "/start":
+            await message.answer(self.config["greeting"] or self.strings("greeting"))
+            return
 
         if (message.text or "").startswith("/"):
             return

@@ -730,5 +730,8 @@
   "shizu.modules.ShizuFeedback.banned_title": "🚫 <b>Забаненные в боте</b> ({})",
   "shizu.modules.ShizuFeedback.empty": "Пусто",
   "shizu.modules.ShizuFeedback.btn_users": "👥 Пользователи",
-  "shizu.modules.ShizuFeedback.btn_banned": "🚫 Забаненные"
+  "shizu.modules.ShizuFeedback.btn_banned": "🚫 Забаненные",
+  "shizu.modules.ShizuFeedback.cfg_doc_greeting": "Текст, который видят люди после /start при включённом боте обратной связи",
+  "shizu.modules.ShizuFeedback.cfg_label_greeting": "Приветствие",
+  "shizu.modules.ShizuFeedback.greeting": "👋 <b>Привет!</b>\n\nНапишите сообщение сюда, и я его получу. Отвечу в этом же чате."
 }

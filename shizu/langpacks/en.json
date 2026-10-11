@@ -729,5 +729,8 @@
   "shizu.modules.ShizuFeedback.banned_title": "🚫 <b>Banned in the bot</b> ({})",
   "shizu.modules.ShizuFeedback.empty": "Empty",
   "shizu.modules.ShizuFeedback.btn_users": "👥 Users",
-  "shizu.modules.ShizuFeedback.btn_banned": "🚫 Banned"
+  "shizu.modules.ShizuFeedback.btn_banned": "🚫 Banned",
+  "shizu.modules.ShizuFeedback.cfg_doc_greeting": "Text people see after /start while the feedback bot is on",
+  "shizu.modules.ShizuFeedback.cfg_label_greeting": "Greeting",
+  "shizu.modules.ShizuFeedback.greeting": "👋 <b>Hi!</b>\n\nWrite your message here and I will get it. I will reply in this chat."
 }
