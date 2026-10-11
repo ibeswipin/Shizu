@@ -35,3 +35,4 @@ telethon_sessions.key
 /scripts/*
 !/scripts/install.py
 !/scripts/panel_demo.py
+cloudflared-*   

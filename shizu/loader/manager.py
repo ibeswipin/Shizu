@@ -70,6 +70,7 @@ class ModulesManager:
         self.last_commands: dict[int, tuple] = {}
         self._libraries: dict[str, Library] = {}
         self.raw_modules: dict[str, str] = {}
+        self.module_load_errors: dict[tuple[str, str], str] = {}
         self._join_requests: dict[str, tuple] = {}
 
         self.root_module: Module = None
@@ -113,7 +114,7 @@ class ModulesManager:
 
         for handler in logging.getLogger().handlers:
             if isinstance(handler, logger_.Telegramhandler):
-                handler.manager = self.bot_manager
+                handler.bind(self.bot_manager)
 
         extrapatchs.MessageMagic(types.Message, app)
 
@@ -165,6 +166,9 @@ class ModulesManager:
     ) -> str:
         """Loads a third-party module"""
         return await ModuleLoader(self).load(module_source, origin, did_requirements)
+
+    def get_load_error(self, source: str, origin: str = "<string>") -> str:
+        return self.module_load_errors.get(ModuleLoader.error_key(source, origin), "")
 
     def _remote_headers(self, url: str) -> dict | None:
         return ModuleSources(self).headers(url)

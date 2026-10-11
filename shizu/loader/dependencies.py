@@ -39,6 +39,46 @@ MODULE_DEPENDENCIES = os.environ.get("SHIZU_DEPS_DIR") or os.path.join(
 class DependencyInstaller:
     """Install plugin requirements and refresh the interpreter search path."""
 
+    IMPORT_PACKAGES = {
+        "PIL": "Pillow",
+        "bs4": "beautifulsoup4",
+        "cv2": "opencv-python",
+        "yaml": "PyYAML",
+        "dateutil": "python-dateutil",
+        "sklearn": "scikit-learn",
+        "dotenv": "python-dotenv",
+        "Crypto": "pycryptodome",
+        "jwt": "PyJWT",
+    }
+
+    @classmethod
+    def missing_requirement(cls, error):
+        if not isinstance(error, ModuleNotFoundError) or not error.name:
+            return None
+        name = error.name.split(".", 1)[0]
+        if (
+            not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name)
+            or name == "shizu"
+            or name in sys.stdlib_module_names
+            or name in sys.modules
+        ):
+            return None
+        try:
+            if importlib.util.find_spec(name) is not None:
+                return None
+        except (ImportError, ValueError):
+            return None
+        return cls.IMPORT_PACKAGES.get(name, name)
+
+    @staticmethod
+    def declared_requirements(source):
+        match = VALID_PIP_PACKAGES.search(source)
+        return (
+            [item for item in match[1].split() if item[0] not in ("-", "_", ".")]
+            if match
+            else []
+        )
+
     @staticmethod
     def activate(target=MODULE_DEPENDENCIES):
         if os.path.isdir(target):

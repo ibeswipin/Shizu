@@ -14,6 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import hashlib
 import logging
 import os
 import random
@@ -25,18 +26,49 @@ import sys
 from shizu import loader, utils
 from shizu import logger as logger_
 from shizu.inter import inter
+from shizu.redaction import SecretRedactor
 from shizu.remote import RemoteModuleError
 from shizu.translator import Translator
 
 from .compiler import ModuleCompiler
-from .dependencies import VALID_PIP_PACKAGES
+from .dependencies import DependencyInstaller
 
 
 class ModuleLoader:
-    """Review and load third-party source, retrying dependency installation once."""
+    """Review source and retry imports after installing missing dependencies."""
 
     def __init__(self, manager):
         self.manager = manager
+
+    @staticmethod
+    def error_key(source, origin):
+        return origin, hashlib.sha256(source.encode()).hexdigest()
+
+    def _fail(self, source, origin, error):
+        reason = (
+            str(error) if isinstance(error, str) else f"{type(error).__name__}: {error}"
+        )
+        reason = SecretRedactor.text(reason)[:2000]
+        errors = getattr(self.manager, "module_load_errors", None)
+        if errors is None:
+            errors = self.manager.module_load_errors = {}
+        if len(errors) >= 64:
+            errors.pop(next(iter(errors)))
+        errors[self.error_key(source, origin)] = reason
+        logging.error(
+            "Failed to load module from %s: %s", SecretRedactor.text(origin), reason
+        )
+        return False
+
+    async def _notice(self, text):
+        try:
+            await self.manager.bot_manager.bot.send_message(
+                self.manager._db.get("shizu.chat", "logs", None),
+                SecretRedactor.text(text),
+                parse_mode="html",
+            )
+        except Exception:
+            logging.debug("Could not send module loading notice", exc_info=True)
 
     async def load(
         self,
@@ -48,6 +80,9 @@ class ModuleLoader:
         manager = self.manager
 
         original_source = module_source
+        getattr(manager, "module_load_errors", {}).pop(
+            self.error_key(original_source, origin), None
+        )
 
         remote = manager.remote_modules.is_remote(origin)
         if remote:
@@ -70,7 +105,10 @@ class ModuleLoader:
         if is_telethon:
             if not await manager._telethon_ready():
                 return "OTL"
-            module_source = inter.transform(original_source)
+            try:
+                module_source = inter.transform(original_source)
+            except Exception as error:
+                return self._fail(original_source, origin, error)
         else:
             module_source = original_source
 
@@ -82,7 +120,11 @@ class ModuleLoader:
         if match := pattern.search(module_source):
             module_name = f"shizu.modules.{match[2]}"
         else:
-            return False
+            return self._fail(
+                original_source,
+                origin,
+                "Module class with @loader.module was not found",
+            )
 
         if match := re.search(r"# ?only: ?(.+)", module_source):
             allowed_accounts = match[1].split(",") if match else []
@@ -99,96 +141,92 @@ class ModuleLoader:
         previous_source = manager.raw_modules.get(module_name)
         manager.raw_modules[module_name] = original_source
         await utils.refresh_premium(manager)
-        try:
-            spec = ModuleCompiler.source_spec(
-                module_name,
-                module_source,
-                origin,
-                has_location=bool(origin) and os.path.isfile(origin),
-            )
-
-            instance = manager.register_instance(
-                module_name, spec=spec, is_telethon=is_telethon
-            )
-
-        except utils.PremiumRequired:
-            if previous_source is None:
-                manager.raw_modules.pop(module_name, None)
-            else:
-                manager.raw_modules[module_name] = previous_source
-            return "PREMIUM_REQUIRED"
-        except ImportError:
-            logging.exception("Failed to import module %s", module_name)
-
-            if did_requirements:
-                await manager.bot_manager.bot.send_message(
-                    manager._db.get("shizu.chat", "logs", None),
-                    "🚫 Dependencies were installed, but the module still cannot be imported. "
-                    "See the application log for details.",
-                )
-                return False
+        attempted = set()
+        for attempt in range(6):
             try:
-                requirements = [
-                    x
-                    for x in map(
-                        str.strip,
-                        VALID_PIP_PACKAGES.search(module_source)[1].split(" "),
+                spec = ModuleCompiler.source_spec(
+                    module_name,
+                    module_source,
+                    origin,
+                    has_location=bool(origin) and os.path.isfile(origin),
+                )
+
+                instance = manager.register_instance(
+                    module_name, spec=spec, is_telethon=is_telethon
+                )
+            except utils.PremiumRequired:
+                if previous_source is None:
+                    manager.raw_modules.pop(module_name, None)
+                else:
+                    manager.raw_modules[module_name] = previous_source
+                return "PREMIUM_REQUIRED"
+            except ImportError as error:
+                requirements = (
+                    []
+                    if did_requirements
+                    else DependencyInstaller.declared_requirements(original_source)
+                )
+                if not requirements:
+                    requirement = DependencyInstaller.missing_requirement(error)
+                    if requirement:
+                        requirements = [requirement]
+                fresh = {
+                    re.split(r"[<>=!~\[ @]", item, maxsplit=1)[0]
+                    .lower()
+                    .replace("_", "-")
+                    for item in requirements
+                }
+                if not requirements or fresh & attempted or attempt == 5:
+                    return self._fail(original_source, origin, error)
+                attempted.update(fresh)
+                did_requirements = True
+                await self._notice(
+                    "⤵️ <b>Installing packages:</b> "
+                    f"<code>{utils.escape_html(', '.join(requirements))}</code>..."
+                )
+                try:
+                    await loader._install_requirements(requirements)
+                except (subprocess.CalledProcessError, OSError) as install_error:
+                    output = manager._pip_error(install_error)
+                    reason = (
+                        f"Could not install {', '.join(requirements)}: {output[-1500:]}"
                     )
-                    if x and x[0] not in ("-", "_", ".")
-                ]
-            except TypeError:
-                return False
-
-            await manager.bot_manager.bot.send_message(
-                manager._db.get("shizu.chat", "logs", None),
-                f"⤵️ <b>Installing packages:</b> <code>{', '.join(requirements)}</code>...",
-            )
-
-            try:
-                await loader._install_requirements(requirements)
-            except (subprocess.CalledProcessError, OSError) as error:
-                output = manager._pip_error(error)
-                logging.error(
-                    "Failed to install module dependencies %s:\n%s",
-                    requirements,
-                    output,
-                )
-                await manager.bot_manager.bot.send_message(
-                    manager._db.get("shizu.chat", "logs", None),
-                    "🚫 <b>Failed to install module dependencies</b> "
-                    f"<code>{utils.escape_html(' '.join(requirements))}</code>\n\n"
-                    f"<pre>{utils.escape_html(output[-3000:])}</pre>",
+                    self._fail(original_source, origin, reason)
+                    await self._notice(
+                        "🚫 <b>Failed to install module dependencies</b>\n"
+                        f"<pre>{utils.escape_html(SecretRedactor.text(reason))}</pre>"
+                    )
+                    return False
+            except Exception as error:
+                logging.exception("Failed to load module %s", module_name)
+                self._fail(original_source, origin, error)
+                item = logger_.CustomException.from_exc_info(*sys.exc_info())
+                await self._notice(
+                    "🚫 <b>Error while loading module</b>\n\n" + item.full_stack
                 )
                 return False
-
-            return await manager.load_module(original_source, origin, True)
-        except Exception:
-            item = logger_.CustomException.from_exc_info(*sys.exc_info())
-            exc = (
-                "🚫 <b>Error while loading module</b>"
-                "\n\n"
-                + "\n".join(item.full_stack.splitlines()[:-1])
-                + "\n\n"
-                + "😵 "
-                + item.full_stack.splitlines()[-1]
-            )
-            await manager.bot_manager.bot.send_message(
-                manager._db.get("shizu.chat", "logs", None), exc, parse_mode="html"
-            )
-            return False
+            else:
+                break
 
         if not instance:
-            return False
+            return self._fail(
+                original_source, origin, "No module instance was registered"
+            )
 
         try:
             manager.config_reconfigure(instance, manager._db)
             if not await manager.send_on_load(
                 instance, Translator(manager._app, manager._db)
             ):
-                return False
-        except Exception:
+                return self._fail(
+                    original_source,
+                    origin,
+                    getattr(instance, "_load_error", None)
+                    or "Module startup did not complete",
+                )
+        except Exception as error:
             logging.exception("Failed to start module %s", instance.name)
-            return False
+            return self._fail(original_source, origin, error)
 
         if remote:
             manager.remote_modules.install(origin, original_source)

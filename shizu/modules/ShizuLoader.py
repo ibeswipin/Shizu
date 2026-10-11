@@ -450,6 +450,13 @@ class Loader(loader.Module):
         if name is True:
             return await message.answer(self.strings("dep_installed_req_res"))
         if not name or not (module := self.all_modules.find_module_strict(name)):
+            reason = getattr(self.all_modules, "get_load_error", lambda *_: "")(
+                item.source, item.url
+            )
+            if reason:
+                return await message.answer(
+                    self.strings("load_failed").format(utils.escape_html(reason))
+                )
             return await message.answer(self.strings("not_module"))
         await self.all_modules.call_hook(module, "on_dlmod")
         return await message.answer(await self._loaded_text(module, dop_help))
@@ -634,6 +641,13 @@ class Loader(loader.Module):
                 call, await self._loaded_text(module, "▫️")
             )
         registry.rollback_update(item.url, item.sha256)
+        reason = getattr(self.all_modules, "get_load_error", lambda *_: "")(
+            item.source, item.url
+        )
+        if reason:
+            return await self._edit_update_message(
+                call, self.strings("load_failed").format(utils.escape_html(reason))
+            )
         await self._edit_update_message(call, self.strings("update_failed"))
 
     async def get_git_raw_link(self, repo_url: str, token: str = None):
@@ -729,7 +743,7 @@ class Loader(loader.Module):
             return await call.edit(besafe.strings("denied").format(name))
         if item.get("load_error"):
             return await call.edit(
-                self.strings("remote_error").format(
+                self.strings("load_failed").format(
                     utils.escape_html(item["load_error"])
                 )
             )
@@ -799,6 +813,13 @@ class Loader(loader.Module):
             return await message.answer(self.strings("denied"))
 
         if not module_name:
+            reason = getattr(self.all_modules, "get_load_error", lambda *_: "")(
+                module_source
+            )
+            if reason:
+                return await message.answer(
+                    self.strings("load_failed").format(utils.escape_html(reason))
+                )
             return await message.answer(self.strings("not_module"))
 
         if module_name == "NFA":

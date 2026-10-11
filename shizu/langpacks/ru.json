@@ -708,5 +708,6 @@
   "shizu.modules.ShizuSystemd.cfg_label_live_ttl": "Время работы журнала в реальном времени",
   "shizu.modules.ShizuSystemd.cfg_label_tunnel": "Туннель для журнала",
   "shizu.modules.ShizuLoader.premium_required": "<b>Для этого модуля нужен Telegram Premium на аккаунте Shizu.</b>",
-  "shizu.web.panel.module_premium": "Для этого модуля нужен Telegram Premium"
+  "shizu.web.panel.module_premium": "Для этого модуля нужен Telegram Premium",
+  "shizu.modules.ShizuLoader.load_failed": "<b>Не удалось загрузить модуль:</b>\n<code>{}</code>"
 }

@@ -327,7 +327,12 @@ class PanelData:
                 "NFA": "module_account",
                 "OTL": "module_telethon",
                 "PREMIUM_REQUIRED": "module_premium",
-            }.get(str(result), "module_failed")
+            }.get(str(result), "module_failed"),
+            detail=getattr(self.manager, "get_load_error", lambda *_: "")(
+                item.source, item.url
+            )
+            if result is False
+            else "",
         )
 
     def unload(self, name):

@@ -363,8 +363,17 @@ class BeSafe(loader.Module):
                         await self.all_modules.call_hook(module, "on_dlmod")
                     text = self.strings("loaded").format(utils.escape_html(result))
                 else:
+                    reason = (
+                        getattr(self.all_modules, "get_load_error", lambda *_: "")(
+                            item["source"], item["origin"]
+                        )
+                        if result is False
+                        else ""
+                    )
+                    if reason:
+                        item["load_error"] = reason
                     text = self.strings("approved_only").format(
-                        name, utils.escape_html(str(result))
+                        name, utils.escape_html(reason or str(result))
                     )
             if (
                 result is None

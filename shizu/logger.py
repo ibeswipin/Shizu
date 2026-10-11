@@ -266,6 +266,55 @@ class Telegramhandler(logging.Handler):
         self.time_threshold = 1
         self.manager = None
         self._uids = []
+        self._loop = None
+        self._flush_task = None
+        self._retry_delay = self.time_threshold
+
+    def bind(self, manager):
+        self.manager = manager
+        self._loop = asyncio.get_running_loop()
+        self._loop.call_soon_threadsafe(self._schedule)
+
+    def _schedule(self):
+        if self._closed or not self.msgs:
+            return
+        if self._flush_task is None or self._flush_task.done():
+            self._flush_task = utils.spawn(self._flush_logs())
+
+    async def _flush_logs(self):
+        while self.msgs and not self._closed:
+            await asyncio.sleep(self._retry_delay)
+            if not self.manager:
+                continue
+            self.chat = self.manager._db.get("shizu.chat", "logs")
+            if not self.chat:
+                continue
+            self.acquire()
+            try:
+                batch, self.msgs = self.msgs, []
+            finally:
+                self.release()
+            try:
+                remaining = await self.send_logs(batch)
+            except asyncio.CancelledError:
+                self.acquire()
+                try:
+                    self.msgs = (batch + self.msgs)[-self.capacity :]
+                finally:
+                    self.release()
+                raise
+            if remaining:
+                self.acquire()
+                try:
+                    self.msgs = (remaining + self.msgs)[-self.capacity :]
+                finally:
+                    self.release()
+            self.last_log_time = time.time()
+
+    def close(self):
+        if self._flush_task and self._loop and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._flush_task.cancel)
+        super().close()
 
     def dumps(self, lvl: int):
         """Returns a list of all incoming logs by minimum level"""
@@ -276,33 +325,29 @@ class Telegramhandler(logging.Handler):
         return map(self.target.format, sorted_logs)
 
     def emit(self, record: logging.LogRecord):
+        if self._closed or getattr(record, "_shizu_skip_telegram", False):
+            return
         SecretFilter().filter(record)
-        current_time = time.time()
-
-        if self.last_log_time is None:
-            self.last_log_time = current_time
 
         item = getattr(record, "_shizu_exception", None)
         if item:
             head = utils.escape_html(record.getMessage()[:300])
             item.message = f"<b>⛔ {head}</b>\n\n{item.message}"
 
-        self.msgs.append(item or SecretRedactor.text(FORMAT_FOR_TGLOG.format(record)))
-
-        if (
-            current_time - self.last_log_time >= self.time_threshold
-            and self.msgs
-            and self.chat
-        ):
+        self.acquire()
+        try:
+            self.msgs.append(
+                item or SecretRedactor.text(FORMAT_FOR_TGLOG.format(record))
+            )
+            self.msgs = self.msgs[-self.capacity :]
+        finally:
+            self.release()
+        if self._loop is None or self._loop.is_closed():
             try:
-                asyncio.get_running_loop()
+                self._loop = asyncio.get_running_loop()
             except RuntimeError:
                 return
-
-            utils.spawn(self.send_logs(self.msgs))
-            self.msgs = []
-
-            self.last_log_time = current_time
+        self._loop.call_soon_threadsafe(self._schedule)
 
     @staticmethod
     def _pages(lines: list[str], limit: int = 3500) -> list[str]:
@@ -341,7 +386,8 @@ class Telegramhandler(logging.Handler):
             uid = self._form()
             self.manager._forms[uid].update(text=text, buttons=make_buttons(uid))
             markup = self.manager._generate_markup(uid)
-        await bot.send_message(
+        sender = self.manager.bot if self.manager else bot
+        await sender.send_message(
             self.chat,
             text,
             parse_mode=ParseMode.HTML,
@@ -392,6 +438,7 @@ class Telegramhandler(logging.Handler):
 
     async def send_logs(self, msgs):
         """Send logs to chat"""
+        remaining = list(msgs)
         stamp = f"\n<b>⏳ Logged time:</b> <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
         lines = [m for m in msgs if isinstance(m, str)]
         pages = [
@@ -404,26 +451,40 @@ class Telegramhandler(logging.Handler):
                 await self._send(
                     exc.message, lambda uid, exc=exc: self._trace_button(uid, exc)
                 )
+                remaining.remove(exc)
 
             if not pages:
-                return
+                self._retry_delay = self.time_threshold
+                return []
 
             if len(pages) > 1 and not self.manager:
                 logs = io.BytesIO("\n".join(lines).encode("utf-8"))
                 logs.name = "logs.txt"
-                await bot.send_document(
+                sender = self.manager.bot if self.manager else bot
+                await sender.send_document(
                     self.chat,
                     document=logs,
                     caption="💾 <b>The message was too long, thus i send it as document</b>",
                     parse_mode="HTML",
                 )
-                return
+                self._retry_delay = self.time_threshold
+                return []
 
             await self._send(pages[0], lambda uid: self._page_buttons(uid, pages, 0))
+            self._retry_delay = self.time_threshold
+            return []
         except RetryAfter as e:
+            self._retry_delay = max(self.time_threshold, e.timeout)
             self.last_log_time = time.time() + e.timeout
-        except Exception:
-            pass
+        except Exception as error:
+            self._retry_delay = min(60, max(5, self._retry_delay * 2))
+            logging.getLogger(__name__).warning(
+                "Could not send logs to Telegram chat %s: %s",
+                self.chat,
+                SecretRedactor.text(error),
+                extra={"_shizu_skip_telegram": True},
+            )
+        return remaining
 
 
 def override_text(exception: Exception) -> str | None:
