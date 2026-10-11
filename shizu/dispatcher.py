@@ -22,6 +22,7 @@ import sys
 import traceback
 from types import FunctionType
 
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram import Client, filters, types
 from pyrogram.handlers import EditedMessageHandler, MessageHandler
 from telethon import events
@@ -29,6 +30,7 @@ from telethon import events
 from shizu import database, loader, utils
 from shizu import logger as lo
 from shizu.besafe import BeSafe
+from shizu.diagnostics import profiler, reports
 from shizu.health import reporter
 from shizu.security import SecurityManager
 
@@ -76,6 +78,27 @@ class BaseDispatcherManager:
         name = getattr(module, "name", None)
         logger.exception("Watcher of module %s failed", name or "Shizu")
         reporter.failure(f"{name or 'Shizu'} · watcher", error, name)
+
+    REPORT_PREFIX = "shizu_report:"
+
+    async def _log_failure(self, bot, handler, label: str, text: str) -> None:
+        """Send a failed command to the logs chat with a button to report it"""
+        markup = None
+        if report_id := reports.create(handler, label):
+            markup = InlineKeyboardMarkup().add(
+                InlineKeyboardButton(
+                    "📨 Send to the developer",
+                    callback_data=self.REPORT_PREFIX + report_id,
+                )
+            )
+        with contextlib.suppress(Exception):
+            await bot.send_animation(
+                database.db.get("shizu.chat", "logs", None),
+                "https://i.gifer.com/LRP3.gif",
+                caption=text,
+                parse_mode="HTML",
+                reply_markup=markup,
+            )
 
     @staticmethod
     def _tag_rules(
@@ -290,7 +313,8 @@ class DispatcherManager(BaseDispatcherManager):
             return
 
         try:
-            await func(app, message)
+            with profiler.measure(func, "command"):
+                await func(app, message)
             await app.read_chat_history(message.chat.id)
 
         except Exception:
@@ -300,14 +324,11 @@ class DispatcherManager(BaseDispatcherManager):
                 "Traceback (most recent call last):\n", ""
             )
 
+            log_message = f"⛳️ <b>Command <code>{prefix}{command}</code> failed with error:</b>\n\n{exc}\n"
+            await self._log_failure(
+                app.inline_bot, func, f"{prefix}{command}", log_message
+            )
             with contextlib.suppress(Exception):
-                log_message = f"⛳️ <b>Command <code>{prefix}{command}</code> failed with error:</b>\n\n{exc}\n"
-                await app.inline_bot.send_animation(
-                    app.db.get("shizu.chat", "logs", None),
-                    "https://i.gifer.com/LRP3.gif",
-                    caption=log_message,
-                    parse_mode="HTML",
-                )
                 answer_message = f"<emoji id=5372892693024218813>🥶</emoji> <b>Command <code>{prefix}{command}</code> failed with error:</b>\n\n<code>{trace}</code>\n"
                 await message.answer(answer_message)
 
@@ -357,7 +378,8 @@ class DispatcherManager(BaseDispatcherManager):
             except TypeError:
                 signature.bind(message)
                 arguments = (message,)
-        await watcher(*arguments)
+        with profiler.measure(watcher, "watcher"):
+            await watcher(*arguments)
 
     async def _handle_watchers(
         self, app: Client, message: types.Message
@@ -515,10 +537,18 @@ class TelethonDispatcherManager(BaseDispatcherManager):
 
         self.modules.last_commands[message.chat_id] = (command, message)
         try:
-            await func(message)
+            with profiler.measure(func, "command"):
+                await func(message)
         except Exception:
             logger.exception("Command %s%s failed", prefix, command)
             trace = utils.escape_html(traceback.format_exc(limit=-5))
+            await self._log_failure(
+                self.modules.bot_manager.bot,
+                func,
+                prefix + command,
+                f"⛳️ <b>Command <code>{utils.escape_html(prefix + command)}</code>"
+                f" failed with error:</b>\n\n<code>{trace}</code>",
+            )
             try:
                 await utils.answer(
                     message,
@@ -539,6 +569,7 @@ class TelethonDispatcherManager(BaseDispatcherManager):
                 if not self._watcher_accepts(watcher, message, prefixes):
                     continue
                 try:
-                    await watcher(message)
+                    with profiler.measure(watcher, "watcher"):
+                        await watcher(message)
                 except Exception as error:
                     self._report_watcher_error(watcher, error)

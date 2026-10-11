@@ -733,5 +733,20 @@
   "shizu.modules.ShizuFeedback.btn_banned": "🚫 Забаненные",
   "shizu.modules.ShizuFeedback.cfg_doc_greeting": "Текст, который видят люди после /start при включённом боте обратной связи",
   "shizu.modules.ShizuFeedback.cfg_label_greeting": "Приветствие",
-  "shizu.modules.ShizuFeedback.greeting": "👋 <b>Привет!</b>\n\nНапишите сообщение сюда, и я его получу. Отвечу в этом же чате."
+  "shizu.modules.ShizuFeedback.greeting": "👋 <b>Привет!</b>\n\nНапишите сообщение сюда, и я его получу. Отвечу в этом же чате.",
+  "shizu.modules.ShizuTester.perf_title": "⏱ <b>Профайлер</b> · за последние {}",
+  "shizu.modules.ShizuTester.perf_line": "<b>{}</b> · <code>{}</code> ({})\n{} вызовов · в среднем {} мс · макс {} мс · всего {} с{}",
+  "shizu.modules.ShizuTester.perf_errors": " · ⚠️ ошибок: {}",
+  "shizu.modules.ShizuTester.perf_command": "команда",
+  "shizu.modules.ShizuTester.perf_watcher": "вотчер",
+  "shizu.modules.ShizuTester.perf_empty": "⏱ Команды и вотчеры ещё не запускались",
+  "shizu.modules.ShizuTester.perf_reset": "⏱ Статистика профайлера сброшена",
+  "shizu.modules.ShizuTester.report_owner_only": "Отправлять отчёты может только владелец аккаунта",
+  "shizu.modules.ShizuTester.report_expired": "Этот отчёт больше недоступен",
+  "shizu.modules.ShizuTester.report_preview": "📨 <b>Этот отчёт уйдёт в {} от вашего аккаунта.</b> Проверьте, что в нём нет личного:",
+  "shizu.modules.ShizuTester.btn_report_send": "✅ Отправить",
+  "shizu.modules.ShizuTester.btn_report_cancel": "✖️ Отмена",
+  "shizu.modules.ShizuTester.report_sent": "✅ Отчёт отправлен",
+  "shizu.modules.ShizuTester.report_cancelled": "✖️ Отправка отменена",
+  "shizu.modules.ShizuTester.report_failed": "Не удалось отправить: {}"
 }

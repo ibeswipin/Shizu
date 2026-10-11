@@ -32,6 +32,7 @@ def module(
     version: int | float | None = None,
     *,
     is_premium: bool = False,
+    support: str | None = None,
 ) -> FunctionType:
     """Processes the module class
 
@@ -43,13 +44,17 @@ def module(
         Author of the module
 
     version (`int` | `float", optional):
-        Module version"""
+        Module version
+
+    support (`str", optional):
+        Chat or user that receives error reports, e.g. `@my_modules_chat`"""
 
     def decorator(instance: "Module"):
         """Decorator for processing module class"""
         instance.name = name
         instance.author = author
         instance.version = version
+        instance.support = support
         if is_premium:
             instance.is_premium = True
         return instance

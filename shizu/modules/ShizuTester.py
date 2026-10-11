@@ -34,13 +34,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import contextlib
+import datetime
+import html
 import io
 import logging
 import time
 
+from aiogram.types import CallbackQuery
+from aiogram.utils.exceptions import TelegramAPIError
 from pyrogram import Client, types
 
 from shizu import loader, logger
+from shizu.diagnostics import profiler, reports
 
 
 @loader.module(name="ShizuTester", author="shizu")
@@ -48,6 +54,7 @@ class TesterMod(loader.Module):
     """Userbot self-testing tools"""
 
     strings = {}
+    REPORT_PREFIX = "shizu_report:"
 
     @loader.command()
     async def logs(self, app: Client, message: types.Message):
@@ -105,3 +112,89 @@ class TesterMod(loader.Module):
 
         except ValueError:
             await message.answer(self.strings("suspend_invalid_time"))
+
+    @loader.command()
+    async def perf(self, app: Client, message: types.Message):
+        """Show the slowest and failing commands and watchers. Usage: perf (reset)"""
+        if message.get_args().strip() == "reset":
+            profiler.reset()
+            return await message.answer(self.strings("perf_reset"))
+
+        top = profiler.top()
+        if not top:
+            return await message.answer(self.strings("perf_empty"))
+
+        uptime = datetime.timedelta(seconds=round(time.time() - profiler.started))
+        lines = [self.strings("perf_title").format(uptime)]
+        for stats in top:
+            errors = (
+                self.strings("perf_errors").format(stats.errors) if stats.errors else ""
+            )
+            lines.append(
+                self.strings("perf_line").format(
+                    html.escape(stats.module),
+                    html.escape(stats.handler),
+                    self.strings(f"perf_{stats.kind}"),
+                    stats.calls,
+                    round(stats.total / stats.calls * 1000),
+                    round(stats.slowest * 1000),
+                    round(stats.total, 1),
+                    errors,
+                )
+            )
+        await message.answer("\n\n".join(lines))
+
+    async def report_callback_handler(self, call: CallbackQuery):
+        data = call.data or ""
+        if not data.startswith(self.REPORT_PREFIX):
+            return
+        if call.from_user.id != self.me.id:
+            return await call.answer(self.strings("report_owner_only"), show_alert=True)
+
+        action, _, report_id = data[len(self.REPORT_PREFIX) :].rpartition(":")
+        report = reports.get(report_id)
+        if not report:
+            return await call.answer(self.strings("report_expired"), show_alert=True)
+        support, text = report
+
+        if not action:
+            await call.answer()
+            return await self._bot.send_message(
+                call.message.chat.id,
+                self.strings("report_preview").format(html.escape(support))
+                + "\n\n"
+                + text,
+                reply_to_message_id=call.message.message_id,
+                reply_markup=self.bot._generate_markup(
+                    [
+                        [
+                            {
+                                "text": self.strings("btn_report_send"),
+                                "data": f"{self.REPORT_PREFIX}send:{report_id}",
+                            },
+                            {
+                                "text": self.strings("btn_report_cancel"),
+                                "data": f"{self.REPORT_PREFIX}cancel:{report_id}",
+                            },
+                        ]
+                    ]
+                ),
+            )
+
+        if action == "send":
+            try:
+                await self.app.send_message(support, text)
+            except Exception as error:
+                return await call.answer(
+                    self.strings("report_failed").format(error), show_alert=True
+                )
+            reports.pop(report_id)
+            await call.answer(self.strings("report_sent"))
+            status = self.strings("report_sent")
+        else:
+            reports.pop(report_id)
+            await call.answer()
+            status = self.strings("report_cancelled")
+
+        with contextlib.suppress(TelegramAPIError):
+            await call.message.edit_text(status)

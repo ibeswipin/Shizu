@@ -681,5 +681,20 @@
   "shizu.modules.ShizuFeedback.btn_banned": "🚫 Bloklanganlar",
   "shizu.modules.ShizuFeedback.cfg_doc_greeting": "Fikr-mulohaza boti yoqilganda /start dan keyin ko'rinadigan matn",
   "shizu.modules.ShizuFeedback.cfg_label_greeting": "Salomlashuv",
-  "shizu.modules.ShizuFeedback.greeting": "👋 <b>Salom!</b>\n\nXabaringizni shu yerga yozing, men uni olaman. Shu chatda javob beraman."
+  "shizu.modules.ShizuFeedback.greeting": "👋 <b>Salom!</b>\n\nXabaringizni shu yerga yozing, men uni olaman. Shu chatda javob beraman.",
+  "shizu.modules.ShizuTester.perf_title": "⏱ <b>Profayler</b> · oxirgi {}",
+  "shizu.modules.ShizuTester.perf_line": "<b>{}</b> · <code>{}</code> ({})\n{} chaqiruv · o'rtacha {} ms · maks {} ms · jami {} s{}",
+  "shizu.modules.ShizuTester.perf_errors": " · ⚠️ {} xato",
+  "shizu.modules.ShizuTester.perf_command": "buyruq",
+  "shizu.modules.ShizuTester.perf_watcher": "watcher",
+  "shizu.modules.ShizuTester.perf_empty": "⏱ Hali hech qanday buyruq yoki watcher ishlamadi",
+  "shizu.modules.ShizuTester.perf_reset": "⏱ Profayler statistikasi tozalandi",
+  "shizu.modules.ShizuTester.report_owner_only": "Hisobotni faqat akkaunt egasi yubora oladi",
+  "shizu.modules.ShizuTester.report_expired": "Bu hisobot endi mavjud emas",
+  "shizu.modules.ShizuTester.report_preview": "📨 <b>Bu hisobot akkauntingizdan {} ga yuboriladi.</b> Unda shaxsiy ma'lumot yo'qligini tekshiring:",
+  "shizu.modules.ShizuTester.btn_report_send": "✅ Yuborish",
+  "shizu.modules.ShizuTester.btn_report_cancel": "✖️ Bekor qilish",
+  "shizu.modules.ShizuTester.report_sent": "✅ Hisobot yuborildi",
+  "shizu.modules.ShizuTester.report_cancelled": "✖️ Hisobot bekor qilindi",
+  "shizu.modules.ShizuTester.report_failed": "Yuborib bo'lmadi: {}"
 }

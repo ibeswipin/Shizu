@@ -732,5 +732,20 @@
   "shizu.modules.ShizuFeedback.btn_banned": "🚫 Banned",
   "shizu.modules.ShizuFeedback.cfg_doc_greeting": "Text people see after /start while the feedback bot is on",
   "shizu.modules.ShizuFeedback.cfg_label_greeting": "Greeting",
-  "shizu.modules.ShizuFeedback.greeting": "👋 <b>Hi!</b>\n\nWrite your message here and I will get it. I will reply in this chat."
+  "shizu.modules.ShizuFeedback.greeting": "👋 <b>Hi!</b>\n\nWrite your message here and I will get it. I will reply in this chat.",
+  "shizu.modules.ShizuTester.perf_title": "⏱ <b>Profiler</b> · since {} ago",
+  "shizu.modules.ShizuTester.perf_line": "<b>{}</b> · <code>{}</code> ({})\n{} calls · avg {} ms · max {} ms · total {} s{}",
+  "shizu.modules.ShizuTester.perf_errors": " · ⚠️ {} errors",
+  "shizu.modules.ShizuTester.perf_command": "command",
+  "shizu.modules.ShizuTester.perf_watcher": "watcher",
+  "shizu.modules.ShizuTester.perf_empty": "⏱ No commands or watchers have run yet",
+  "shizu.modules.ShizuTester.perf_reset": "⏱ Profiler stats cleared",
+  "shizu.modules.ShizuTester.report_owner_only": "Only the account owner can send reports",
+  "shizu.modules.ShizuTester.report_expired": "This report is no longer available",
+  "shizu.modules.ShizuTester.report_preview": "📨 <b>This report will be sent to {} from your account.</b> Check that it has nothing private:",
+  "shizu.modules.ShizuTester.btn_report_send": "✅ Send",
+  "shizu.modules.ShizuTester.btn_report_cancel": "✖️ Cancel",
+  "shizu.modules.ShizuTester.report_sent": "✅ Report sent",
+  "shizu.modules.ShizuTester.report_cancelled": "✖️ Report cancelled",
+  "shizu.modules.ShizuTester.report_failed": "Could not send: {}"
 }
