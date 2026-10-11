@@ -40,7 +40,7 @@ class ShizuFeedback(loader.Module):
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "enabled",
-                False,
+                True,
                 lambda m: self.strings("cfg_doc_enabled"),
                 validator=loader.validators.Boolean(),
                 label=lambda: self.strings("cfg_label_enabled"),
