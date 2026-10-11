@@ -70,10 +70,24 @@ class DependencyInstaller:
             return None
         return cls.IMPORT_PACKAGES.get(name, name)
 
-    @staticmethod
-    def declared_requirements(source):
+    @classmethod
+    def normalize_requirements(cls, requirements):
+        result = []
+        for item in requirements:
+            match = re.match(r"^([A-Za-z][A-Za-z0-9_.-]*)(?=$|[<>=!~\[])", item)
+            if match:
+                name = match[1]
+                if name.split(".", 1)[0] in sys.stdlib_module_names:
+                    continue
+                item = cls.IMPORT_PACKAGES.get(name, name) + item[match.end() :]
+            if item not in result:
+                result.append(item)
+        return result
+
+    @classmethod
+    def declared_requirements(cls, source):
         match = VALID_PIP_PACKAGES.search(source)
-        return (
+        return cls.normalize_requirements(
             [item for item in match[1].split() if item[0] not in ("-", "_", ".")]
             if match
             else []
@@ -84,9 +98,12 @@ class DependencyInstaller:
         if os.path.isdir(target):
             site.addsitedir(target)
 
-    @staticmethod
-    async def install(requirements, target=MODULE_DEPENDENCIES):
+    @classmethod
+    async def install(cls, requirements, target=MODULE_DEPENDENCIES):
         """Install dependencies into SHIZU_DEPS_DIR, the venv or a project-local directory."""
+        requirements = cls.normalize_requirements(requirements)
+        if not requirements:
+            return
         local = bool(os.environ.get("SHIZU_DEPS_DIR")) or sys.prefix == sys.base_prefix
         if importlib.util.find_spec("pip") is None:
             await utils.run_sync(

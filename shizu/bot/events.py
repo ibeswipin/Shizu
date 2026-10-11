@@ -96,7 +96,7 @@ async def delete(self: Any = None, form: Any = None, form_uid: Any = None) -> bo
             self._forms[form_uid]["chat"], self._forms[form_uid]["message_id"]
         )
 
-        del self._forms[form_uid]
+        self._expire(form_uid)
 
     except Exception:
         return False
@@ -431,13 +431,15 @@ class Events(Item):
         def keyboard():
             row = []
             if position["index"] > 0:
-                row.append({"text": "⬅️", "callback": functools.partial(navigate, -1)})
+                row.append(controls["previous"])
             if not isinstance(next_handler, (list, tuple)) or position[
                 "index"
             ] + 1 < len(next_handler):
-                row.append({"text": "➡️", "callback": functools.partial(navigate, 1)})
-            row.append({"text": "🔻", "callback": close})
-            buttons = [row, *extra]
+                row.append(controls["next"])
+            buttons = ([row] if row else []) + [
+                *extra,
+                [controls["close"]],
+            ]
             for button in (b for r in buttons for b in r):
                 button["force_me"] = not open_to_all
             return buttons
@@ -474,6 +476,8 @@ class Events(Item):
                 if gif
                 else aiogram.types.InputMediaPhoto
             )
+            buttons = keyboard()
+            self._forms[result]["buttons"] = buttons
             await self.bot.edit_message_media(
                 media=media_cls(
                     history[target], caption=caption_for(target), parse_mode="HTML"
@@ -481,22 +485,24 @@ class Events(Item):
                 inline_message_id=call.inline_message_id,
                 chat_id=None if call.inline_message_id else call.message.chat.id,
                 message_id=None if call.inline_message_id else call.message.message_id,
-                reply_markup=self._generate_markup(keyboard()),
+                reply_markup=self._generate_markup(result),
             )
             await call.answer()
 
         async def close(call):
             if not await guard(call):
                 return
-            if call.inline_message_id:
-                await self.bot.edit_message_caption(
-                    inline_message_id=call.inline_message_id,
-                    caption="🔻",
-                    reply_markup=None,
-                )
-            else:
-                await call.message.delete()
+            if not await delete(self=self, form_uid=result):
+                return await call.answer("Can't delete this message", show_alert=True)
+            for button in controls.values():
+                self._custom_map.pop(button.get("_callback_data"), None)
+            await call.answer()
 
+        controls = {
+            "previous": {"text": "⬅️", "callback": functools.partial(navigate, -1)},
+            "next": {"text": "➡️", "callback": functools.partial(navigate, 1)},
+            "close": {"text": "🔻 Close", "callback": close},
+        }
         result = await self.form(
             caption_for(0),
             message,
