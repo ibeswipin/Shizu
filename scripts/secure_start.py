@@ -23,7 +23,7 @@ PUBLIC_KEY_HEX = "3803e376267ae17b2445fa21c7a521717069d3cce57840f6dd3c116adc5e6c
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def read_bootstrap(filename, *, repair_permissions=False):
+def read_bootstrap(filename):
     directory = os.open(ROOT / "shizu", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     descriptor = None
     try:
@@ -34,7 +34,6 @@ def read_bootstrap(filename, *, repair_permissions=False):
         if (
             not stat.S_ISREG(info.st_mode)
             or info.st_nlink != 1
-            or (info.st_mode & 0o022 and not repair_permissions)
             or info.st_size > 4 * 1024 * 1024
         ):
             raise RuntimeError("Unsafe release bootstrap file")
@@ -56,12 +55,12 @@ def main():
         raise RuntimeError("Use --fix-permissions without other arguments")
     # Authenticate the verifier before executing any code from the checkout.
     public = bytes.fromhex(PUBLIC_KEY_HEX)
-    manifest = read_bootstrap("core-manifest.json", repair_permissions=repair_permissions)
+    manifest = read_bootstrap("core-manifest.json")
     Ed25519PublicKey.from_public_bytes(public).verify(
-        read_bootstrap("core-manifest.sig", repair_permissions=repair_permissions), manifest
+        read_bootstrap("core-manifest.sig"), manifest
     )
     payload = json.loads(manifest)
-    source = read_bootstrap("integrity.py", repair_permissions=repair_permissions)
+    source = read_bootstrap("integrity.py")
     if hashlib.sha256(source).hexdigest() != payload["files"].get("shizu/integrity.py"):
         raise RuntimeError("The release verifier was modified")
     # Execute the exact authenticated source, avoiding pre-existing .pyc files.
@@ -72,13 +71,13 @@ def main():
     sys.modules[name] = module
     exec(compile(source, str(filename), "exec"), module.__dict__)
     if repair_permissions:
+        module.Release(ROOT, public, strict_permissions=False).verify_tree()
         module.ReleaseFiles(ROOT).secure_permissions()
         module.Release(ROOT, public).verify_tree()
         print("Protected file permissions secured; release signature and hashes verified.")
         return
-    release = module.Release(ROOT, public)
     sys.path.insert(0, str(ROOT))
-    module.runtime.install(release)
+    module.runtime.install()
     sys.argv[0] = str(ROOT / "shizu/__main__.py")
     runpy.run_module("shizu", run_name="__main__", alter_sys=True)
 

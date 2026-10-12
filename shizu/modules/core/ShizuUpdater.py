@@ -100,7 +100,7 @@ class UpdateMod(loader.Module):
         changed = (
             "Already up to date." not in check_output("git pull", shell=True).decode()
         )
-        Release(pinned.root, pinned.public_key).verify_tree()
+        Release(pinned.root, pinned.public_key, strict_permissions=False).verify_and_secure()
         return changed
 
     def _restart_record(
