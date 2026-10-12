@@ -17,9 +17,7 @@
 import hashlib
 import logging
 import os
-import random
 import re
-import string
 import subprocess
 import sys
 
@@ -112,19 +110,17 @@ class ModuleLoader:
         else:
             module_source = original_source
 
-        module_name = f"shizu.modules.{manager.me.id}-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(10))}"
-        pattern = re.compile(
-            r"@loader\.module\((.*?)\)\s*(?:@[^\n]+\n\s*)*class\s+(\w+)\(", re.S
-        )
-
-        if match := pattern.search(module_source):
-            module_name = f"shizu.modules.{match[2]}"
-        else:
+        try:
+            class_name = ModuleCompiler.module_class_name(module_source)
+        except SyntaxError as error:
+            return self._fail(original_source, origin, error)
+        if class_name is None:
             return self._fail(
                 original_source,
                 origin,
                 "Module class with @loader.module was not found",
             )
+        module_name = f"shizu.modules.{class_name}"
 
         if match := re.search(r"# ?only: ?(.+)", module_source):
             allowed_accounts = match[1].split(",") if match else []

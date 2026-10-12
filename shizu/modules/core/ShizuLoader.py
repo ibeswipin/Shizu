@@ -982,6 +982,7 @@ class Loader(loader.Module):
 
         try:
             with file:
+                file.seek(0)
                 module_source = file.read().decode("utf-8")
 
         except UnicodeDecodeError:

@@ -14,6 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import ast
 import sys
 from importlib.abc import SourceLoader
 from importlib.machinery import ModuleSpec
@@ -47,6 +48,42 @@ class StringLoader(SourceLoader):
 
 class ModuleCompiler:
     """Build import specs and record BeSafe provenance before executing code."""
+
+    @staticmethod
+    def module_class_name(source: str) -> str | None:
+        tree = ast.parse(source.encode("utf-8"))
+        loader_names = {"loader"}
+        decorator_names = set()
+        for statement in tree.body:
+            if not isinstance(statement, ast.ImportFrom):
+                continue
+            if statement.module in (None, "shizu"):
+                loader_names.update(
+                    item.asname or item.name
+                    for item in statement.names if item.name == "loader"
+                )
+            elif statement.module in ("loader", "shizu.loader"):
+                decorator_names.update(
+                    item.asname or item.name
+                    for item in statement.names if item.name == "module"
+                )
+        for statement in tree.body:
+            if not isinstance(statement, ast.ClassDef):
+                continue
+            for decorator in statement.decorator_list:
+                if not isinstance(decorator, ast.Call):
+                    continue
+                function = decorator.func
+                if (
+                    isinstance(function, ast.Attribute)
+                    and function.attr == "module"
+                    and isinstance(function.value, ast.Name)
+                    and function.value.id in loader_names
+                ) or (
+                    isinstance(function, ast.Name) and function.id in decorator_names
+                ):
+                    return statement.name
+        return None
 
     @staticmethod
     def source_spec(name: str, source: str, origin: str, *, has_location=False):

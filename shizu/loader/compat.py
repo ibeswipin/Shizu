@@ -14,6 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import ast
 import inspect
 import logging
 import re
@@ -47,6 +48,34 @@ class TelethonCompatibility:
 
         if re.search(r"^\s*(?:from|import)\s+pyrogram\b", source_code, re.MULTILINE):
             return False
+
+        try:
+            tree = ast.parse(source_code.encode("utf-8"))
+        except SyntaxError:
+            tree = None
+        for node in tree.body if tree else ():
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for method in node.body:
+                if not isinstance(method, (ast.AsyncFunctionDef, ast.FunctionDef)):
+                    continue
+                decorators = [
+                    decorator.func if isinstance(decorator, ast.Call) else decorator
+                    for decorator in method.decorator_list
+                ]
+                if not (
+                    method.name.endswith("cmd")
+                    or method.name == "watcher"
+                    or any(
+                        isinstance(decorator, ast.Attribute)
+                        and decorator.attr in ("command", "watcher")
+                        for decorator in decorators
+                    )
+                ):
+                    continue
+                parameters = method.args.posonlyargs + method.args.args
+                if [parameter.arg for parameter in parameters[:3]] == ["self", "app", "message"]:
+                    return False
 
         return any(
             re.search(pattern, source_code, re.IGNORECASE)
