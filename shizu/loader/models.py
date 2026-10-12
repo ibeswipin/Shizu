@@ -147,6 +147,25 @@ class Module:
         """Ask the owner through the inline bot whether to join `peer`"""
         return await self.all_modules.request_join(self, peer, reason)
 
+    def schedule(self, when: Any, method: str, payload: Any = None) -> str:
+        """Call `await self.<method>(payload)` once at `when`, even after a restart
+
+        `when` is a delay in seconds, a `timedelta` or a `datetime`.
+        `payload` must be JSON-serialisable. Returns the task id."""
+        return self.all_modules.scheduler.add(self, when, method, payload)
+
+    def unschedule(self, task_id: str) -> bool:
+        """Cancel a task of this module; False when it is not found"""
+        return self.all_modules.scheduler.cancel(self, task_id)
+
+    def unschedule_all(self, method: str, payload: Any = None) -> int:
+        """Cancel every task of this module calling `method` with exactly `payload`"""
+        return self.all_modules.scheduler.cancel_matching(self, method, payload)
+
+    def scheduled(self) -> dict:
+        """Pending tasks of this module as `{task_id: task}`"""
+        return self.all_modules.scheduler.of(self)
+
 
 class Library:
     """Shared code loaded with `import_lib`; `init` is awaited once after loading"""

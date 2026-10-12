@@ -75,6 +75,7 @@ from .decorators import loop as loop
 from .decorators import module as module
 from .decorators import on as on
 from .decorators import on_bot as on_bot
+from .decorators import on_start as on_start
 from .decorators import ratelimit as ratelimit
 from .decorators import raw_handler as raw_handler
 from .decorators import tag as tag

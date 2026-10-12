@@ -62,6 +62,7 @@ from pyrogram.types import Chat, Message, User
 from pyrogram.types.messages_and_media.message import Str
 
 from shizu import database
+from shizu.safemode import SafeMode
 from shizu.telegram.state import TelethonConnectionState
 
 FormattingEntity = (
@@ -250,8 +251,22 @@ def get_args(message: Message | str) -> str | list[str]:
     return " ".join(args) if args else ""
 
 
+def parse_duration(text: str) -> int | None:
+    """Seconds in `30m`, `2h`, `1d12h` (s, m, h, d, w); None when not a duration"""
+    text = (text or "").strip().lower()
+    if not re.fullmatch(r"(?:\d+[smhdw])+", text):
+        return None
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+    seconds = sum(
+        int(number) * units[unit] for number, unit in re.findall(r"(\d+)(\w)", text)
+    )
+    return seconds or None
+
+
 def restart():
     """Restart the bot"""
+    with contextlib.suppress(Exception):
+        SafeMode.stopped_cleanly(database.db)
     sys.stdout.flush()
     sys.stderr.flush()
     os.execl(sys.executable, sys.executable, "-m", "shizu")

@@ -339,6 +339,7 @@ class Events(Item):
 
     async def _message_handler(self, message: Message) -> Message:
         message.answer = functools.partial(answer, app=self, message=message)
+        await self._start_payload_handler(message)
 
         for func in self._all_modules.message_handlers.values():
             if not await self._check_filters(func, func.__self__, message):
@@ -359,6 +360,28 @@ class Events(Item):
                     "aiogram_watcher of %s failed", getattr(module, "name", module)
                 )
         return message
+
+    async def _start_payload_handler(self, message: Message) -> None:
+        command, _, payload = (message.text or "").partition(" ")
+        if command != "/start" or not payload or message.chat.type != "private":
+            return
+        for module in list(self._all_modules.modules):
+            for _, method in inspect.getmembers(
+                type(module), lambda m: hasattr(m, "start_prefix")
+            ):
+                prefix = method.start_prefix
+                if payload != prefix and not payload.startswith(prefix + "_"):
+                    continue
+                try:
+                    await getattr(module, method.__name__)(
+                        message, payload[len(prefix) + 1 :]
+                    )
+                except Exception:
+                    logger.exception(
+                        "Start link handler of %s failed",
+                        getattr(module, "name", module),
+                    )
+                return
 
     async def _edited_message_handler(self, message: Message) -> None:
         for module in list(self._all_modules.modules):

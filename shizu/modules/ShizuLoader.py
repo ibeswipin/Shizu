@@ -215,6 +215,73 @@ class Loader(loader.Module):
             if self._repository_module(url := self._origin(module))
         }
 
+    async def on_load(self, app: Client):
+        safe_mode = self.all_modules.safe_mode
+        if not safe_mode.active:
+            return
+        if safe_mode.forced:
+            text = self.strings("safe_mode_forced")
+        else:
+            text = self.strings("safe_mode_failed").format(safe_mode.starts - 1)
+        if safe_mode.suspect:
+            text += "\n\n" + self.strings("safe_mode_suspect").format(
+                utils.escape_html(safe_mode.suspect)
+            )
+        elif not safe_mode.forced:
+            text += "\n\n" + self.strings("safe_mode_unknown")
+        buttons = [
+            {
+                "text": self.strings("safe_mode_retry"),
+                "callback": self.inline__safe_mode,
+                "args": (False,),
+                "force_me": True,
+            }
+        ]
+        if safe_mode.suspect:
+            buttons.insert(
+                0,
+                {
+                    "text": self.strings("safe_mode_remove"),
+                    "callback": self.inline__safe_mode,
+                    "args": (True,),
+                    "force_me": True,
+                },
+            )
+        try:
+            await self.bot.bot.send_message(
+                self.me.id,
+                text,
+                reply_markup=self.bot._generate_markup([[b] for b in buttons]),
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            logger.exception("Could not send the safe mode notice")
+
+    async def inline__safe_mode(self, call, remove: bool):
+        if call.from_user.id != self.me.id:
+            return await call.answer(self.strings("update_owner"), show_alert=True)
+        safe_mode = self.all_modules.safe_mode
+        if remove and not safe_mode.remove_suspect(self.all_modules):
+            return await call.answer(
+                self.strings("safe_mode_remove_failed"), show_alert=True
+            )
+        safe_mode.leave()
+        await call.answer()
+        await self._edit_update_message(call, self.strings("safe_mode_restarting"))
+        utils.restart()
+
+    @loader.command()
+    async def safemode(self, app: Client, message: types.Message):
+        """Restart without third-party modules, or back with them. Usage: safemode"""
+        safe_mode = self.all_modules.safe_mode
+        if safe_mode.active:
+            safe_mode.leave()
+            await message.answer(self.strings("safe_mode_off"))
+        else:
+            self.db.set(safe_mode.SECTION, "forced", True)
+            await message.answer(self.strings("safe_mode_on"))
+        utils.restart()
+
     @loader.loop(interval="update_check_interval", autostart=True, wait_before=True)
     async def check_module_updates(self):
         """Announce changed pinned sources without installing or approving them."""

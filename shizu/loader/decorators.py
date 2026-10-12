@@ -270,6 +270,19 @@ def tag(*tags: str, **kwargs):
     return decorator
 
 
+def on_start(prefix: str):
+    """Handle bot deep links `t.me/<bot>?start=<prefix>_<rest>` or `?start=<prefix>`
+
+    The method receives the bot message and the rest after the prefix:
+    `async def store_start(self, message, payload): ...`"""
+
+    def decorator(func):
+        func.start_prefix = prefix
+        return func
+
+    return decorator
+
+
 def on_bot(custom_filters):
     """Creates a filter for bot command"""
     return lambda func: setattr(func, "_filters", custom_filters) or func

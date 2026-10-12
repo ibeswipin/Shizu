@@ -25,6 +25,7 @@ from pyrogram import Client, types
 from shizu import bot, database, dispatcher, extrapatchs, health, loader, utils
 from shizu import logger as logger_
 from shizu.remote import RemoteModuleRegistry
+from shizu.safemode import SafeMode
 from shizu.telegram.exceptions import TelegramConnectionError
 from shizu.translator import Translator
 
@@ -36,6 +37,7 @@ from .lifecycle import ModuleLifecycle
 from .loading import ModuleLoader
 from .models import Library, Module
 from .registration import ModuleRegistrar
+from .scheduler import TaskScheduler
 from .sources import ModuleSources
 
 
@@ -58,6 +60,8 @@ class ModulesManager:
 
         self._db = db
         self.remote_modules = RemoteModuleRegistry(db)
+        self.safe_mode = SafeMode(db)
+        self.scheduler = TaskScheduler(self)
         self.me = me
 
         self.aliases = self._db.get("shizu.loader", "aliases", {})
@@ -137,7 +141,10 @@ class ModulesManager:
 
         sources = ModuleSources(self)
         await sources.load_local()
-        await sources.load_remote()
+        if not self.safe_mode.active:
+            await sources.load_remote()
+        utils.spawn(self.safe_mode.watch())
+        self.scheduler.start()
         return True
 
     def _register_local(self, module_name: str, file_path: str, source_code: str):

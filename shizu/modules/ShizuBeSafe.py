@@ -519,17 +519,37 @@ class BeSafe(loader.Module):
 
     @loader.command()
     async def bstrust(self, app: Client, message: types.Message):
-        """<url prefix> — add a trusted source (modules from it load without approval)"""
+        """<url prefix> [time] — trust a source; its modules load without approval"""
         if not self._is_self(message):
             return
-        url = (message.get_args_raw() or "").strip()
-        if not url.startswith("https://") or not urlparse(url).hostname:
+        url, _, duration = (message.get_args_raw() or "").strip().partition(" ")
+        seconds = utils.parse_duration(duration)
+        if (
+            not url.startswith("https://")
+            or not urlparse(url).hostname
+            or (duration and not seconds)
+        ):
             return await message.answer(self.strings("trust_usage"))
         url = normalize_prefix(url)
         trusted = self._get("trusted", [])
         if url not in trusted:
             self.db.set(self.name, "trusted", trusted + [url])
-        await message.answer(self.strings("trusted").format(utils.escape_html(url)))
+        self.unschedule_all("_expire_trust", url)
+        text = self.strings("trusted").format(utils.escape_html(url))
+        if seconds:
+            self.schedule(seconds, "_expire_trust", url)
+            text += self.strings("trusted_for").format(utils.escape_html(duration))
+        await message.answer(text)
+
+    async def _expire_trust(self, url: str) -> None:
+        self.db.set(
+            self.name, "trusted", [t for t in self._get("trusted", []) if t != url]
+        )
+        with contextlib.suppress(Exception):
+            await self._bot.send_message(
+                self.me.id,
+                self.strings("trust_expired").format(utils.escape_html(url)),
+            )
 
     @loader.command()
     async def bsuntrust(self, app: Client, message: types.Message):
@@ -541,4 +561,5 @@ class BeSafe(loader.Module):
         if url not in trusted:
             return await message.answer(self.strings("trust_missing"))
         self.db.set(self.name, "trusted", [t for t in trusted if t != url])
+        self.unschedule_all("_expire_trust", url)
         await message.answer(self.strings("untrusted").format(utils.escape_html(url)))

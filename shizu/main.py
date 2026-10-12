@@ -20,6 +20,7 @@ from pyrogram.methods.utilities.idle import idle
 from shizu import auth, database, loader
 from shizu.besafe import BeSafe
 from shizu.ratelimit import ApiLimiter
+from shizu.safemode import SafeMode
 
 
 async def main():
@@ -57,6 +58,7 @@ async def main():
             db.set("shizu.me", "me", id_)
 
         await idle()
+        SafeMode.stopped_cleanly(db)
     finally:
         if getattr(app, "web_panel", None):
             try:

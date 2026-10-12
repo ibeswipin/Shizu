@@ -66,7 +66,18 @@ class ModuleLifecycle:
         manager = self.manager
         for module in list(manager.modules):
             manager.config_reconfigure(module, manager._db)
-            await manager.send_on_load(module, Translator(manager._app, manager._db))
+            guard = contextlib.nullcontext()
+            if not manager.is_core(module) and not getattr(
+                module, "_client_ready_called", False
+            ):
+                spec = getattr(inspect.getmodule(module), "__spec__", None)
+                guard = manager.safe_mode.loading(
+                    getattr(spec, "origin", None) or module.name
+                )
+            with guard:
+                await manager.send_on_load(
+                    module, Translator(manager._app, manager._db)
+                )
 
     async def start(self, module: Module, translator: Translator) -> bool:
         """Used to perform the function after loading the module"""

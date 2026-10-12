@@ -64,6 +64,9 @@ class ModuleSources:
 
         await manager.send_on_loads()
 
+        if manager.safe_mode.active:
+            deferred = []
+
         for module_name, file_path, source_code in deferred:
             if manager.load_guard:
                 try:
@@ -72,7 +75,8 @@ class ModuleSources:
                 except Exception:
                     logging.exception("load_guard failed for %s", file_path)
                     continue
-            manager._register_local(module_name, file_path, source_code)
+            with manager.safe_mode.loading(file_path):
+                manager._register_local(module_name, file_path, source_code)
 
         await manager.send_on_loads()
 
@@ -80,7 +84,8 @@ class ModuleSources:
         manager = self.manager
         for custom_module in list(manager._db.get("shizu.loader", "modules", [])):
             try:
-                await manager.load_remote_module(custom_module)
+                with manager.safe_mode.loading(custom_module):
+                    await manager.load_remote_module(custom_module)
             except (RemoteModuleError, requests.exceptions.RequestException, OSError):
                 continue
 

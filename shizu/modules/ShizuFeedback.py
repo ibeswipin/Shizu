@@ -51,6 +51,13 @@ class ShizuFeedback(loader.Module):
                 lambda m: self.strings("cfg_doc_greeting"),
                 label=lambda: self.strings("cfg_label_greeting"),
             ),
+            loader.ConfigValue(
+                "flood_ban_minutes",
+                60,
+                lambda m: self.strings("cfg_doc_flood_ban"),
+                validator=loader.validators.Integer(minimum=0),
+                label=lambda: self.strings("cfg_label_flood_ban"),
+            ),
         )
         self._flood = {}
 
@@ -101,9 +108,13 @@ class ShizuFeedback(loader.Module):
         if self._flooding(user.id):
             banned.append(user.id)
             self._set("banned", banned)
+            notice = self.strings("flood_banned").format(self._mention(user))
+            if minutes := self.config["flood_ban_minutes"]:
+                self.schedule(minutes * 60, "_flood_unban", user.id)
+                notice += self.strings("flood_ban_time").format(minutes)
             await self._bot.send_message(
                 self.me.id,
-                self.strings("flood_banned").format(self._mention(user)),
+                notice,
                 reply_markup=self.bot._generate_markup(
                     [
                         [
@@ -168,6 +179,7 @@ class ShizuFeedback(loader.Module):
                 target = int(args[0])
             if not target:
                 return await message.reply(self.strings("no_target"))
+            self.unschedule_all("_flood_unban", target)
             banned = [i for i in self._get("banned", []) if i != target]
             if command == "/ban":
                 banned.append(target)
@@ -300,8 +312,12 @@ class ShizuFeedback(loader.Module):
         user_id = payload
         if action != "unban" or not user_id.isdigit():
             return
-        self._set("banned", [i for i in self._get("banned", []) if i != int(user_id)])
-        self._flood.pop(int(user_id), None)
+        await self._flood_unban(int(user_id))
+        self.unschedule_all("_flood_unban", int(user_id))
         await call.answer(self.strings("unbanned").format(user_id))
         with contextlib.suppress(TelegramAPIError):
             await call.message.edit_reply_markup(None)
+
+    async def _flood_unban(self, user_id):
+        self._set("banned", [i for i in self._get("banned", []) if i != user_id])
+        self._flood.pop(user_id, None)

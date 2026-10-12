@@ -14,6 +14,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import logging
+
 from aiogram.types import CallbackQuery
 from pyrogram import Client
 from pyrogram.types import Message
@@ -26,6 +28,10 @@ class ShizuPermissions(loader.Module):
     """Give command permissions to users and manage command groups"""
 
     strings = {}
+    GRANT_STORES = {
+        "command": ("shizu.permissions", "users"),
+        "group": ("shizu.commandgroups", "user_groups"),
+    }
 
     async def inline__close(self, call: CallbackQuery) -> None:
         """Close inline form"""
@@ -80,6 +86,7 @@ class ShizuPermissions(loader.Module):
             await call.edit(text, reply_markup=markup)
 
     def _set_owner(self, user_id: int, add: bool) -> None:
+        self.unschedule_all("_expire_owner", user_id)
         owners = set(self.db.get("shizu.me", "owners", []))
         owners = owners | {user_id} if add else owners - {user_id}
         self.db.set("shizu.me", "owners", sorted(owners))
@@ -187,22 +194,116 @@ class ShizuPermissions(loader.Module):
         text, markup = await self._owners_view()
         await call.edit(text, reply_markup=markup, inline_message_id=cid)
 
+    async def _expire_owner(self, user_id: int) -> None:
+        self._set_owner(user_id, False)
+        await self._notify_expired(user_id, self.strings("owner_expired"))
+
+    async def _expire_grant(self, grant: dict) -> None:
+        section, field = self.GRANT_STORES[grant["kind"]]
+        data = self.db.get(section, field, {})
+        items = [i for i in data.get(grant["user"], []) if i != grant["name"]]
+        if items:
+            data[grant["user"]] = items
+        else:
+            data.pop(grant["user"], None)
+        self.db.set(section, field, data)
+        await self._notify_expired(
+            int(grant["user"]),
+            self.strings("grant_expired").format(
+                "{}", utils.escape_html(grant["name"])
+            ),
+        )
+
+    async def _notify_expired(self, user_id: int, text: str) -> None:
+        try:
+            mention = (await self.app.get_users(user_id)).mention
+        except Exception:
+            mention = f"<code>{user_id}</code>"
+        try:
+            await self._bot.send_message(self.me.id, text.format(mention))
+        except Exception:
+            logging.exception("Could not report expired access")
+
+    @staticmethod
+    def _split_duration(args: str) -> tuple[str, int | None, str]:
+        head, _, tail = args.rpartition(" ")
+        if head and (seconds := utils.parse_duration(tail)):
+            return head.strip(), seconds, tail
+        return args, None, ""
+
     @loader.command(aliases=["owners", "ownermod", "addowner", "delowner"])
     async def owner(self, app: Client, message: Message):
-        """[user] - Owners panel, or add / remove the user as an owner"""
+        """[user] [time] - Owners panel, add / remove an owner, or add one for 2h, 1d"""
         args = utils.get_args_raw(message).strip()
         if not args:
             text, markup = await self._owners_view()
             return await message.answer(text, reply_markup=markup)
+        args, seconds, duration = self._split_duration(args)
         try:
             user = await app.get_users(args)
         except Exception:
             return await utils.answer(message, self.strings("owner_who"))
+        if seconds:
+            self._set_owner(user.id, True)
+            self.schedule(seconds, "_expire_owner", user.id)
+            return await utils.answer(
+                message,
+                self.strings("owner_done_for").format(
+                    user.mention, utils.escape_html(duration)
+                ),
+            )
         add = user.id not in self.db.get("shizu.me", "owners", [])
         self._set_owner(user.id, add)
         await utils.answer(
             message,
             self.strings("owner_done" if add else "owner_doned").format(user.mention),
+        )
+
+    @loader.command()
+    async def grant(self, app: Client, message: Message):
+        """<user> <command | group> <time> - Give access for a while: grant @user ping 2h"""
+        parts = utils.get_args_raw(message).split()
+        if len(parts) != 3 or not (seconds := utils.parse_duration(parts[2])):
+            return await utils.answer(message, self.strings("grant_usage"))
+        try:
+            user = await app.get_users(parts[0])
+        except Exception:
+            return await utils.answer(message, self.strings("owner_who"))
+
+        name = parts[1]
+        if name in self.db.get("shizu.commandgroups", "groups", {}):
+            kind = "group"
+        else:
+            name, handler = self.all_modules.dispatch(name)
+            if not handler:
+                return await utils.answer(
+                    message,
+                    self.strings("command_not_found").format(utils.escape_html(name)),
+                )
+            kind = "command"
+
+        section, field = self.GRANT_STORES[kind]
+        data = self.db.get(section, field, {})
+        items = data.setdefault(str(user.id), [])
+        if name in items:
+            return await utils.answer(
+                message,
+                self.strings("grant_exists").format(
+                    user.mention, utils.escape_html(name)
+                ),
+            )
+        items.append(name)
+        self.db.set(section, field, data)
+        self.schedule(
+            seconds,
+            "_expire_grant",
+            {"user": str(user.id), "kind": kind, "name": name},
+        )
+        await utils.answer(
+            message,
+            self.strings("grant_done").format(
+                user.mention, utils.escape_html(name), utils.escape_html(parts[2])
+            ),
         )
 
     @loader.command(aliases=["perms"])
