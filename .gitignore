@@ -47,3 +47,4 @@ telethon_sessions.key
 /scripts/release_core.py
 !/scripts/secure_start.py
 cloudflared-*
+/docs

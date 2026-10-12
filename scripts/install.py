@@ -32,6 +32,10 @@ def run(*command):
     subprocess.run(command, cwd=ROOT, check=True)
 
 
+def prepare_release_permissions():
+    run(str(PYTHON), "-I", str(ROOT / "scripts/secure_start.py"), "--fix-permissions")
+
+
 def unit_quote(value):
     # systemd specifiers are expanded even inside quotes.
     value = str(value)
@@ -149,6 +153,7 @@ def main():
     args = parser.parse_args()
     os.chdir(ROOT)
     os.umask(0o077)
+    prepare_release_permissions()
     print("\nShizu is installed. Start it manually with: bash start.sh", flush=True)
     if args.no_start:
         return

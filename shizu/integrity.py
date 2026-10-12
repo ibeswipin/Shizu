@@ -97,14 +97,23 @@ class ReleaseFiles:
         descriptor = None
         try:
             directory = os.open(self.root, flags)
-            if os.fstat(directory).st_mode & 0o022:
-                raise IntegrityError("The installation directory is writable by others")
-            for part in parts[:-1]:
+            mode = os.fstat(directory).st_mode
+            if mode & 0o022:
+                raise IntegrityError(
+                    f"The installation directory is writable by others: "
+                    f"{self.root} (mode {stat.S_IMODE(mode):04o})"
+                )
+            for index, part in enumerate(parts[:-1], 1):
                 child = os.open(part, flags, dir_fd=directory)
                 os.close(directory)
                 directory = child
-                if os.fstat(directory).st_mode & 0o022:
-                    raise IntegrityError(f"Protected directory is writable by others: {relative}")
+                mode = os.fstat(directory).st_mode
+                if mode & 0o022:
+                    folder = self.root.joinpath(*parts[:index])
+                    raise IntegrityError(
+                        f"Protected directory is writable by others: "
+                        f"{folder} (mode {stat.S_IMODE(mode):04o}; reading {relative})"
+                    )
             descriptor = os.open(
                 parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory
             )
@@ -129,6 +138,47 @@ class ReleaseFiles:
                 os.close(descriptor)
             if directory is not None:
                 os.close(directory)
+
+    def secure_permissions(self) -> None:
+        self._restrict_access("", directory=True)
+        files = set(self.paths()) | {MANIFEST_NAME, SIGNATURE_NAME}
+        directories = {
+            parent.as_posix()
+            for relative in files
+            for parent in PurePosixPath(relative).parents
+            if parent != PurePosixPath(".")
+        }
+        for relative in sorted(directories, key=lambda path: (path.count("/"), path)):
+            self._restrict_access(relative, directory=True)
+        for relative in sorted(files):
+            self._restrict_access(relative, directory=False)
+
+    def _restrict_access(self, relative: str, *, directory: bool) -> None:
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY
+        descriptor = None
+        path = self.root / relative
+        try:
+            descriptor = os.open(self.root, flags)
+            parts = PurePosixPath(relative).parts
+            for index, part in enumerate(parts):
+                child_flags = flags
+                if index == len(parts) - 1 and not directory:
+                    child_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+                child = os.open(part, child_flags, dir_fd=descriptor)
+                os.close(descriptor)
+                descriptor = child
+            info = os.fstat(descriptor)
+            if (directory and not stat.S_ISDIR(info.st_mode)) or (
+                not directory and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1)
+            ):
+                raise IntegrityError(f"Unsafe protected path: {path}")
+            if info.st_mode & 0o022:
+                os.fchmod(descriptor, stat.S_IMODE(info.st_mode) & ~0o022)
+        except OSError as error:
+            raise IntegrityError(f"Cannot secure permissions for {path}: {error}") from error
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
 
 
 class Release:
