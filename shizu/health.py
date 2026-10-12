@@ -99,7 +99,7 @@ class Reporter:
             utils.spawn(self.send(text))
 
     async def send(self, text: str, prefer_userbot: bool = False) -> bool:
-        """Logs chat through the bot, falling back to the userbot (or the other way round)"""
+        """Logs chat through the bot, falling back to Saved Messages via the userbot."""
         text = SecretRedactor.text(text)
         chat = self._chat()
         senders = [self._via_bot, self._via_userbot]
@@ -127,7 +127,8 @@ class Reporter:
     async def _via_userbot(self, chat, text: str) -> bool:
         if not self.app:
             return False
-        await self.app.send_message(chat or "me", text, disable_web_page_preview=True)
+        destination = "me" if utils.is_system_chat(chat) else chat or "me"
+        await self.app.send_message(destination, text, disable_web_page_preview=True)
         return True
 
     @classmethod

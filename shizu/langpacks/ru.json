@@ -770,5 +770,6 @@
   "shizu.modules.ShizuPermissions.grant_exists": "У {} уже есть доступ к <code>{}</code>",
   "shizu.modules.ShizuPermissions.grant_expired": "⌛️ Временный доступ {} к <code>{}</code> закончился",
   "shizu.modules.ShizuBeSafe.trusted_for": " на {}",
-  "shizu.modules.ShizuBeSafe.trust_expired": "⌛️ Временное доверие закончилось: <code>{}</code>"
+  "shizu.modules.ShizuBeSafe.trust_expired": "⌛️ Временное доверие закончилось: <code>{}</code>",
+  "shizu.modules.ShizuOnload.welcome": "👋 <b>Добро пожаловать в Shizu!</b> Юзербот установлен и работает.\n\n<b>С чего начать</b>\n▫️ <code>.help</code> — все модули\n▫️ <code>.help &lt;модуль или команда&gt;</code> — подробнее об одном\n▫️ <code>.dlmod &lt;ссылка&gt;</code> — установить модуль по ссылке\n▫️ <code>.loadmod</code> — ответом на файл, чтобы установить его\n▫️ <code>.unloadmod &lt;имя&gt;</code> — удалить модуль\n▫️ /panel — управлять Shizu прямо из этого бота\n\n🔒 Удаление аккаунта и другие опасные запросы заблокированы по умолчанию.\n\nВыберите язык ниже. Вопросы — в @shizu_talks."
 }

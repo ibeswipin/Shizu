@@ -55,7 +55,7 @@ class InformationMod(loader.Module):
             ),
             loader.ConfigValue(
                 "photo_url",
-                "https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/shizubanner.jpg",
+                "https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/shizubanner.png",
                 lambda: self.strings("photo_url"),
                 label=lambda: self.strings("cfg_label_photo_url"),
             ),
@@ -67,6 +67,11 @@ class InformationMod(loader.Module):
                 label=lambda: self.strings("cfg_label_rich"),
             ),
         )
+
+    async def on_load(self, app: Client):
+        previous = "https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/shizubanner.jpg"
+        if self.config["photo_url"] == previous:
+            self.config["photo_url"] = self.config.getdef("photo_url")
 
     async def text_(self, me: types.User, username):
         """Get text"""

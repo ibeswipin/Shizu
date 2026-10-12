@@ -718,5 +718,6 @@
   "shizu.modules.ShizuPermissions.grant_exists": "{} da <code>{}</code> ga allaqachon ruxsat bor",
   "shizu.modules.ShizuPermissions.grant_expired": "⌛️ {} ning <code>{}</code> ga vaqtinchalik ruxsati tugadi",
   "shizu.modules.ShizuBeSafe.trusted_for": " ({} muddatga)",
-  "shizu.modules.ShizuBeSafe.trust_expired": "⌛️ Vaqtinchalik ishonch tugadi: <code>{}</code>"
+  "shizu.modules.ShizuBeSafe.trust_expired": "⌛️ Vaqtinchalik ishonch tugadi: <code>{}</code>",
+  "shizu.modules.ShizuOnload.welcome": "👋 <b>Shizu ga xush kelibsiz!</b> Userbot o'rnatildi va ishlayapti.\n\n<b>Nimadan boshlash kerak</b>\n▫️ <code>.help</code> — barcha modullar\n▫️ <code>.help &lt;modul yoki buyruq&gt;</code> — bittasi haqida batafsil\n▫️ <code>.dlmod &lt;havola&gt;</code> — modulni havoladan o'rnatish\n▫️ <code>.loadmod</code> — faylga javob qilib, uni o'rnatish\n▫️ <code>.unloadmod &lt;nom&gt;</code> — modulni o'chirish\n▫️ /panel — Shizu ni shu botdan boshqarish\n\n🔒 Akkauntni o'chirish va boshqa xavfli so'rovlar sukut bo'yicha bloklangan.\n\nQuyida tilni tanlang. Savollar — @shizu_talks."
 }

@@ -338,6 +338,8 @@ class Events(Item):
         return self._generate_markup(markup or [])
 
     async def _message_handler(self, message: Message) -> Message:
+        if utils.is_system_chat(message.chat.id, self._db):
+            return message
         message.answer = functools.partial(answer, app=self, message=message)
         await self._start_payload_handler(message)
 
@@ -384,6 +386,8 @@ class Events(Item):
                 return
 
     async def _edited_message_handler(self, message: Message) -> None:
+        if utils.is_system_chat(message.chat.id, self._db):
+            return
         for module in list(self._all_modules.modules):
             watcher = getattr(module, "aiogram_edited_watcher", None)
             if not callable(watcher):

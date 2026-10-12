@@ -320,6 +320,16 @@ async def ensure_bot_in_chat(app: Client, chat) -> None:
         await invite_bot(app, chat)
 
 
+def is_system_chat(chat_id, db=None) -> bool:
+    if chat_id is None:
+        return False
+    store = database.db if db is None else db
+    return any(
+        chat_id == store.get("shizu.chat", key, None)
+        for key in ("logs", "backup", "besafe")
+    )
+
+
 async def create_chat(
     app: Client,
     title: str = None,

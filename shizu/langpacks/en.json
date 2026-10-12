@@ -769,5 +769,6 @@
   "shizu.modules.ShizuPermissions.grant_exists": "{} already has access to <code>{}</code>",
   "shizu.modules.ShizuPermissions.grant_expired": "⌛️ Temporary access of {} to <code>{}</code> has ended",
   "shizu.modules.ShizuBeSafe.trusted_for": " for {}",
-  "shizu.modules.ShizuBeSafe.trust_expired": "⌛️ Temporary trust ended: <code>{}</code>"
+  "shizu.modules.ShizuBeSafe.trust_expired": "⌛️ Temporary trust ended: <code>{}</code>",
+  "shizu.modules.ShizuOnload.welcome": "👋 <b>Welcome to Shizu!</b> Your userbot is installed and running.\n\n<b>Getting started</b>\n▫️ <code>.help</code> — all modules\n▫️ <code>.help &lt;module or command&gt;</code> — details on one\n▫️ <code>.dlmod &lt;link&gt;</code> — install a module from a link\n▫️ <code>.loadmod</code> — reply to a file to install it\n▫️ <code>.unloadmod &lt;name&gt;</code> — remove a module\n▫️ /panel — control Shizu right from this bot\n\n🔒 Account deletion and other dangerous requests are blocked by default.\n\nPick your language below. Questions go to @shizu_talks."
 }

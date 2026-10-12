@@ -317,7 +317,7 @@ class UpdateMod(loader.Module):
 
             await self.bot.bot.send_photo(
                 self.me.id,
-                InputFile("assets/update.jpg"),
+                InputFile("assets/update.png"),
                 caption=text,
                 reply_markup=markup,
             )

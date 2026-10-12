@@ -18,7 +18,12 @@ import logging
 import re
 import time
 
-from aiogram.utils.exceptions import ChatNotFound, Unauthorized
+from aiogram.types import CallbackQuery
+from aiogram.utils.exceptions import (
+    ChatNotFound,
+    MessageNotModified,
+    Unauthorized,
+)
 from pyrogram import Client, enums
 from pyrogram.errors import (
     AuthKeyDuplicated,
@@ -47,51 +52,45 @@ class ShizuOnload(loader.Module):
 
     strings = {}
 
-    AVATARS_VERSION = 2
+    AVATARS_VERSION = 4
+    BOT_AVATAR_VERSION = 3
 
     SERVICE_CHATS = (
         (
             "logs",
             "Shizu-logs",
             "📫 Shizu logs. Do not delete this group, or the bot will break",
-            "assets/logs.jpg",
+            "assets/logs.png",
         ),
         (
             "backup",
             "Shizu-backup",
             "📫 Shizu backups. Do not delete this group, or the bot will break",
-            "assets/backups.jpg",
+            "assets/backups.png",
         ),
         (
             "besafe",
             "Shizu-besafe",
             "🛡 Shizu BeSafe confirmations. Do not delete this group, or the bot will break",
-            "assets/besafe.jpg",
+            "assets/besafe.png",
+        ),
+        (
+            "experiments",
+            "Shizu-Expiriments",
+            "Shizu playground for commands, modules and experiments.",
+            "assets/experiments.png",
         ),
     )
 
-    text = """
-    👋 Hey there! Congratulations on installing the <u>Shizu userbot</u>. Need a hand with anything?
-
-❓ Don't hesitate to reach out to our support chat if you have questions. We're here to assist everyone. @shizu_talks
-
-🔒 Plus, we've beefed up security to protect against <b>Account Deletion</b>.
-
-💁‍♀️ Let's get you started quickly:
-
-▫️ Just enter <code>.help</code> to see all available modules.
-▫️ If you need help with a specific module, try <code>.help (ModuleName/command)</code>.
-▫️ Want to grab a module from a link? Easy, just use <code>.dlmod (link)</code>.
-▫️ To install a module from a file, reply with <code>.loadmod</code> to the file.
-▫️ Deactivate a specific module by using <code>.unloadmod (ModuleName)</code>.
-▫️ Explore available languages with <code>.langs</code>, and switch your language with <code>.setlang (lang)</code>.
-
-📢 Stay tuned for exciting updates in our channel. Join us at @shizuhub to be the first to know about our latest features.
-
-    """
+    WELCOME_PREFIX = "shizu_welcome:"
+    WELCOME_LANGS = (
+        ("en", "🇬🇧 English"),
+        ("ru", "🇷🇺 Русский"),
+        ("uz", "🇺🇿 O'zbekcha"),
+    )
 
     START_TEXT = (
-        "🌘 <b><a href='https://github.com/AmoreForever/Shizu'>Shizu Userbot</a></b>"
+        "🌘 <b><a href='https://github.com/ibeswipin/Shizu'>Shizu Userbot</a></b>"
     )
 
     def __init__(self):
@@ -110,34 +109,46 @@ class ShizuOnload(loader.Module):
             ),
         )
 
-    async def _greet(self):
-        if self.db.get("shizu.me", "notified", None):
-            return
-        mymakr = self.bot._generate_markup(
+    def _welcome_markup(self):
+        current = self.db.get("shizu.me", "lang", "en")
+        return self.bot._generate_markup(
             [
                 [
                     {
-                        "text": "📢 Channel",
-                        "url": "https://t.me/shizuhub",
-                    },
-                    {
-                        "text": "👥 Support",
-                        "url": "https://t.me/shizu_talks",
-                    },
-                ]
+                        "text": f"✓ {label}" if code == current else label,
+                        "data": self.WELCOME_PREFIX + code,
+                    }
+                    for code, label in self.WELCOME_LANGS
+                ],
+                [{"text": "👥 Support", "url": "https://t.me/shizu_talks"}],
             ]
         )
-        await self._bot.send_animation(
+
+    async def _greet(self):
+        if self.db.get("shizu.me", "notified", None):
+            return
+        await self._bot.send_photo(
             self.me.id,
-            "https://i.gifer.com/Qipy.gif",
-            caption=self.text,
-            reply_markup=mymakr,
+            open("assets/welcome.png", "rb"),
+            caption=self.strings("welcome"),
+            reply_markup=self._welcome_markup(),
         )
         self.db.set("shizu.me", "notified", True)
 
-    def _feedback_enabled(self):
-        feedback = self.all_modules.find_module_strict("ShizuFeedback")
-        return bool(feedback and feedback.config["enabled"])
+    async def welcome_callback_handler(self, call: CallbackQuery):
+        if not (call.data or "").startswith(self.WELCOME_PREFIX):
+            return
+        if call.from_user.id != self.me.id:
+            return await call.answer()
+        lang = call.data[len(self.WELCOME_PREFIX) :]
+        if lang not in dict(self.WELCOME_LANGS):
+            return await call.answer()
+        self.db.set("shizu.me", "lang", lang)
+        await call.answer()
+        with contextlib.suppress(MessageNotModified):
+            await call.message.edit_caption(
+                self.strings("welcome"), reply_markup=self._welcome_markup()
+            )
 
     @loader.on_bot(
         lambda self, app, m: (
@@ -152,7 +163,7 @@ class ShizuOnload(loader.Module):
                 [
                     {
                         "text": "🐈‍⬛ Source",
-                        "url": "https://github.com/AmoreForever/Shizu",
+                        "url": "https://github.com/ibeswipin/Shizu",
                     },
                     {
                         "text": "🪭 Chief Developer",
@@ -268,7 +279,7 @@ class ShizuOnload(loader.Module):
                 logging.exception("Could not set the photo of service chat %s", key)
         self.db.set("shizu.chat", "avatars", avatars)
 
-        if self.db.get("shizu.bot", "avatar") != 2:
+        if self.db.get("shizu.bot", "avatar") != self.BOT_AVATAR_VERSION:
             try:
                 async with fsm.Conversation(app, "@BotFather") as conv:
                     await conv.ask("/cancel")
@@ -277,9 +288,9 @@ class ShizuOnload(loader.Module):
                     await conv.get_response()
                     await conv.ask(f"@{self.db.get('shizu.bot', 'username')}")
                     await conv.get_response()
-                    await conv.ask_media("assets/bot.jpg", media_type="photo")
+                    await conv.ask_media("assets/bot.png", media_type="photo")
                     await conv.get_response()
-                self.db.set("shizu.bot", "avatar", 2)
+                self.db.set("shizu.bot", "avatar", self.BOT_AVATAR_VERSION)
             except Exception:
                 logging.exception("Could not update the bot avatar")
 
@@ -381,7 +392,7 @@ class ShizuOnload(loader.Module):
         try:
             await self._bot.send_photo(
                 chat_id=self.db.get("shizu.chat", "logs", None),
-                photo=open("assets/Shizu.jpg", "rb"),
+                photo=open("assets/Shizu.png", "rb"),
                 caption=started_text,
                 parse_mode="html",
             )
@@ -389,7 +400,7 @@ class ShizuOnload(loader.Module):
             await utils.invite_bot(app, self.db.get("shizu.chat", "logs", None))
             await self._bot.send_photo(
                 chat_id=self.db.get("shizu.chat", "logs", None),
-                photo=open("assets/Shizu.jpg", "rb"),
+                photo=open("assets/Shizu.png", "rb"),
                 caption=started_text,
                 parse_mode="html",
             )

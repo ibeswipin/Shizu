@@ -176,7 +176,7 @@ class TokenManager(Item):
 
             self._app.me = await self._app.get_me()
 
-            await conv.ask_media("assets/bot.jpg", media_type="photo")
+            await conv.ask_media("assets/bot.png", media_type="photo")
 
             await asyncio.sleep(1)
 

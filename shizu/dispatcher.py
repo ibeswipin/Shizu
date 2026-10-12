@@ -72,6 +72,48 @@ class BaseDispatcherManager:
         module = getattr(handler, "__self__", None)
         return bool(getattr(module, "m__telethon", False))
 
+    async def _protect_service_chat(self, message) -> bool:
+        chat_id = getattr(message, "chat_id", None)
+        if chat_id is None:
+            chat_id = getattr(getattr(message, "chat", None), "id", None)
+        if not utils.is_system_chat(chat_id, getattr(self.modules, "_db", None)):
+            return False
+        if getattr(message, "service", None) or getattr(message, "action", None):
+            return True
+
+        sender = getattr(message, "from_user", None) or getattr(message, "sender", None)
+        sender_id = getattr(message, "sender_id", None) or getattr(sender, "id", None)
+        bot_id = getattr(getattr(self.modules, "bot_manager", None), "bot_id", None)
+        if (bot_id is not None and sender_id == bot_id) or (
+            getattr(sender, "is_bot", False) or getattr(sender, "bot", False)
+        ):
+            return True
+
+        message_id = getattr(message, "id", None)
+        if message_id is None:
+            return True
+        deleted = getattr(self.modules, "_system_chat_deleted", None)
+        if deleted is None:
+            deleted = self.modules._system_chat_deleted = {}
+        key = (chat_id, message_id)
+        if key in deleted:
+            return True
+        if len(deleted) >= 256:
+            deleted.pop(next(iter(deleted)))
+        deleted[key] = True
+        app = getattr(self.modules, "_app", None) or self.client
+        try:
+            await app.delete_messages(chat_id, message_id)
+        except Exception:
+            deleted.pop(key, None)
+            logger.warning(
+                "Could not remove user message %s from service chat %s",
+                message_id,
+                chat_id,
+                exc_info=True,
+            )
+        return True
+
     @staticmethod
     def _report_watcher_error(watcher, error: Exception) -> None:
         module = getattr(watcher, "__self__", None)
@@ -285,6 +327,8 @@ class DispatcherManager(BaseDispatcherManager):
         self, app: Client, message: types.Message
     ) -> types.Message:
         """Handle message"""
+        if await self._protect_service_chat(message):
+            return
         await self._handle_watchers(app, message)
 
         prefix, command, args = utils.get_full_command(message)
@@ -494,6 +538,8 @@ class TelethonDispatcherManager(BaseDispatcherManager):
         module._raw_callbacks = []
 
     async def _on_new(self, event):
+        if await self._protect_service_chat(event.message):
+            return
         await self._handle_watchers(event.message)
         await self._handle_command(event)
 
@@ -506,6 +552,8 @@ class TelethonDispatcherManager(BaseDispatcherManager):
 
     async def _handle_command(self, event):
         message = event.message
+        if await self._protect_service_chat(message):
+            return
         prefix, command = self._parse(message.raw_text or "")
         if not command:
             return
