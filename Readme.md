@@ -1,33 +1,47 @@
 <div align="center">
 
-<img src="assets/shizubanner.jpg" alt="Shizu">
+<img src="assets/shizubanner.png" alt="Shizu — Find joy in the little things" width="960">
 
 <h1>Shizu</h1>
 
-<p><b>Telegram userbot. Find joy in the little things.</b></p>
+<p>A modular Telegram userbot with a web dashboard and tools for everyday use.</p>
 
-<a href="https://github.com/ibeswipin/Shizu/stargazers"><img src="https://img.shields.io/github/stars/ibeswipin/Shizu?style=flat" alt="Stars"></a>
-<a href="https://github.com/ibeswipin/Shizu/issues"><img src="https://img.shields.io/github/issues/ibeswipin/Shizu?style=flat" alt="Issues"></a>
-<a href="LICENSE"><img src="https://img.shields.io/github/license/ibeswipin/Shizu?style=flat" alt="License"></a>
-<a href="https://t.me/shizu_talks"><img src="https://img.shields.io/badge/chat-@shizu__talks-2CA5E0?style=flat&logo=telegram" alt="Support chat"></a>
+<p>
+<a href="https://github.com/ibeswipin/Shizu/stargazers"><img src="https://img.shields.io/github/stars/ibeswipin/Shizu?style=flat-square&color=8b9cf7" alt="GitHub stars"></a>
+<a href="https://github.com/ibeswipin/Shizu/issues"><img src="https://img.shields.io/github/issues/ibeswipin/Shizu?style=flat-square&color=8b9cf7" alt="GitHub issues"></a>
+<a href="LICENSE"><img src="https://img.shields.io/github/license/ibeswipin/Shizu?style=flat-square&color=8b9cf7" alt="GPLv3 license"></a>
+<a href="https://t.me/shizu_talks"><img src="https://img.shields.io/badge/Telegram-Support-5baeb8?style=flat-square&logo=telegram" alt="Telegram support"></a>
+</p>
+
+<p>
+<a href="#installation">Install</a> ·
+<a href="#first-launch">First launch</a> ·
+<a href="#commands">Commands</a> ·
+<a href="#writing-modules">Write a module</a>
+</p>
 
 </div>
 
-## Features
+## What you get
 
-- **Modules**: load from a link or a file, unload, configure. Built-in modules cover help, backups, updates, languages and more.
-- **Web setup**: first launch opens a web page. Log in with a QR code, or with your phone number and 2FA password, then pick your bot.
-- **Telethon (optional)**: a separate QR-approved login via Pyrogram, with encrypted string sessions. Choose it during setup or use `.enabletlmode`; `.disabletlmode` revokes it. Configure `SHIZU_SESSION_KEY` first — [setup and manual checks](shizu/telegram/README.md).
-- **Bot control panel**: send `/panel` to your bot to restart or stop Shizu, change the prefix or the bot token.
-- **BeSafe**: third-party modules load only after you review and approve them. Approval cards arrive in a separate chat.
-- **Service chats**: Shizu creates `Shizu-logs`, `Shizu-backup` and `Shizu-besafe`, and puts them with your bot into a **Shizu** chat folder.
-- **Inline bot**: inline forms, galleries and buttons for modules.
-- **Web terminal and systemd control**: manage the server from Telegram.
-- **Languages**: English, Russian, Uzbek.
+| Feature | What it does |
+| --- | --- |
+| Modules | Install from links or files, browse repository catalogs, configure modules and manage aliases. Multiple public and private repositories are supported. |
+| Web dashboard | Configure Shizu, manage modules, view logs, and download or restore encrypted backups. Browser access requires the account owner's approval. |
+| Telegram control panel | Open `/panel` in your bot to manage startup, the prefix, the bot token and the dashboard. |
+| BeSafe | Review third-party code before loading it. Approval cards arrive in a dedicated chat; dangerous account requests are blocked by default. |
+| Inline and rich messages | Forms, galleries, buttons and rich layouts for modules. |
+| Backups | Encrypted database backups with a configurable daily schedule and a separate recovery key. |
+| Languages | English, Russian and Uzbek for the interface, with translated module settings. |
+
+Shizu uses **Pyrogram** and supports **Telethon** through an optional separate login.
+Enable it during setup or with `.enabletlmode`; `.disabletlmode` revokes the session.
+Telethon sessions are encrypted, with a key generated automatically or supplied through
+`SHIZU_SESSION_KEY`.
 
 ## Installation
 
-### Automatic (Linux, macOS)
+### Linux and macOS
 
 ```bash
 git clone https://github.com/ibeswipin/Shizu
@@ -35,23 +49,23 @@ cd Shizu
 bash install.sh
 ```
 
-The installer gets Python 3.11 with [uv](https://docs.astral.sh/uv/), creates `.venv`, installs dependencies and walks you through the Telegram login. On Linux with systemd it offers to install a service that runs as your user. The service is enabled only after a successful login, and installing it needs `sudo`.
+The installer uses `uv` to prepare Python 3.11 and a virtual environment, installs
+Shizu, and walks you through Telegram login. Existing configuration and sessions
+are reused.
 
-Run the installer as your normal user. Existing config and sessions are reused. You need `git` and `curl` or `wget`. If a dependency has to be compiled, install your build tools (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS).
+Run it as your normal user. You need **Git** and **curl or wget**. If a dependency
+needs compilation, install your platform's build tools.
+
+On Linux with systemd, the installer can create a service that runs as your user.
+Service setup requires `sudo` and happens only after a successful login. An existing
+`shizu.service` is preserved; keep the checkout at the same path once installed.
+
+<details>
+<summary><b>Manual installation</b></summary>
+
+With Git and Python 3.11 installed:
 
 ```bash
-bash install.sh --no-start   # install dependencies only, no login or systemd
-bash start.sh                # run manually
-sudo systemctl restart shizu # restart the service
-journalctl -u shizu -f       # follow the service logs
-```
-
-An existing `shizu.service` is never overwritten. After creating the service, keep the project at the same path.
-
-### Manual
-
-```bash
-sudo apt update && sudo apt install -y git python3.11 python3.11-venv
 git clone https://github.com/ibeswipin/Shizu
 cd Shizu
 python3.11 -m venv .venv
@@ -60,58 +74,103 @@ python -m pip install .
 python -m shizu
 ```
 
+</details>
+
+<details>
+<summary><b>Startup and service commands</b></summary>
+
+| Command | Purpose |
+| --- | --- |
+| `bash install.sh --no-start` | Install dependencies without login or service setup |
+| `bash start.sh` | Run Shizu manually |
+| `sudo systemctl restart shizu` | Restart the Linux service |
+| `journalctl -u shizu -f` | Follow the service logs |
+
+</details>
+
 ## First launch
 
-Shizu prints a link to the setup page in the console, for example `https://….lhr.life`. The link is published through a [localhost.run](https://localhost.run) tunnel.
+Open the setup URL printed in the console. The web setup page is exposed through
+a localhost.run tunnel.
 
 1. Enter your **API ID** and **API Hash** from [my.telegram.org/apps](https://my.telegram.org/apps).
-2. Scan the QR code in Telegram (**Settings → Devices → Link Desktop Device**), or choose **Log in with phone number**.
-3. Enter your 2FA password if your account has one.
-4. Let Shizu create a bot for you, or paste the token of your own bot.
+2. Scan the QR code in Telegram: **Settings → Devices → Link Desktop Device**. You can also log in with your phone number.
+3. Enter your **2FA password** if your account has one.
+4. Let Shizu create a bot, or provide the token for your own bot.
 
-Shizu restarts and sends a start message to `Shizu-logs`.
+After setup, Shizu restarts and posts its status in **Shizu-logs**.
+Use `.help` in a regular chat or in **Shizu-Expiriments** to get started.
 
-| Flag | What it does |
+| Startup flag | Purpose |
 | --- | --- |
-| `--no-web` | Log in from the console instead of the web page |
-| `--port 8080` | Port for the setup page |
+| `--no-web` | Use console login |
+| `--port 8080` | Set the web setup port |
 | `--setup-only` | Log in and exit without starting the userbot |
 
 ## Commands
 
-The default prefix is `.`. Change it with `.setprefix` or from `/panel`.
+The default prefix is **`.`**. Change it with `.setprefix` or through `/panel`.
 
-| Command | What it does |
+| Command | Purpose |
 | --- | --- |
-| `.help` | List modules and commands |
-| `.dlmod <link>` | Load a module from a link |
-| `.loadmod` | Load a module from a replied file |
+| `.help` / `.help <module or command>` | Browse modules and command help |
+| `.dlmod` / `.dlmod <name or link>` | Browse repository catalogs or install a module |
+| `.loadmod` | Install a module from the file you reply to |
 | `.unloadmod <name>` | Unload a module |
-| `.restart` / `.update` / `.stop` | Restart / update / stop Shizu |
-| `.checkupdate` | Show new commits without installing them |
-| `.setprefix <prefix>` | Change the prefix |
-| `.setbot <token>` | Change the bot token and restart |
-| `.lang [code]` | Choose the language |
-| `.backupdb` / `.restoredb` | Back up / restore the database |
-| `.autobackup` | Turn the daily backup on or off (time: `.config ShizuBackuper`) |
-| `.apiprotect` | Turn the protection against flood bans on or off |
-| `.besafe` | BeSafe status, decisions and journal |
-| `.owner [user]` | Owners panel, or add / remove an owner |
-| `.alias [alias] [command]` | List, add or delete aliases |
-| `.info` | Info card about your Shizu, with the support chat link |
+| `.config [module]` | Open module settings |
+| `.web` / `.web stop` | Open the dashboard or close it and revoke browser sessions |
+| `.restart` / `.update` / `.stop` | Restart, update or stop Shizu |
+| `.checkupdate` | Check for new commits without installing them |
+| `.setprefix <prefix>` / `.setbot <token>` | Change the command prefix or bot token |
+| `.lang [code]` | Choose the interface language |
+| `.backupdb` / `.restoredb` | Create or restore a database backup |
+| `.autobackup` / `.backupkey` | Toggle daily backups or show the recovery key path |
+| `.besafe` / `.apiprotect` | View BeSafe decisions or toggle API flood protection |
+| `.owner [user]` | Open the owners panel or add/remove an owner |
+| `.alias [alias] [command]` | List, add or delete command aliases |
+| `.info` | Show your Shizu info card |
 
-In your bot:
+Send **`/panel`** to your bot to open its control panel.
+Daily backup time is set in `.config ShizuBackuper`.
 
-| Command | What it does |
+## Your Shizu folder
+
+Shizu creates a **Shizu** chat folder containing your bot and these groups:
+
+| Chat | Purpose |
 | --- | --- |
-| `/panel` | Control panel: restart, stop, prefix, bot token |
+| Shizu-logs | Logs, startup status and error reports |
+| Shizu-backup | Encrypted database backups |
+| Shizu-besafe | Module approval cards and security confirmations |
+| Shizu-Expiriments | Messages, commands and module experiments |
 
-## Support
+While Shizu is running, user messages are automatically deleted from Logs,
+Backups and BeSafe before commands or watchers run. Service messages and approval
+buttons remain available. Use **Shizu-Expiriments** for your own messages and commands.
 
-Questions and bug reports: [@shizu_talks](https://t.me/shizu_talks) or [GitHub issues](https://github.com/ibeswipin/Shizu/issues). News: [@shizuhub](https://t.me/shizuhub).
+## Recovering a backup
 
-Developer: [@hikamoru](https://t.me/hikamoru).
+Database backups are encrypted before they are sent to Telegram. The recovery key
+is created on the first backup at `~/.config/shizu/backup.key`, outside the repository
+and database. `.backupkey` shows its path without sending the key.
 
-## License
+**Keep a separate copy of the key.** To restore on another server, copy the original
+key there first. `SHIZU_BACKUP_KEY_FILE` lets you choose a different key file path.
 
-[GNU GPLv3](LICENSE).
+## Writing modules
+
+Build your own commands, watchers and inline interfaces with the module guides:
+
+**[English](docs/modules.en.md) · [Русский](docs/modules.ru.md)**
+
+The guides cover configuration, storage, translations, lifecycle hooks, loops,
+shared libraries, Telethon compatibility and BeSafe, with complete examples.
+
+## Community
+
+[Support chat](https://t.me/shizu_talks) ·
+[News](https://t.me/shizuhub) ·
+[Report a bug](https://github.com/ibeswipin/Shizu/issues) ·
+[Developer](https://t.me/hikamoru)
+
+Licensed under [GNU GPLv3](LICENSE).
