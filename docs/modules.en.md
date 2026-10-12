@@ -1,890 +1,735 @@
-# Writing Shizu modules
+# Shizu modules: from a first command to a complete example
 
-🇷🇺 [Русская версия](modules.ru.md)
+[Русский](modules.ru.md) · [Back to README](../Readme.md)
 
-This guide covers everything a module can do in Shizu: commands, watchers,
-config, storage, translations, the inline bot, loops and the safety rules every
-third-party module runs under. All examples target the default Pyrogram mode.
+This is a practical guide for **Pyrogram**. Start with a small module, then add
+settings, persistent data and buttons. The [complete Notes.py](#example) at the
+end is ready to install.
 
-- [Quick start](#quick-start)
-- [Module file layout](#module-file-layout)
-- [Commands](#commands)
-- [Replying to messages](#replying-to-messages)
-- [Who can run a command](#who-can-run-a-command)
-- [Watchers](#watchers)
-- [Message filters](#message-filters)
-- [Config](#config)
-- [Storing data](#storing-data)
-- [Strings and translations](#strings-and-translations)
-- [Lifecycle hooks](#lifecycle-hooks)
-- [Loops](#loops)
-- [Inline bot](#inline-bot)
-- [Conversations](#conversations)
-- [Dependencies and load conditions](#dependencies-and-load-conditions)
-- [Shared libraries](#shared-libraries)
-- [Utilities](#utilities)
-- [Telethon and Hikka modules](#telethon-and-hikka-modules)
-- [Security rules](#security-rules)
-- [Full example](#full-example)
-- [Troubleshooting](#troubleshooting)
+| What you want to build | Section |
+| --- | --- |
+| Your first installable module | [Quick start](#start) |
+| Arguments and reply handling | [Commands and messages](#commands) |
+| Settings and translated text | [Config](#config) · [Translations](#translations) |
+| Data that survives a restart | [Storage](#storage) |
+| A menu, table or gallery | [Buttons and rich text](#inline) |
+| Message handlers and background work | [Watchers](#watchers) · [Tasks](#tasks) |
+| Dependencies and restrictions | [Loading and access](#loading) |
 
-## Quick start
+<a id="start"></a>
+
+## 1. Your first module
+
+Save this as `Hello.py`:
 
 ```python
 from pyrogram import Client, types
 
-from shizu import loader
+from shizu import loader, utils
 
 
 @loader.module(name="Hello", author="you", version=1.0)
 class HelloMod(loader.Module):
-    """Says hello"""
+    """A greeting command."""
 
     @loader.command()
     async def hello(self, app: Client, message: types.Message):
-        """Greet someone. Usage: hello <name>"""
+        """Say hello: hello <name>."""
         name = message.get_args_raw() or "world"
-        await message.answer(f"👋 Hello, <b>{name}</b>!")
+        await message.answer(f"Hello, <b>{utils.escape_html(name)}</b>!")
 ```
 
-Install it in one of these ways:
+1. Send the file to **Shizu-Expiriments** or another regular chat.
+2. Reply to the file with `.loadmod`.
+3. If BeSafe asks, review the code and approve it in **Shizu-besafe**.
+4. Run `.hello Shizu`. The response is **Hello, Shizu!**
 
-| Way | Command |
-|---|---|
-| From a file | send `Hello.py` to any chat, reply to it with `.loadmod` |
-| From a link | `.dlmod https://example.com/Hello.py` |
-| Locally | put the file into `shizu/modules/` and restart |
+Use `.dlmod <link>` to install from a URL. GitHub `/blob/` links are supported.
+`.unloadmod Hello` unloads the module.
 
-Then run `.hello Shizu`. Use `.unloadmod Hello` to remove it and `.ml Hello`
-to get its file or link back. Modules installed by link are downloaded again
-on every start.
+| Code | Why it is there |
+| --- | --- |
+| `@loader.module(...)` | Sets the module name, author and version |
+| `class HelloMod(loader.Module)` | Provides Shizu's module methods and state |
+| `@loader.command()` | Registers the method as `.hello` |
+| `async def hello(self, app, message)` | Receives the module, client and command message |
+| `message.get_args_raw()` | Reads text after the command name |
+| `utils.escape_html(name)` | Displays user input without treating it as HTML tags |
+| `message.answer(...)` | Sends a response or edits your outgoing command |
 
-## Module file layout
+Use one module class per file, with `@loader.module(...)` above it. Choose a
+unique module name: loading the same module again replaces it. Class and command
+docstrings appear in `.help`.
+
+> Indented methods and fields below belong **inside your module class**.
+> Imports stay at the top of the file. You can try the examples independently.
+
+<a id="commands"></a>
+
+## 2. Commands, arguments and responses
+
+### Validate the arguments
 
 ```python
-# required: requests beautifulsoup4
+    @loader.command(aliases=["hi"], ru_doc="Поздороваться: greet <имя>.")
+    async def greet(self, app: Client, message: types.Message):
+        """Say hello: greet <name>."""
+        name = message.get_args_raw()
+        if not name:
+            return await message.answer(
+                f"Usage: <code>{self.get_prefix()}greet name</code>"
+            )
+        await message.answer(f"Hello, <b>{utils.escape_html(name)}</b>!")
+```
 
-from pyrogram import Client, types
+Run `.greet Anna` or `.hi Anna`. Without a name, the command shows its usage.
+`aliases` provides alternative names; `ru_doc` supplies Russian command help.
 
-from shizu import loader, utils
+| Call | Result for `.greet New York` |
+| --- | --- |
+| `message.get_args_raw()` | `"New York"`; preserves the original spacing |
+| `message.get_args()` | `"New York"`; joins words with single spaces |
+| `message.get_args_html()` | Arguments with formatting represented as HTML |
 
+### Read a reply
 
-@loader.module(name="Weather", author="you", version=1.2)
-class WeatherMod(loader.Module):
-    """Current weather for any city"""
+```python
+    @loader.command()
+    async def quote(self, app: Client, message: types.Message):
+        """Show the text of the replied-to message."""
+        reply = message.reply_to_message
+        if reply is None:
+            return await message.answer("Reply to a message first.")
+        text = reply.text or reply.caption or "No text in this message."
+        await message.answer(f"<blockquote>{utils.escape_html(text)}</blockquote>")
+```
 
-    strings = {...}
-    strings_ru = {...}
+Media messages may keep their text in `caption`, so check both fields. This
+example displays plain source text inside a quote. To use the source formatting
+as HTML, read `reply.text.html` or `reply.caption.html` when that field exists.
 
+`message.answer` accepts supported HTML tags such as `<b>`, `<i>`, `<code>` and
+`<a>`. It is the same helper as `utils.answer(message, text)`. Use `app` for direct
+Telegram calls, for example `await app.send_message("me", "Hello")`.
+
+<a id="config"></a>
+
+## 3. Config with readable labels
+
+```python
     def __init__(self):
-        self.config = loader.ModuleConfig(...)
+        self.config = loader.ModuleConfig(
+            loader.ConfigValue(
+                "city",
+                "London",
+                "Default city for the command.",
+                validator=loader.validators.String(min_len=2),
+                label="City",
+            ),
+            loader.ConfigValue(
+                "api_key",
+                None,
+                "Token for the external service.",
+                validator=loader.validators.Hidden(loader.validators.String()),
+                label="API token",
+            ),
+        )
+```
 
-    async def on_load(self, app: Client): ...
+Open `.config <module name>`. Users see **City** and **API token** buttons, while
+your code reads `self.config["city"]` and `self.config["api_key"]`.
+
+| Parameter | Meaning in this example |
+| --- | --- |
+| `key` | `city`: the stable storage key used by your code |
+| `default` | `London`: the value before configuration |
+| `doc` | A description that helps the user choose a value |
+| `validator` | Checks and converts user input |
+| `label` | A short button title, separate from the storage key |
+
+Assigning `self.config["city"] = "Paris"` validates and saves the value. `Hidden`
+masks a secret in the config interface; the module still receives its actual value.
+
+<details>
+<summary><b>Common validators</b></summary>
+
+| Validator | Use |
+| --- | --- |
+| `Integer(minimum=1, maximum=20)` | An integer in a range |
+| `Float(minimum=0)` | A number with a fractional part |
+| `Boolean()` | A toggle |
+| `String(min_len=2, max_len=100)` | Text with length bounds |
+| `Choice(["light", "dark"])` | One of the listed values |
+| `Series(validator=loader.validators.Link())` | A list of links |
+| `Link()` | An HTTP(S) URL format |
+| `RegExp(r"^[a-z]+$")` | Text matching a regular expression |
+| `Hidden(loader.validators.String())` | A masked text value |
+
+Validators live in `loader.validators`. `Series` accepts JSON lists or
+comma-separated values. URL format validation does not check site availability.
+
+</details>
+
+<a id="translations"></a>
+
+## 4. Text and translations
+
+```python
+    strings = {"greeting": "Hello, <b>{}</b>!", "city_label": "City"}
+    strings_ru = {"greeting": "Привет, <b>{}</b>!", "city_label": "Город"}
 
     @loader.command()
-    async def weather(self, app: Client, message: types.Message): ...
+    async def welcome(self, app: Client, message: types.Message):
+        """Greet someone in the selected interface language."""
+        name = utils.escape_html(message.get_args_raw() or "Shizu")
+        await message.answer(self.strings("greeting").format(name))
 ```
 
-Rules the loader relies on:
+`strings` contains base text; `strings_ru` supplies Russian translations. You can
+add `strings_uz` or other languages. Shizu selects the interface language and
+falls back to `strings` for missing translations.
 
-- **`@loader.module(...)` must stand directly above the class line.** The
-  loader looks for `@loader.module(...)` followed by `class Name(`. Without it
-  a module loaded by file or link is rejected.
-- The class inherits `loader.Module`. Its docstring is the module description
-  in `.help`.
-- `name` is the module name users see and the database section of the module.
-  It must not clash with a core module (`ShizuHelp`, `ShizuLoader`, ...).
-  Loading a module with the same class name or `name` as an installed one
-  replaces it.
-- `author` and `version` are optional.
-- One module class per file.
+For translated config labels, pass a function:
+`label=lambda: self.strings("city_label")`. Use the same pattern for `doc`.
+The function is evaluated after translations are set up, so use `lambda` rather
+than calling `self.strings(...)` directly in `__init__`.
 
-Attributes Shizu sets on every module:
+<a id="storage"></a>
 
-| Attribute | What it is |
-|---|---|
-| `self.app` | Pyrogram `Client` of the account |
-| `self.db` | database (see [Storing data](#storing-data)) |
-| `self.inline` | inline bot manager (see [Inline bot](#inline-bot)) |
-| `self.bot` | same manager; `self.inline_bot` is the raw aiogram `Bot` |
-| `self.me` | your account as a Pyrogram `User`; `self.tg_id` is its ID |
-| `self.all_modules` | modules manager: `get_module(name)`, `modules`, `commands` |
-| `self.prefix` | list of command prefixes; `self.get_prefix()` gives the first |
-| `self.strings` | translated strings (see [Strings](#strings-and-translations)) |
-| `self.lookup(name)` | another loaded module by name, `False` when missing |
-| `self.tl`, `self.client` | Telethon client, only when Telethon mode is enabled |
-
-## Commands
-
-A command is an async method with `@loader.command()`:
+## 5. Data and lifecycle
 
 ```python
-@loader.command(aliases=["w"], hidden=False)
-async def weather(self, app: Client, message: types.Message):
-    """Show the weather. Usage: weather <city>"""
+    async def on_load(self, app: Client):
+        self.items = self.pointer("items", {})
+
+    @loader.command()
+    async def save(self, app: Client, message: types.Message):
+        """Save text in the module database."""
+        text = message.get_args_raw()
+        if not text:
+            return await message.answer("Pass some text to save.")
+        self.items["latest"] = text
+        self.set("saved_count", self.get("saved_count", 0) + 1)
+        await message.answer("Saved.")
 ```
 
-- The command name is the method name in lower case: `weather` runs with
-  `.weather`.
-- A method whose name ends with `cmd` also becomes a command without the
-  decorator: `weathercmd` is `.weather`.
-- `aliases` adds extra names. Users can add their own aliases too.
-- `hidden=True` hides the command from `.help`.
-- The docstring is the description shown in `.help`. Put the usage there.
-- The signature is always `(self, app, message)`.
-- Commands also fire when you edit a message into a command.
+`on_load` runs after Shizu assigns the client, database, translations and restored
+config. Initialize the state your commands need here.
 
-Reading arguments:
+| API | Purpose |
+| --- | --- |
+| `self.get("key", default)` | Read from this module's database section |
+| `self.set("key", value)` | Save a JSON-compatible value |
+| `self.pointer("items", {})` | A dict that saves top-level changes |
+| `self.pointer("items", [])` | A list that saves insertions and deletions |
 
-| Call | `.weather New York` gives |
-|---|---|
-| `message.get_args_raw()` | `"New York"` (raw text after the command, `False` for an empty message) |
-| `message.get_args()` | `"New York"` (words joined by single spaces) |
-| `message.get_args_html()` | arguments with formatting as HTML |
-| `utils.get_args_split_by(message, ",")` | list split by a separator |
-
-The replied-to message is `message.reply_to_message`. `await utils.get_user(message)`
-returns the user from the reply or the first argument, and
-`await utils.get_target(message)` returns their ID.
-
-Errors raised in a command are caught. The traceback is sent to the chat and
-to the log chat, so you don't need a try/except around the whole handler.
-
-## Replying to messages
-
-Use `message.answer(...)` (or `utils.answer(message, ...)`). It edits your own
-message or replies to someone else's, and handles long texts:
+Data survives restarts. Inside a method, change a copy of a nested dict and assign it back;
+mutating the nested object itself does not trigger a save:
 
 ```python
-await message.answer("✅ <b>Done</b>")
-await message.answer(file_bytes, doc=True, caption="logs")
-await message.answer("https://example.com/cat.jpg", photo_=True)
-await message.answer("Choose:", reply_markup=[{"text": "OK", "callback": self.ok}])
+item = dict(self.items["profile"])
+item["name"] = "Shizu"
+self.items["profile"] = item
 ```
 
-- HTML is the default parse mode.
-- Text longer than 4096 characters becomes an inline list with pages; if that
-  fails, it is sent as `output.txt`.
-- With `reply_markup` the answer is sent as an inline form (see
-  [Inline bot](#inline-bot)).
-- Custom emoji: `<emoji id=5372892693024218813>🥶</emoji>`.
-- Escape user input with `utils.escape_html(text)`.
-- Tables: `await utils.send_table(message, rows, header=[...], title="...")`.
+This last fragment assumes `profile` already holds a dict.
 
-Everything else is plain Pyrogram: `await app.send_message(...)`,
-`await message.delete()`, `await app.get_chat(...)` and so on.
+<details>
+<summary><b>Properties and hooks</b></summary>
 
-## Who can run a command
+| Property or hook | Purpose |
+| --- | --- |
+| `self.app`, `self.me` | The Pyrogram client and owner account |
+| `self.inline`, `self.bot` | The inline bot manager |
+| `self.db` | Shizu's database |
+| `self.get_prefix()` | The first current command prefix |
+| `self.lookup("Name")` | A loaded module, or `False` |
+| `on_load(self, app)` | Initialize module state |
+| `client_ready(self, client, db)` | An additional hook after `on_load` |
+| `on_unload(self)` | Release resources when unloading |
 
-By default a command runs for:
+Raise `loader.LoadError("reason")` in `on_load` to abort loading with a clear
+reason. Unloading stops the module's loops and removes its handlers.
 
-- you (outgoing messages are always allowed);
-- the owners set with `.owner`;
-- users who were granted this command with `.permissions`.
+</details>
 
-Decorators widen access. Combine as many as needed:
+<a id="inline"></a>
+
+## 6. Buttons, rich text and galleries
+
+### A button menu
 
 ```python
-@loader.command()
-@loader.group_admin_ban_users
-@loader.pm
-async def ban(self, app, message): ...
+    @loader.command()
+    async def menu(self, app: Client, message: types.Message):
+        """Open a menu with a callback and a link."""
+        await self.inline.form(
+            text="<b>Module menu</b>",
+            message=message,
+            reply_markup=[
+                [
+                    {"text": "Check", "callback": self.check_cb, "args": ("ready",)},
+                    {"text": "Source", "url": "https://github.com/ibeswipin/Shizu"},
+                ],
+                [{"text": "Close", "callback": self.close_cb}],
+            ],
+            force_me=True,
+            ttl=600,
+        )
+
+    async def check_cb(self, call, status: str):
+        await call.answer(f"Status: {status}", show_alert=True)
+
+    async def close_cb(self, call):
+        if not await call.delete():
+            return await call.answer("Could not delete the message.", show_alert=True)
+        await call.answer()
 ```
 
-| Decorator | Allows |
-|---|---|
-| `@loader.owner` | owners |
-| `@loader.sudo`, `@loader.support` | users granted the command with `.permissions` |
-| `@loader.everyone` (`unrestricted`, `inline_everyone`) | anyone |
-| `@loader.pm` | anyone in private chats |
-| `@loader.group_member` | any member of a group |
-| `@loader.group_owner` | the group creator |
-| `@loader.group_admin` | any group admin |
-| `@loader.group_admin_ban_users` | admins who can ban |
-| `@loader.group_admin_delete_messages` | admins who can delete messages |
-| `@loader.group_admin_pin_messages` | admins who can pin |
-| `@loader.group_admin_invite_users` | admins who can invite |
-| `@loader.group_admin_change_info` | admins who can change chat info |
-| `@loader.group_admin_add_admins` | admins who can add admins |
+`reply_markup` is a list of keyboard rows. `args` passes `"ready"` to
+`check_cb(call, status)`. A URL button opens a link; a callback button invokes
+one of your methods.
 
-Other command decorators:
+| Call or option | Purpose |
+| --- | --- |
+| `call.answer(text, show_alert=True)` | Acknowledge the press with a notification |
+| `call.edit(text, reply_markup=rows)` | Update the form text and buttons |
+| `call.delete()` | Delete the form message; returns the deletion result |
+| `force_me=True` | Restrict buttons to the account owner and configured owners |
+| `always_allow=[123456]` | Allow additional users |
+| `ttl=600` | Expire buttons after ten minutes; does not delete the message |
 
-- `@loader.ratelimit` limits other users to 3 calls per 10 seconds per command.
-  Your own calls are never limited.
-- `@loader.on(filters.private)` adds a Pyrogram filter. The command runs only
-  when the filter passes. A plain function works too, with the signature
-  `(flt, app, message)`.
-- `@loader.tag(...)` runs the command only for matching messages, using the
-  [message filters](#message-filters):
+Old callback buttons may expire after a restart: run the command again.
+Forms with callback buttons use the inline bot to process presses.
+
+### Rich text and tables
 
 ```python
-@loader.command()
-@loader.tag("only_groups", "only_reply")
-async def warn(self, app, message): ...
+    @loader.command()
+    async def status(self, app: Client, message: types.Message):
+        """Show a rich table."""
+        await utils.send_table(
+            message,
+            [["State", "Ready"], ["Notes", str(self.get("saved_count", 0))]],
+            header=["Item", "Value"],
+            title="Module status",
+        )
 ```
 
-Inside your code you can check a user with
-`await self.all_modules.check_security(message, self.some_command)`.
-
-## Watchers
-
-A watcher receives every new and edited message the account sees:
+`utils.send_table` builds a rich table with a text fallback. For your own HTML,
+use `await message.answer("<h2>Status</h2><p>Ready</p>", rich=True)`.
+`rich_message` supplies rich markup separately from fallback text:
 
 ```python
-@loader.watcher(only_messages=True, no_commands=True)
-async def watcher(self, app: Client, message: types.Message):
-    if "shizu" in message.text.lower():
-        await message.reply("👀")
-```
-
-- A method becomes a watcher through `@loader.watcher(...)` or through a name
-  containing `watcher`. Names starting with `_` are ignored.
-- The signature is `(self, app, message)` or `(self, message)`.
-- Keyword switches:
-
-| Argument | Default | Effect |
-|---|---|---|
-| `only_messages` | `True` | skip messages without text or caption |
-| `no_commands` | `False` | skip messages starting with a command prefix |
-| `no_stickers`, `no_docs`, `no_audios`, `no_videos`, `no_photos` | `False` | skip that media type |
-| `no_forwards` | `False` | skip forwarded messages |
-
-- The watcher also accepts the [message filters](#message-filters):
-
-```python
-@loader.watcher("out", "only_groups", regex=r"^!\w+")
-async def bang_watcher(self, app, message): ...
-```
-
-- Once you pass any string tag, `only_messages` is off unless you list it:
-  `@loader.watcher("only_pm", "only_messages")`.
-- A watcher sees your own messages too, including the command that triggered
-  your module. Return early when you don't need them.
-- Keep watchers fast: they run for every message. Move slow work into
-  `utils.spawn(coro)`.
-- An exception in one watcher is logged and doesn't stop the others.
-
-## Message filters
-
-`@loader.tag(...)` and `@loader.watcher(...)` take the same filters. All of
-them must match. Tags are strings:
-
-| Tag | Matches |
-|---|---|
-| `out` / `in` | your messages / messages from others |
-| `only_pm` / `no_pm` | private chats (including bots) |
-| `only_groups` / `no_groups` | groups and supergroups |
-| `only_channels` / `no_channels` | channels |
-| `only_media` / `no_media` | any media |
-| `only_photos` / `no_photos` | photos |
-| `only_videos` / `no_videos` | videos |
-| `only_audios` / `no_audios` | audio files and voice messages |
-| `only_docs` / `no_docs` | documents |
-| `only_stickers` / `no_stickers` | stickers |
-| `only_forwards` / `no_forwards` | forwarded messages |
-| `only_reply` / `no_reply` | replies |
-| `only_inline` / `no_inline` | messages sent via a bot |
-| `mention` / `no_mention` | messages that mention you |
-| `only_commands` / `no_commands` | messages starting with a command prefix |
-| `editable` | your own messages that aren't forwarded |
-
-Keyword filters:
-
-| Filter | Matches when |
-|---|---|
-| `startswith="!"` | the text (or caption) starts with the value |
-| `endswith="?"` | the text ends with the value |
-| `contains="shizu"` | the text contains the value |
-| `regex=r"\d+"` | `re.search` finds the pattern in the text |
-| `from_id=123` | the sender ID equals the value |
-| `chat_id=-100123` | the chat ID equals the value |
-| `filter=func` | `func(message)` returns a true value |
-
-A tag can also be passed as a keyword: `@loader.tag(only_pm=True)` is the same
-as `@loader.tag("only_pm")`.
-
-## Config
-
-Config values are edited by users with `.config` and saved automatically.
-
-```python
-def __init__(self):
-    self.config = loader.ModuleConfig(
-        loader.ConfigValue(
-            "city",
-            "London",
-            "Default city",
-            validator=loader.validators.String(min_len=2),
-        ),
-        loader.ConfigValue(
-            "units",
-            "metric",
-            lambda: self.strings("units_doc"),
-            validator=loader.validators.Choice(["metric", "imperial"]),
-        ),
-        loader.ConfigValue(
-            "api_key",
-            None,
-            "API key from openweathermap.org",
-            validator=loader.validators.Hidden(loader.validators.String()),
-        ),
-    )
-```
-
-Read a value with `self.config["city"]`. Assigning `self.config["city"] = "Paris"`
-validates and saves it.
-
-- The description may be a string or a function returning one, which lets you
-  translate it.
-- Before the first `.config` change, a value can come from the environment
-  variable `ModuleName.key` (for example `Weather.city`).
-- A stored value that no longer passes the validator falls back to the default.
-- The short legacy form `loader.ModuleConfig("key", default, "doc", "key2", default2, "doc2")`
-  also works but has no validators.
-
-Validators (`loader.validators.*`):
-
-| Validator | Accepts |
-|---|---|
-| `Integer(minimum=, maximum=)` | integers |
-| `Float(minimum=, maximum=)` | numbers |
-| `Boolean()` | `true/false`, `1/0`, `yes/no`, `on/off` |
-| `String(length=, min_len=, max_len=)` | text |
-| `RegExp(pattern, description=, flags=)` | text matching a regex |
-| `Choice([...])` | one of the given values |
-| `MultiChoice([...])` | a list of the given values |
-| `Series(validator=, min_len=, max_len=, fixed_len=)` | a list; accepts JSON or comma-separated text |
-| `Link()` | an http(s) URL |
-| `TelegramID()` | a numeric Telegram ID |
-| `EntityLike()` | an ID, `@username` or `t.me` link |
-| `Emoji(length=, min_len=, max_len=)` | emoji only |
-| `Union(v1, v2, ...)` | the first validator that passes |
-| `NoneType()` | `None` |
-| `Hidden(validator)` | same as the inner validator, for secrets |
-
-A validator raises `ValueError` to reject a value. To write your own, make any
-object with a `validate(value)` method that returns the cleaned value.
-
-When you rename a module, call `self.adopt_config("OldName")` in `on_load`
-to carry over saved values.
-
-## Storing data
-
-Every module has its own database section named after `name`:
-
-```python
-self.set("last_city", "Berlin")
-city = self.get("last_city", "London")
-```
-
-For lists and dicts use a pointer. It saves itself on every change:
-
-```python
-self.history = self.pointer("history", [])
-self.history.append("Berlin")
-
-self.cache = self.pointer("cache", {})
-self.cache["Berlin"] = 12
-```
-
-A pointer only notices changes made through it. After changing a nested object
-(`self.cache["Berlin"]["temp"] = 12`), assign it again:
-`self.cache["Berlin"] = value`.
-
-The raw database is `self.db`: `self.db.get(section, key, default)`,
-`self.db.set(section, key, value)`, `self.db.pop(section, key)`. Values must be
-JSON-serialisable. Don't write into other modules' sections or the `shizu.*`
-sections.
-
-## Strings and translations
-
-Keep user-facing text in `strings` and add a dict per language:
-
-```python
-strings = {
-    "done": "✅ Saved {}",
-}
-
-strings_ru = {
-    "done": "✅ Сохранено {}",
-}
-```
-
-`self.strings("done")` (or `self.strings["done"]`) returns the text in the
-language chosen with `.lang`, falling back to `strings`. The attribute name
-is `strings_<code>`: `strings_ru`, `strings_uz`, `strings_de` and so on. A
-missing key returns `"Unknown string"`.
-
-## Lifecycle hooks
-
-```python
-async def on_load(self, app):
-    """After the module is loaded and its config is restored"""
-
-async def client_ready(self, client, db):
-    """Right after on_load; gets the client and the database"""
-
-async def on_unload(self):
-    """When the module is unloaded or replaced"""
-
-async def on_dlmod(self, client, db):
-    """Once, after the module is installed by link"""
-```
-
-All hooks are optional and may take fewer arguments. Unloading also stops the
-module's loops and removes its handlers.
-
-To stop loading with a message, raise `loader.LoadError("reason")` from
-`on_load` or `client_ready`. To unload quietly, raise `loader.SelfUnload()`.
-Any other exception in a hook is logged and the module stays loaded.
-
-## Loops
-
-```python
-@loader.loop(interval=600, autostart=True)
-async def refresh(self):
-    await self.update_cache()
-
-@loader.loop(time=["09:00", "21:00"], autostart=True)
-async def digest(self):
-    await self.app.send_message("me", "📰 Digest")
-```
-
-- Give exactly one of `interval` (seconds) or `time` (`"HH:MM"` or a list,
-  server time).
-- Either can be a config key: `interval="refresh_seconds"` reads the value
-  from `self.config`, so users can change it.
-- `autostart=True` starts the loop when the module loads.
-- `wait_before=True` sleeps before each run instead of after.
-- Control it from code: `self.refresh.start()`, `await self.refresh.stop()`,
-  `self.refresh.status`.
-- Raise `loader.StopLoop` inside the loop to stop it.
-
-## Inline bot
-
-Every Shizu install has its own bot. Modules use it to send messages with
-buttons from your account, through `self.inline`.
-
-### Forms
-
-```python
-await self.inline.form(
-    text="🌤 <b>Weather</b>",
-    message=message,
-    reply_markup=[
-        [
-            {"text": "🔄 Refresh", "callback": self.refresh_cb, "args": (city,)},
-            {"text": "🌐 Site", "url": "https://openweathermap.org"},
-        ],
-        [{"text": "✖️ Close", "callback": self.close_cb}],
-    ],
+await message.answer(
+    "Status: ready",
+    rich_message={"html": "<h2>Status</h2><p>Ready</p>"},
 )
 ```
 
-`message` is a `Message` (the form replaces or answers it) or a chat ID.
-`form()` returns the form ID or `False`.
+Shizu routes rich messages using the **account owner's Telegram Premium** status:
+Premium accounts send directly; other accounts use the inline bot. Forms with
+callback or input buttons use the bot regardless of Premium.
 
-`reply_markup` is a list of rows; each row is a list of buttons. A single
-button or a single row also works. Button keys:
+<details>
+<summary><b>A button inside rich text</b></summary>
 
-| Key | Meaning |
-|---|---|
-| `text` | button label |
-| `callback` | method called when the button is pressed |
-| `args`, `kwargs` | extra arguments for `callback` (or `handler`) |
-| `url` | link button |
-| `data` | raw callback data; handle it in a callback handler |
-| `input` + `handler` | asks the user for text, then calls `handler(call, text, *args)` |
-
-A callback receives the button press:
+This method uses `check_cb` and `close_cb` from the menu example above:
 
 ```python
-async def refresh_cb(self, call, city: str):
-    await call.answer("Updating…")
-    await call.edit(
-        f"🌤 {city}: 21°C",
-        reply_markup=[{"text": "✖️ Close", "callback": self.close_cb}],
-    )
-
-async def close_cb(self, call):
-    await call.delete()
+    @loader.command()
+    async def richmenu(self, app: Client, message: types.Message):
+        """Place a callback button inside the text."""
+        await self.inline.form(
+            text='Module is ready. <tg-button ref="check">Check status</tg-button>',
+            message=message,
+            rich=True,
+            reply_markup=[
+                {"ref": "check", "callback": self.check_cb, "args": ("ready",), "style": "link"},
+                {"text": "Close", "callback": self.close_cb},
+            ],
+        )
 ```
 
-- `call.edit(text, reply_markup=None)` changes the form; without
-  `reply_markup` the buttons are removed.
-- `call.delete()` deletes the form.
-- `call.answer(text, show_alert=False)` shows a toast.
-- `call.from_user` is who pressed it; `call.form` is the stored form.
+`ref="check"` connects the text tag to its `reply_markup` entry. The tag's content
+is the button label. Buttons without `ref` stay below the message.
+Complete standalone module: [RichButtons.py](examples/RichButtons.py).
 
-Other `form()` options:
+</details>
 
-| Option | Meaning |
-|---|---|
-| `force_me=True` | only you and owners may press buttons |
-| `always_allow=[ids]` | extra users who may press buttons |
-| `disable_security=True` | anyone may press buttons |
-| `ttl=seconds` | the form expires after this time |
-| `photo=`, `video=`, `gif=`, `audio=` | URL of media to send with the text |
-| `msg_id=` | message ID to reply to |
-| `silent=True` | no "Loading inline form..." placeholder |
-| `rich=True` | rich message with buttons inside the text, see below |
-| `rich_message={...}` | raw Bot API `InputRichMessage` payload |
+<details>
+<summary><b>Pages and a gallery</b></summary>
 
-### Buttons inside the text (rich forms)
-
-With `rich=True` a button that has a `ref` key is placed inside the text
-instead of the keyboard:
+Inside a command:
 
 ```python
-await self.inline.form(
-    text='Module updated. <tg-button ref="log">show log</tg-button>',
-    message=message,
-    rich=True,
-    reply_markup=[
-        {"ref": "log", "callback": self.show_log, "style": "link"},
-        {"text": "Close", "callback": self.close_cb},
-    ],
-)
-```
-
-- The label is the text between the tags; the button needs `url`,
-  `callback` or `data`.
-- `style` is `danger`, `success`, `primary` or `link`; `link` works only for
-  callback buttons and looks like an ordinary link.
-- Buttons without `ref` stay in the keyboard under the message.
-- If Telegram rejects the rich message, the form is sent as plain text with
-  the labels left as text.
-- Telegram lets only bots send rich messages, so they always go through the
-  inline bot; `app.send_message` can't send them.
-- Rich forms use Bot API 10.3. Telegram apps that don't support rich
-  messages yet may show them differently.
-
-The built-in `.info` supports rich mode too: open `.config ShizuInfo` and enable
-`rich` (defaults to `False`). The card uses the banner from `photo_url`, a heading,
-a table and a separate button block from `custom_buttons`. The default button
-style is `danger`; its dictionary can specify `style="primary"` or
-`style="success"`. Telegram clients determine the button size. `custom_message`
-replaces the heading and table with your text. The banner is uploaded once to
-the logs chat (or the owner if no logs chat is configured), the temporary message
-is deleted, and its `file_id` is cached. If Telegram rejects the rich payload,
-the card falls back to text with an ordinary link for the button.
-
-### Lists and galleries
-
-```python
-await self.inline.list(message, ["page 1", "page 2", "page 3"])
+await self.inline.list(message, ["First page", "Second page"])
 
 await self.inline.gallery(
     message,
-    ["https://.../1.jpg", "https://.../2.jpg"],
-    caption="Cats",
+    ["https://example.com/first.png", "https://example.com/second.png"],
+    caption="Gallery",
 )
 ```
 
-`gallery` also accepts a function (sync or async) instead of a list; it must
-return a URL or a list of URLs and is called for more photos as the user
-scrolls.
+The gallery's Close button sits below the other controls and deletes the message.
+Instead of a list, you can pass a function returning a URL or a list of URLs
+for the next images.
 
-### Inline commands
+</details>
 
-Inline commands run when someone types `@your_bot name args`:
+<a id="watchers"></a>
+
+## 7. Watchers and command access
 
 ```python
-from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
-
-@loader.inline_handler()
-async def weather_inline_handler(self, app, inline_query, args):
-    """Weather in inline mode"""
-    await inline_query.answer(
-        [
-            InlineQueryResultArticle(
-                id=utils.random_id(),
-                title=f"Weather in {args or 'London'}",
-                input_message_content=InputTextMessageContent("🌤 21°C"),
-            )
-        ],
-        cache_time=0,
-    )
+    @loader.watcher("in", "only_groups", "only_messages", no_commands=True)
+    async def activity_watcher(self, app: Client, message: types.Message):
+        if message.from_user and not message.from_user.is_bot:
+            self.set("last_sender", message.from_user.id)
 ```
 
-- The command name is the method name without `_inline_handler`, or the name
-  passed to `@loader.inline_handler("name")`.
-- A method ending with `_inline_handler` works without the decorator.
-- The signature is `(app, inline_query, args)` or `(app, inline_query)`;
-  `inline_query.args` holds the arguments too.
-- Only you and owners can use inline commands; add `@loader.everyone` to open
-  one to everybody.
-- `inline_query` is an aiogram 2 object.
+This watcher remembers the sender of an incoming text message in a group. It skips
+commands and bot messages. String tags are combined with **and**. When using tags,
+include `only_messages` explicitly if you require text or a caption.
 
-### Bot updates
-
-- `@loader.callback_handler()` on a method (or a name ending with
-  `_callback_handler`) receives **every** button press of the bot as
-  `(call)`. Check `call.data` and return early for foreign buttons. Use it
-  for `data` buttons.
-- A method named `<name>_message_handler(self, app, message)` receives
-  messages sent to the bot in private, by default only yours. Add
-  `@loader.on_bot(lambda self, app, message: True)` to accept others.
-- `self.inline.ss(user_id, state)` and `self.inline.gs(user_id)` keep a
-  simple per-user state for bot dialogs.
-
-## Conversations
-
-To talk to another bot step by step, use `fsm.Conversation`:
+Commands are available to you, configured owners and users granted access by
+default. Declare wider permissions for a public command:
 
 ```python
-from shizu import fsm
-
-async with fsm.Conversation(app, "@BotFather", purge=True) as conv:
-    await conv.ask("/mybots")
-    reply = await conv.get_response(timeout=30)
+    @loader.command()
+    @loader.everyone
+    @loader.ratelimit
+    async def ping(self, app: Client, message: types.Message):
+        """Check whether the module responds."""
+        await message.answer("Pong.")
 ```
 
-`purge=True` deletes the dialog messages afterwards. `ask_media(path, "photo")`
-sends a file.
+`@loader.everyone` opens the command to anyone; `@loader.ratelimit` limits other
+users to three calls per ten seconds per command. Other access decorators include
+`@loader.group_admin`, `@loader.group_owner`, `@loader.group_member` and `@loader.pm`.
+Access permissions and message filters are separate checks: `only_groups` limits
+the chat type but does not grant other people command access.
 
-## Dependencies and load conditions
+<details>
+<summary><b>Compact filter reference</b></summary>
 
-Special comments at the top of the file:
+| Filter | Messages that pass |
+| --- | --- |
+| `in` / `out` | Incoming / outgoing |
+| `only_pm` / `only_groups` | Private chats / groups |
+| `only_messages` | Text or caption present |
+| `only_reply` / `no_reply` | With / without a reply |
+| `only_media` / `no_media` | With / without media |
+| `only_photos`, `only_videos`, `only_docs` | The corresponding media type |
+| `no_commands` | No command prefix |
+| `contains="Shizu"`, `startswith="!"` | Text checks |
+| `regex=r"^!hello"` | Regular expression search |
+| `from_id=123456`, `chat_id=-1001234567890` | Sender or chat checks |
 
-| Comment | Effect |
-|---|---|
-| `# required: requests bs4` | pip packages installed when an import fails, then the module loads again |
-| `# only: 123456,789012` | loads only on these account IDs |
-| `# tl-only` | loads only when Telethon mode is enabled |
+For commands, use `@loader.tag("only_groups", "only_reply")`. For watchers,
+pass the same filters to `@loader.watcher(...)`.
 
-Packages go into the virtualenv, or into `.module_dependencies` when Shizu
-runs without one. Set the `SHIZU_DEPS_DIR` environment variable to install
-them into another directory instead, for example a Docker volume, so they
-survive container rebuilds. Install time is shown in the log chat; if pip
-fails, its error is sent there too.
+</details>
 
-Import heavy or optional packages inside functions if the module should load
-without them.
+User messages in Logs, Backups and BeSafe are removed before commands or watchers
+run. Try your examples in **Shizu-Expiriments** or a regular chat.
 
-## Shared libraries
+<a id="tasks"></a>
 
-Code shared by several modules can live in a library:
+## 8. Background tasks
+
+### A repeating loop
 
 ```python
-from shizu import loader
-
-
-class WeatherLib(loader.Library):
-    name = "WeatherLib"
-    developer = "you"
-    version = 1
-
-    async def init(self):
-        self.session = ...
-
-    async def fetch(self, city: str) -> dict: ...
+    @loader.loop(interval=600, autostart=True, wait_before=True)
+    async def heartbeat(self):
+        self.set("heartbeat_count", self.get("heartbeat_count", 0) + 1)
 ```
 
-In a module:
+The loop increments a stored counter every ten minutes. `wait_before=True` delays
+the first run. Stop it with `await self.heartbeat.stop()` and start it with
+`self.heartbeat.start()`. A config key can supply the interval:
+`interval="refresh_seconds"`.
+
+For a daily schedule, use `time="09:00"` or a list of times. These are in
+**server time**. Specify either `time` or `interval`, never both.
+
+### A persistent one-off task
 
 ```python
-async def on_load(self, app):
-    self.lib = await self.import_lib("https://example.com/weather_lib.py")
+    @loader.command()
+    async def remind(self, app: Client, message: types.Message):
+        """Send a reminder in one minute: remind <text>."""
+        text = message.get_args_raw()
+        if not text:
+            return await message.answer("Pass reminder text.")
+        task_id = self.schedule(
+            60, "deliver_reminder", {"chat_id": message.chat.id, "text": text}
+        )
+        await message.answer(f"Reminder scheduled: <code>{task_id}</code>")
+
+    async def deliver_reminder(self, payload):
+        await self.app.send_message(
+            payload["chat_id"], utils.escape_html(payload["text"])
+        )
 ```
 
-A library is downloaded once per URL and shared between modules. It has
-`self.client`, `self.db`, `self.inline`, `self.get/set/pointer` (its own
-section) and supports `# required:`. Libraries go through the same approval
-as modules.
+`self.schedule` saves a task in the database and calls the named method with
+`payload`. It survives restarts; the module must be loaded to execute it.
+`when` accepts a delay in seconds, a `timedelta` or a `datetime`.
+`self.unschedule(task_id)` cancels a task; `self.scheduled()` lists the module's queue.
 
-## Utilities
+Use `await utils.run_sync(func, *args)` for blocking operations. Avoid `time.sleep`
+and synchronous HTTP calls inside handlers.
 
-`from shizu import utils`:
+<a id="loading"></a>
 
-| Function | Purpose |
-|---|---|
-| `escape_html(text)` | escape `<`, `>`, `&` |
-| `remove_html(text)` | strip tags |
-| `answer(message, text, ...)` | same as `message.answer` |
-| `answer_file(message, file, caption=)` | send a file |
-| `send_table(message, rows, header=, title=)` | table as a rich message, falls back to `<pre>` |
-| `get_user(message)` / `get_target(message)` | user / user ID from reply or arguments |
-| `get_chat_id(message)` | chat ID |
-| `get_display_name(entity)` | name of a user or title of a chat |
-| `get_message_link(message)`, `get_entity_url(entity)` | links |
-| `run_sync(func, *args)` | run blocking code in a thread |
-| `spawn(coro)` | start a background task safely |
-| `chunks(list, n)` | split a list into parts of `n` |
-| `rand(n)` / `random_id()` | random strings |
-| `formatted_uptime()` | userbot uptime |
+## 9. Dependencies, repositories and Premium
 
-Module helpers on `self`:
+### Dependencies
 
-| Method | Purpose |
-|---|---|
-| `await self.invoke("help", "Notes", message=message)` | run another command |
-| `await self.animate(message, frames, interval)` | edit a message through frames |
-| `await self.request_join(peer, reason)` | ask you in the bot chat to join a chat |
-| `self.all_modules.get_module("Name")` | another module |
-
-## Telethon and Hikka modules
-
-When Telethon mode is enabled (`.enabletlmode`), Shizu also loads Telethon
-modules, including most Hikka/Heroku modules. They are detected by their
-imports and signatures (`async def cmd(self, message)`, `@loader.tds`,
-`from .. import`) and converted on load. In these modules:
-
-- handlers take `(self, message)` with a Telethon message;
-- `self.client` is the Telethon client;
-- [message filters](#message-filters) work the same way;
-- `@loader.raw_handler(UpdateType)` receives raw Telethon updates.
-
-Without Telethon mode such modules don't load. For new modules prefer the
-Pyrogram style described above.
-
-## Security rules
-
-Third-party modules run inside Shizu's process, but these guards apply:
-
-- **Approval.** A module from an unknown source isn't run until you approve
-  it in the bot: you get a card with its imports, hosts and risky calls. Links
-  from the official ShizuMods repository are trusted. Updated code needs
-  approval again.
-- **Blocked methods.** Calls that can take over the account are refused:
-  exporting or importing authorizations, login tokens, sessions list and
-  reset, password and 2FA, phone change, account deletion, sign-in and
-  log out.
-- **Session files.** Modules can't open `*.session` files or the session
-  storage.
-- **Login codes.** Handlers of third-party modules never receive messages
-  from Telegram's service account (777000).
-
-Calling a blocked method raises `BeSafe.Forbidden`, and you get a notice
-naming the module. Don't try to work around these checks: such a module will
-be removed from the trusted list.
-
-General advice:
-
-- Never log or send tokens, `config.ini` or database contents.
-- Use `validators.Hidden` for secrets in config.
-- Use `run_sync` for blocking network or disk calls so the userbot doesn't
-  freeze.
-
-## Full example
+Declare package names and versions at the top of the file:
 
 ```python
-# required: humanize
+# requires: alphabet-detector googletrans==4.0.0-rc1
+```
 
-import time
+`# required:` also works. The header is used when an import fails during loading.
+Version constraints are preserved, `bs4` maps to `beautifulsoup4`, and standard
+library modules such as `urllib` are skipped. Without a header, Shizu attempts
+to install the package for a missing import. Installation errors reach the logs;
+an incompatible package API may need code changes or an explicit dependency version.
 
-import humanize
+### Multiple repositories
+
+Add GitHub links as a list in `additional_repos` under `.config ShizuLoader`.
+`.dlmod` shows the catalog; `.dlmod <name>` finds a module. Without `all.txt`,
+Shizu discovers `.py` files through the GitHub API, including nested folders.
+Use `.dlmod folder/Module` for a nested file.
+
+<details>
+<summary><b>Private repositories and updates</b></summary>
+
+`private_repos` is a list with a separate token per repository, each with
+`Contents: read` access:
+
+```json
+[
+  {"url": "https://github.com/owner/first", "token": "TOKEN_1"},
+  {"url": "https://github.com/owner/second", "token": "TOKEN_2"}
+]
+```
+
+The field is masked in config. An installed module update triggers a private bot
+message with a diff and an approval request. Checking does not install updates
+automatically. Configure `notify_updates` and `update_check_interval` to control it.
+
+</details>
+
+### Telegram Premium
+
+Here, `is_premium` means **the account owner's Telegram Premium**, not a paid
+module subscription. To restrict one config option:
+
+```python
+loader.ConfigValue(
+    "premium_feature",
+    False,
+    "Enable a feature that requires Telegram Premium.",
+    validator=loader.validators.IsPremium(loader.validators.Boolean()),
+    label="Premium feature",
+)
+```
+
+Place this `ConfigValue` inside `ModuleConfig`. Without Premium, the option is
+hidden in config and the web panel. To restrict one command:
+
+```python
+    @loader.command(is_premium=True)
+    async def premiumcheck(self, app: Client, message: types.Message):
+        """A command available when the account owner has Telegram Premium."""
+        await message.answer("Telegram Premium is available.")
+```
+
+For the whole module, use `@loader.module("Name", is_premium=True)`.
+The `@loader.tag("is_premium")` tag also works on a class or command.
+
+<details>
+<summary><b>Compatibility and shared libraries</b></summary>
+
+Telethon modules use `(self, message)` and require `.enabletlmode`. Prefer the
+Pyrogram style in this guide for new modules; Hikka compatibility does not imply
+support for every Hikka API.
+
+Shared code can live in a `loader.Library` class with `async def init(self)`.
+Load it with `await self.import_lib(url)`. Libraries also go through BeSafe review.
+
+</details>
+
+<a id="example"></a>
+
+## 10. Complete example: notes
+
+[Download Notes.py](examples/Notes.py)
+
+This module saves short notes, provides a delete menu, and translates messages and
+config into Russian. No external dependencies are needed.
+
+```python
 from pyrogram import Client, types
 
 from shizu import loader, utils
 
 
-@loader.module(name="Notes", author="you", version=1.0)
+@loader.module(name="Notes", author="Shizu example", version=1.0)
 class NotesMod(loader.Module):
-    """Personal notes with an inline menu"""
+    """Save short notes and delete them from an inline menu."""
 
     strings = {
-        "saved": "📝 Note <b>{}</b> saved",
-        "empty": "📭 No notes yet",
-        "no_args": "❌ Usage: <code>{}note name text</code>",
-        "deleted": "🗑 Deleted",
+        "usage": "Usage: <code>{}note text</code>",
+        "too_long": "Keep a note within 120 characters.",
+        "limit": "The note limit is reached. Delete a note first.",
+        "saved": "Note <b>#{}</b> saved.",
+        "empty": "No notes yet.",
+        "title": "<b>Your notes</b>",
+        "deleted": "Deleted",
+        "missing": "This note has already been deleted.",
+        "delete": "Delete #{}",
+        "close": "Close",
+        "cant_close": "Could not delete the message.",
+        "cfg_limit": "Maximum number of stored notes.",
+        "cfg_limit_label": "Note limit",
     }
 
     strings_ru = {
-        "saved": "📝 Заметка <b>{}</b> сохранена",
-        "empty": "📭 Заметок пока нет",
-        "no_args": "❌ Использование: <code>{}note имя текст</code>",
-        "deleted": "🗑 Удалено",
+        "usage": "Использование: <code>{}note текст</code>",
+        "too_long": "В заметке должно быть не больше 120 символов.",
+        "limit": "Достигнут лимит заметок. Сначала удалите одну.",
+        "saved": "Заметка <b>#{}</b> сохранена.",
+        "empty": "Заметок пока нет.",
+        "title": "<b>Ваши заметки</b>",
+        "deleted": "Удалено",
+        "missing": "Эта заметка уже удалена.",
+        "delete": "Удалить #{}",
+        "close": "Закрыть",
+        "cant_close": "Не удалось удалить сообщение.",
+        "cfg_limit": "Максимальное количество сохранённых заметок.",
+        "cfg_limit_label": "Лимит заметок",
     }
 
     def __init__(self):
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "max_notes",
-                50,
-                "Maximum number of notes",
-                validator=loader.validators.Integer(minimum=1, maximum=500),
-            ),
-            loader.ConfigValue(
-                "cleanup_hours",
-                24,
-                "Delete notes older than this many hours",
-                validator=loader.validators.Integer(minimum=1),
-            ),
+                10,
+                lambda: self.strings("cfg_limit"),
+                validator=loader.validators.Integer(minimum=1, maximum=20),
+                label=lambda: self.strings("cfg_limit_label"),
+            )
         )
 
     async def on_load(self, app: Client):
-        self.notes = self.pointer("notes", {})
+        self.saved_notes = self.pointer("notes", {})
 
-    @loader.command(aliases=["n"])
+    @loader.command()
     async def note(self, app: Client, message: types.Message):
-        """Save a note. Usage: note <name> <text>"""
-        args = message.get_args_raw()
-        if not args or len(args.split(maxsplit=1)) < 2:
-            return await message.answer(
-                self.strings("no_args").format(self.get_prefix())
-            )
+        """Save a note: note <text>."""
+        text = message.get_args_raw()
+        if not text:
+            return await message.answer(self.strings("usage").format(self.get_prefix()))
+        if len(text) > 120:
+            return await message.answer(self.strings("too_long"))
+        if len(self.saved_notes) >= self.config["max_notes"]:
+            return await message.answer(self.strings("limit"))
 
-        name, text = args.split(maxsplit=1)
-        if len(self.notes) >= self.config["max_notes"]:
-            self.notes.pop(next(iter(self.notes)))
-        self.notes[name] = {"text": text, "at": time.time()}
-        await message.answer(self.strings("saved").format(utils.escape_html(name)))
+        note_id = str(self.get("next_id", 1))
+        self.saved_notes[note_id] = text
+        self.set("next_id", int(note_id) + 1)
+        await message.answer(self.strings("saved").format(note_id))
 
     @loader.command()
     async def notes(self, app: Client, message: types.Message):
-        """Show all notes"""
-        if not self.notes:
-            return await message.answer(self.strings("empty"))
-
-        lines = [
-            f"▫️ <b>{utils.escape_html(name)}</b> · "
-            f"{humanize.naturaltime(time.time() - note['at'])}"
-            for name, note in self.notes.items()
-        ]
+        """Show saved notes and their delete buttons."""
         await self.inline.form(
-            text="\n".join(lines),
+            text=self._notes_text(),
             message=message,
-            reply_markup=[
-                [
-                    {
-                        "text": f"🗑 {name}",
-                        "callback": self.delete_note,
-                        "args": (name,),
-                    }
-                    for name in list(self.notes)[:3]
-                ]
-            ],
+            reply_markup=self._note_buttons(),
+            force_me=True,
+            ttl=600,
         )
 
-    async def delete_note(self, call, name: str):
-        self.notes.pop(name, None)
-        await call.edit(self.strings("deleted"))
+    def _notes_text(self):
+        if not self.saved_notes:
+            return self.strings("empty")
+        lines = [
+            f"<b>#{note_id}</b> {utils.escape_html(text)}"
+            for note_id, text in self.saved_notes.items()
+        ]
+        return self.strings("title") + "\n\n" + "\n".join(lines)
 
-    @loader.watcher(only_messages=True, no_commands=True)
-    async def watcher(self, app: Client, message: types.Message):
-        if message.outgoing and message.text == "!notes":
-            await message.answer(", ".join(self.notes) or self.strings("empty"))
+    def _note_buttons(self):
+        rows = [
+            [
+                {
+                    "text": self.strings("delete").format(note_id),
+                    "callback": self.delete_note,
+                    "args": (note_id,),
+                }
+            ]
+            for note_id in self.saved_notes
+        ]
+        rows.append([{"text": self.strings("close"), "callback": self.close_menu}])
+        return rows
 
-    @loader.loop(interval=3600, autostart=True)
-    async def cleanup(self):
-        border = time.time() - self.config["cleanup_hours"] * 3600
-        for name in [n for n, note in self.notes.items() if note["at"] < border]:
-            del self.notes[name]
+    async def delete_note(self, call, note_id: str):
+        if self.saved_notes.pop(note_id, None) is None:
+            return await call.answer(self.strings("missing"), show_alert=True)
+        await call.answer(self.strings("deleted"))
+        await call.edit(self._notes_text(), reply_markup=self._note_buttons())
+
+    async def close_menu(self, call):
+        if not await call.delete():
+            return await call.answer(self.strings("cant_close"), show_alert=True)
+        await call.answer()
 ```
 
-## Troubleshooting
+| Part | What it does |
+| --- | --- |
+| `strings` / `strings_ru` | Keep labels and messages separate from logic |
+| `__init__` | Defines a validated note limit with a translated button |
+| `on_load` | Connects `saved_notes` to the stored `notes` dict |
+| `note` | Checks the text and limit, then saves a note with a stable ID |
+| `_notes_text` | Builds HTML while escaping user text |
+| `_note_buttons` | Adds a delete button per note and Close at the bottom |
+| `delete_note` | Removes the data and updates the text and keyboard |
+| `close_menu` | Deletes the menu message while keeping the notes |
 
-| Problem | Cause |
-|---|---|
-| Module isn't loaded, no error | `@loader.module(...)` isn't directly above `class`; or the module waits for approval in the bot |
-| `NFA` on load | `# only:` doesn't list your account |
-| `OTL` on load | the module needs Telethon mode (`.enabletlmode`) |
-| Command doesn't respond to others | default access is you, owners and `.permissions`; add a security decorator |
-| Watcher with tags also gets media without text | string tags turn `only_messages` off; add the `"only_messages"` tag |
-| Pointer change isn't saved | a nested object was changed; assign the key again |
-| `Unknown string` | the key is missing from `strings` |
-| Buttons say "This button has expired" | the form was dropped after a restart or `ttl`; send a new one |
-| Loading fails after installing packages | the package name in `# required:` differs from the import name |
+After installing it, try:
 
-Logs: `.logs` sends the log file; command errors also go to the log chat.
+```text
+.note Buy tea
+.note Read the module guide
+.notes
+.config Notes
+```
+
+Notes are limited to 120 characters each, with a configurable count from 1 to 20.
+The form stays active for ten minutes; notes survive closing the menu and restarting.
+
+<a id="troubleshooting"></a>
+
+## If something fails
+
+| Symptom | What to check |
+| --- | --- |
+| Module did not load | The class decorator, dependency imports and BeSafe card |
+| Only you can use the command | Access permissions; public commands need an explicit decorator |
+| Nothing happens in a service group | Move the test to Shizu-Expiriments |
+| `Unknown string` | The key exists in base `strings` |
+| Data change did not persist | Assign the nested object back to its pointer |
+| A button expired | Send a new form after a restart or `ttl` expiry |
+
+Command errors and tracebacks reach the logs. `.logs` sends the log file.
+BeSafe reviews third-party code loading. Keep secrets and session files out of
+messages, and use `Hidden` for config tokens.

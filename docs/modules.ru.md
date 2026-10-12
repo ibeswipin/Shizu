@@ -1,899 +1,740 @@
-# Как писать модули для Shizu
+# Модули Shizu: от первой команды до готового примера
 
-🇬🇧 [English version](modules.en.md)
+[English](modules.en.md) · [На главную](../Readme.md)
 
-Это руководство описывает всё, что может модуль Shizu: команды, вотчеры,
-конфиг, хранение данных, переводы, инлайн-бот, циклы и правила безопасности,
-по которым работает любой сторонний модуль. Все примеры написаны для режима
-Pyrogram, который включён по умолчанию.
+Это практическое руководство для **Pyrogram**. Сначала загрузите небольшой
+модуль, затем добавьте настройки, хранение данных и кнопки. В конце есть
+[полный Notes.py](#example), который можно сразу установить.
 
-- [Быстрый старт](#быстрый-старт)
-- [Устройство файла модуля](#устройство-файла-модуля)
-- [Команды](#команды)
-- [Ответ на сообщение](#ответ-на-сообщение)
-- [Кто может запускать команду](#кто-может-запускать-команду)
-- [Вотчеры](#вотчеры)
-- [Фильтры сообщений](#фильтры-сообщений)
-- [Конфиг](#конфиг)
-- [Хранение данных](#хранение-данных)
-- [Строки и переводы](#строки-и-переводы)
-- [Хуки жизненного цикла](#хуки-жизненного-цикла)
-- [Циклы](#циклы)
-- [Инлайн-бот](#инлайн-бот)
-- [Диалоги](#диалоги)
-- [Зависимости и условия загрузки](#зависимости-и-условия-загрузки)
-- [Общие библиотеки](#общие-библиотеки)
-- [Утилиты](#утилиты)
-- [Модули Telethon и Hikka](#модули-telethon-и-hikka)
-- [Правила безопасности](#правила-безопасности)
-- [Полный пример](#полный-пример)
-- [Частые проблемы](#частые-проблемы)
+| Нужно сделать | Раздел |
+| --- | --- |
+| Написать и загрузить первый модуль | [Быстрый старт](#start) |
+| Прочитать аргументы и ответить на реплай | [Команды и сообщения](#commands) |
+| Добавить настройки и переводы | [Конфиг](#config) · [Переводы](#translations) |
+| Сохранить данные после перезапуска | [Хранение](#storage) |
+| Сделать меню, таблицу или галерею | [Кнопки и rich text](#inline) |
+| Обрабатывать сообщения и запускать задачи | [Вотчеры](#watchers) · [Задачи](#tasks) |
+| Настроить зависимости и ограничения | [Загрузка и доступ](#loading) |
 
-## Быстрый старт
+<a id="start"></a>
+
+## 1. Первый модуль
+
+Сохраните код в файл `Hello.py`:
 
 ```python
 from pyrogram import Client, types
 
-from shizu import loader
+from shizu import loader, utils
 
 
 @loader.module(name="Hello", author="you", version=1.0)
 class HelloMod(loader.Module):
-    """Здоровается"""
+    """A greeting command."""
 
     @loader.command()
     async def hello(self, app: Client, message: types.Message):
-        """Поприветствовать. Использование: hello <имя>"""
-        name = message.get_args_raw() or "мир"
-        await message.answer(f"👋 Привет, <b>{name}</b>!")
+        """Say hello: hello <name>."""
+        name = message.get_args_raw() or "world"
+        await message.answer(f"Hello, <b>{utils.escape_html(name)}</b>!")
 ```
 
-Установить модуль можно тремя способами:
+1. Отправьте файл в **Shizu-Expiriments** или другой обычный чат.
+2. Ответьте на файл командой `.loadmod`.
+3. Если BeSafe запросит подтверждение, проверьте код и одобрите его в **Shizu-besafe**.
+4. Выполните `.hello Shizu`. Ответ: **Hello, Shizu!**
 
-| Способ | Как |
-|---|---|
-| Из файла | отправьте `Hello.py` в любой чат и ответьте на него `.loadmod` |
-| По ссылке | `.dlmod https://example.com/Hello.py` |
-| Локально | положите файл в `shizu/modules/` и перезапустите Shizu |
+Для загрузки по ссылке используйте `.dlmod <ссылка>`. Ссылки GitHub `/blob/`
+поддерживаются. `.unloadmod Hello` выгрузит модуль.
 
-Затем выполните `.hello Shizu`. Удалить модуль: `.unloadmod Hello`. Получить
-обратно его файл или ссылку: `.ml Hello`. Модули, установленные по ссылке,
-скачиваются заново при каждом запуске.
+| Часть кода | Зачем она нужна |
+| --- | --- |
+| `@loader.module(...)` | Задаёт имя модуля, автора и версию |
+| `class HelloMod(loader.Module)` | Подключает методы и состояние Shizu |
+| `@loader.command()` | Регистрирует метод как команду `.hello` |
+| `async def hello(self, app, message)` | Получает экземпляр модуля, клиент и сообщение команды |
+| `message.get_args_raw()` | Читает текст после имени команды |
+| `utils.escape_html(name)` | Показывает пользовательский текст без превращения в HTML-теги |
+| `message.answer(...)` | Отправляет ответ или редактирует ваше сообщение команды |
 
-## Устройство файла модуля
+Держите один класс модуля в файле и ставьте `@loader.module(...)` над ним.
+Имя модуля должно быть уникальным: повторная загрузка того же модуля заменяет
+его. Описания класса и команд показываются в `.help`.
+
+> Далее методы и поля с отступом добавляются **внутрь класса модуля**.
+> Импорты остаются в начале файла. Примеры можно пробовать по отдельности.
+
+<a id="commands"></a>
+
+## 2. Команды, аргументы и ответы
+
+### Проверка аргументов
 
 ```python
-# required: requests beautifulsoup4
+    @loader.command(aliases=["hi"], ru_doc="Поздороваться: greet <имя>.")
+    async def greet(self, app: Client, message: types.Message):
+        """Say hello: greet <name>."""
+        name = message.get_args_raw()
+        if not name:
+            return await message.answer(
+                f"Usage: <code>{self.get_prefix()}greet name</code>"
+            )
+        await message.answer(f"Hello, <b>{utils.escape_html(name)}</b>!")
+```
 
-from pyrogram import Client, types
+Команду можно вызвать как `.greet Anna` или `.hi Anna`. Без имени она покажет
+подсказку. `aliases` задаёт дополнительные названия, а `ru_doc` — русское
+описание команды в `.help`.
 
-from shizu import loader, utils
+| Вызов | Результат для `.greet New York` |
+| --- | --- |
+| `message.get_args_raw()` | `"New York"`; сохраняет исходные пробелы |
+| `message.get_args()` | `"New York"`; объединяет слова одиночными пробелами |
+| `message.get_args_html()` | Аргументы с форматированием в HTML |
 
+### Работа с реплаем
 
-@loader.module(name="Weather", author="you", version=1.2)
-class WeatherMod(loader.Module):
-    """Текущая погода в любом городе"""
+```python
+    @loader.command()
+    async def quote(self, app: Client, message: types.Message):
+        """Show the text of the replied-to message."""
+        reply = message.reply_to_message
+        if reply is None:
+            return await message.answer("Reply to a message first.")
+        text = reply.text or reply.caption or "No text in this message."
+        await message.answer(f"<blockquote>{utils.escape_html(text)}</blockquote>")
+```
 
-    strings = {...}
-    strings_ru = {...}
+У сообщения с медиа текст может быть в `caption`, поэтому проверяйте оба поля.
+В этом примере исходное оформление намеренно заменяется на цитату с обычным
+текстом. Для HTML исходного сообщения используйте `reply.text.html` или
+`reply.caption.html`, когда соответствующее поле присутствует.
 
+`message.answer` принимает HTML: `<b>`, `<i>`, `<code>`, `<a>` и другие
+поддерживаемые теги. Это тот же помощник, что `utils.answer(message, text)`.
+Для прямого вызова Telegram API доступен `app`, например
+`await app.send_message("me", "Hello")`.
+
+<a id="config"></a>
+
+## 3. Конфиг с понятными названиями
+
+```python
     def __init__(self):
-        self.config = loader.ModuleConfig(...)
+        self.config = loader.ModuleConfig(
+            loader.ConfigValue(
+                "city",
+                "London",
+                "Default city for the command.",
+                validator=loader.validators.String(min_len=2),
+                label="City",
+            ),
+            loader.ConfigValue(
+                "api_key",
+                None,
+                "Token for the external service.",
+                validator=loader.validators.Hidden(loader.validators.String()),
+                label="API token",
+            ),
+        )
+```
 
-    async def on_load(self, app: Client): ...
+Откройте `.config <имя модуля>`. Пользователь увидит кнопки **City** и
+**API token**, а в коде вы будете читать `self.config["city"]` и
+`self.config["api_key"]`.
+
+| Параметр | Значение в примере |
+| --- | --- |
+| `key` | `city`: постоянный ключ хранения, который использует код |
+| `default` | `London`: значение до первой настройки |
+| `doc` | Описание, которое помогает пользователю выбрать значение |
+| `validator` | Проверка и преобразование введённого значения |
+| `label` | Короткий заголовок кнопки, отдельно от ключа |
+
+Присваивание `self.config["city"] = "Paris"` проходит валидацию и сохраняется.
+`Hidden` скрывает секрет в интерфейсе конфигурации; сам модуль получает его
+обычное значение.
+
+<details>
+<summary><b>Часто используемые валидаторы</b></summary>
+
+| Валидатор | Для чего |
+| --- | --- |
+| `Integer(minimum=1, maximum=20)` | Целое число в диапазоне |
+| `Float(minimum=0)` | Число с дробной частью |
+| `Boolean()` | Переключатель |
+| `String(min_len=2, max_len=100)` | Текст заданной длины |
+| `Choice(["light", "dark"])` | Одно значение из списка |
+| `Series(validator=loader.validators.Link())` | Список ссылок |
+| `Link()` | Формат HTTP(S)-ссылки |
+| `RegExp(r"^[a-z]+$")` | Текст по регулярному выражению |
+| `Hidden(loader.validators.String())` | Скрытое текстовое значение |
+
+Валидаторы находятся в `loader.validators`. `Series` принимает JSON-список
+или значения через запятую. Проверка формата ссылки не проверяет доступность сайта.
+
+</details>
+
+<a id="translations"></a>
+
+## 4. Тексты и переводы
+
+```python
+    strings = {"greeting": "Hello, <b>{}</b>!", "city_label": "City"}
+    strings_ru = {"greeting": "Привет, <b>{}</b>!", "city_label": "Город"}
 
     @loader.command()
-    async def weather(self, app: Client, message: types.Message): ...
+    async def welcome(self, app: Client, message: types.Message):
+        """Greet someone in the selected interface language."""
+        name = utils.escape_html(message.get_args_raw() or "Shizu")
+        await message.answer(self.strings("greeting").format(name))
 ```
 
-Правила, на которые опирается загрузчик:
+`strings` задаёт базовые тексты, `strings_ru` — русские. Можно добавить
+`strings_uz` и другие языки. Shizu выбирает язык интерфейса; отсутствующий
+перевод берётся из `strings`.
 
-- **`@loader.module(...)` должен стоять прямо над строкой с классом.**
-  Загрузчик ищет `@loader.module(...)`, за которым сразу идёт `class Name(`.
-  Без этого модуль из файла или по ссылке не загрузится.
-- Класс наследуется от `loader.Module`. Его docstring служит описанием модуля
-  в `.help`.
-- `name` — имя модуля, которое видят пользователи, и одновременно имя его
-  раздела в базе данных. Оно не должно совпадать с именем системного модуля
-  (`ShizuHelp`, `ShizuLoader` и т. д.). Если загрузить модуль с тем же именем
-  класса или тем же `name`, что у уже установленного, новый заменит старый.
-- `author` и `version` необязательны.
-- В одном файле — один класс модуля.
+Для конфигов передавайте функции, чтобы подписи менялись вместе с языком:
+`label=lambda: self.strings("city_label")`. Описание `doc` переводится так же.
+Вызов функции происходит после загрузки переводов, поэтому используйте именно
+`lambda`, а не `self.strings(...)` прямо в `__init__`.
 
-Атрибуты, которые Shizu добавляет каждому модулю:
+<a id="storage"></a>
 
-| Атрибут | Что это |
-|---|---|
-| `self.app` | Pyrogram `Client` аккаунта |
-| `self.db` | база данных (см. [Хранение данных](#хранение-данных)) |
-| `self.inline` | менеджер инлайн-бота (см. [Инлайн-бот](#инлайн-бот)) |
-| `self.bot` | тот же менеджер; `self.inline_bot` — «голый» aiogram `Bot` |
-| `self.me` | ваш аккаунт как Pyrogram `User`; `self.tg_id` — его ID |
-| `self.all_modules` | менеджер модулей: `get_module(name)`, `modules`, `commands` |
-| `self.prefix` | список префиксов команд; `self.get_prefix()` возвращает первый |
-| `self.strings` | переведённые строки (см. [Строки](#строки-и-переводы)) |
-| `self.lookup(name)` | другой загруженный модуль по имени или `False` |
-| `self.tl`, `self.client` | клиент Telethon, только если включён режим Telethon |
-
-## Команды
-
-Команда — это async-метод с декоратором `@loader.command()`:
+## 5. Данные и жизненный цикл
 
 ```python
-@loader.command(aliases=["w"], hidden=False)
-async def weather(self, app: Client, message: types.Message):
-    """Показать погоду. Использование: weather <город>"""
+    async def on_load(self, app: Client):
+        self.items = self.pointer("items", {})
+
+    @loader.command()
+    async def save(self, app: Client, message: types.Message):
+        """Save text in the module database."""
+        text = message.get_args_raw()
+        if not text:
+            return await message.answer("Pass some text to save.")
+        self.items["latest"] = text
+        self.set("saved_count", self.get("saved_count", 0) + 1)
+        await message.answer("Saved.")
 ```
 
-- Имя команды — имя метода в нижнем регистре: `weather` вызывается как
-  `.weather`.
-- Метод, имя которого оканчивается на `cmd`, тоже становится командой даже
-  без декоратора: `weathercmd` — это `.weather`.
-- `aliases` задаёт дополнительные имена. Пользователи могут добавлять и свои
-  алиасы.
-- `hidden=True` скрывает команду из `.help`.
-- Docstring — описание команды в `.help`. Пишите туда и способ использования.
-- Сигнатура всегда `(self, app, message)`.
-- Команда срабатывает и тогда, когда вы редактируете сообщение в команду.
+`on_load` вызывается, когда модулю уже назначены клиент, база, переводы и
+сохранённый конфиг. Здесь удобно подготовить состояние для команд.
 
-Аргументы:
+| API | Что сохраняет |
+| --- | --- |
+| `self.get("key", default)` | Читает значение из раздела этого модуля |
+| `self.set("key", value)` | Записывает JSON-совместимое значение |
+| `self.pointer("items", {})` | Словарь с сохранением изменений верхнего уровня |
+| `self.pointer("items", [])` | Список с сохранением добавлений и удалений |
 
-| Вызов | Для `.weather New York` вернёт |
-|---|---|
-| `message.get_args_raw()` | `"New York"` (текст после команды как есть; `False`, если у сообщения нет текста) |
-| `message.get_args()` | `"New York"` (слова через один пробел) |
-| `message.get_args_html()` | аргументы с форматированием в виде HTML |
-| `utils.get_args_split_by(message, ",")` | список, разделённый по разделителю |
-
-Сообщение, на которое ответили, лежит в `message.reply_to_message`.
-`await utils.get_user(message)` возвращает пользователя из ответа или первого
-аргумента, `await utils.get_target(message)` — его ID.
-
-Исключения внутри команды перехватываются: трейсбек отправляется в чат и в
-чат логов. Оборачивать весь обработчик в try/except не нужно.
-
-## Ответ на сообщение
-
-Используйте `message.answer(...)` (или `utils.answer(message, ...)`). Метод
-редактирует ваше сообщение или отвечает на чужое и сам справляется с длинным
-текстом:
+Данные останутся после перезапуска. Внутри метода для вложенного словаря измените копию
+и присвойте её обратно; само изменение вложенного объекта не вызывает сохранение:
 
 ```python
-await message.answer("✅ <b>Готово</b>")
-await message.answer(file_bytes, doc=True, caption="logs")
-await message.answer("https://example.com/cat.jpg", photo_=True)
-await message.answer("Выберите:", reply_markup=[{"text": "OK", "callback": self.ok}])
+item = dict(self.items["profile"])
+item["name"] = "Shizu"
+self.items["profile"] = item
 ```
 
-- По умолчанию разметка — HTML.
-- Текст длиннее 4096 символов превращается в инлайн-список со страницами,
-  а если это не удалось, отправляется файлом `output.txt`.
-- С `reply_markup` ответ уходит инлайн-формой (см. [Инлайн-бот](#инлайн-бот)).
-- Кастомные эмодзи: `<emoji id=5372892693024218813>🥶</emoji>`.
-- Пользовательский ввод экранируйте через `utils.escape_html(text)`.
-- Таблицы: `await utils.send_table(message, rows, header=[...], title="...")`.
+В последнем фрагменте предполагается, что ключ `profile` уже содержит словарь.
 
-Всё остальное — обычный Pyrogram: `await app.send_message(...)`,
-`await message.delete()`, `await app.get_chat(...)` и так далее.
+<details>
+<summary><b>Доступные свойства и хуки</b></summary>
 
-## Кто может запускать команду
+| Свойство или хук | Назначение |
+| --- | --- |
+| `self.app`, `self.me` | Pyrogram-клиент и аккаунт владельца |
+| `self.inline`, `self.bot` | Менеджер инлайн-бота |
+| `self.db` | База данных Shizu |
+| `self.get_prefix()` | Первый текущий префикс команд |
+| `self.lookup("Name")` | Другой загруженный модуль, либо `False` |
+| `on_load(self, app)` | Подготовка состояния |
+| `client_ready(self, client, db)` | Дополнительный хук после `on_load` |
+| `on_unload(self)` | Освобождение ресурсов при выгрузке |
 
-По умолчанию команду могут запускать:
+Для отказа от загрузки с понятной причиной поднимите `loader.LoadError("reason")`
+в `on_load`. При выгрузке Shizu останавливает циклы и убирает обработчики.
 
-- вы сами (исходящие сообщения разрешены всегда);
-- владельцы, добавленные через `.owner`;
-- пользователи, которым эту команду выдали через `.permissions`.
+</details>
 
-Декораторы расширяют доступ, их можно сочетать:
+<a id="inline"></a>
+
+## 6. Кнопки, rich text и галереи
+
+### Меню с кнопками
 
 ```python
-@loader.command()
-@loader.group_admin_ban_users
-@loader.pm
-async def ban(self, app, message): ...
+    @loader.command()
+    async def menu(self, app: Client, message: types.Message):
+        """Open a menu with a callback and a link."""
+        await self.inline.form(
+            text="<b>Module menu</b>",
+            message=message,
+            reply_markup=[
+                [
+                    {"text": "Check", "callback": self.check_cb, "args": ("ready",)},
+                    {"text": "Source", "url": "https://github.com/ibeswipin/Shizu"},
+                ],
+                [{"text": "Close", "callback": self.close_cb}],
+            ],
+            force_me=True,
+            ttl=600,
+        )
+
+    async def check_cb(self, call, status: str):
+        await call.answer(f"Status: {status}", show_alert=True)
+
+    async def close_cb(self, call):
+        if not await call.delete():
+            return await call.answer("Could not delete the message.", show_alert=True)
+        await call.answer()
 ```
 
-| Декоратор | Кому разрешено |
-|---|---|
-| `@loader.owner` | владельцам |
-| `@loader.sudo`, `@loader.support` | тем, кому команду выдали через `.permissions` |
-| `@loader.everyone` (`unrestricted`, `inline_everyone`) | всем |
-| `@loader.pm` | всем в личных сообщениях |
-| `@loader.group_member` | любому участнику группы |
-| `@loader.group_owner` | создателю группы |
-| `@loader.group_admin` | любому админу группы |
-| `@loader.group_admin_ban_users` | админам с правом банить |
-| `@loader.group_admin_delete_messages` | админам с правом удалять сообщения |
-| `@loader.group_admin_pin_messages` | админам с правом закреплять |
-| `@loader.group_admin_invite_users` | админам с правом приглашать |
-| `@loader.group_admin_change_info` | админам с правом менять информацию о чате |
-| `@loader.group_admin_add_admins` | админам с правом назначать админов |
+`reply_markup` — список строк клавиатуры. `args` передаёт значение `"ready"`
+в `check_cb(call, status)`. Ссылочная кнопка открывает URL, а callback-кнопка
+вызывает ваш метод.
 
-Другие декораторы команд:
+| Вызов или параметр | Что делает |
+| --- | --- |
+| `call.answer(text, show_alert=True)` | Показывает уведомление о нажатии |
+| `call.edit(text, reply_markup=rows)` | Обновляет текст и кнопки формы |
+| `call.delete()` | Удаляет сообщение формы; возвращает результат удаления |
+| `force_me=True` | Оставляет кнопки доступными владельцу и разрешённым owners |
+| `always_allow=[123456]` | Даёт доступ указанным пользователям |
+| `ttl=600` | Через десять минут кнопки истекают; сообщение само не удаляется |
 
-- `@loader.ratelimit` ограничивает других пользователей тремя вызовами
-  команды за 10 секунд. Ваши собственные вызовы не ограничиваются.
-- `@loader.on(filters.private)` добавляет фильтр Pyrogram: команда сработает,
-  только если фильтр пройден. Подойдёт и обычная функция с сигнатурой
-  `(flt, app, message)`.
-- `@loader.tag(...)` запускает команду только для подходящих сообщений по
-  [фильтрам сообщений](#фильтры-сообщений):
+После перезапуска старые callback-кнопки могут истечь: вызовите команду снова.
+Форма с callback-кнопками использует инлайн-бота для обработки нажатий.
+
+### Rich text и таблицы
 
 ```python
-@loader.command()
-@loader.tag("only_groups", "only_reply")
-async def warn(self, app, message): ...
+    @loader.command()
+    async def status(self, app: Client, message: types.Message):
+        """Show a rich table."""
+        await utils.send_table(
+            message,
+            [["State", "Ready"], ["Notes", str(self.get("saved_count", 0))]],
+            header=["Item", "Value"],
+            title="Module status",
+        )
 ```
 
-Проверить права пользователя из кода можно так:
-`await self.all_modules.check_security(message, self.some_command)`.
-
-## Вотчеры
-
-Вотчер получает каждое новое и отредактированное сообщение, которое видит
-аккаунт:
+`utils.send_table` строит rich-таблицу и имеет текстовый fallback. Для своего
+HTML используйте `await message.answer("<h2>Status</h2><p>Ready</p>", rich=True)`.
+Параметр `rich_message` отделяет rich-разметку от текста fallback:
 
 ```python
-@loader.watcher(only_messages=True, no_commands=True)
-async def watcher(self, app: Client, message: types.Message):
-    if "shizu" in message.text.lower():
-        await message.reply("👀")
-```
-
-- Метод становится вотчером, если у него есть `@loader.watcher(...)` или если
-  в его имени есть `watcher`. Имена, начинающиеся с `_`, пропускаются.
-- Сигнатура: `(self, app, message)` или `(self, message)`.
-- Переключатели-аргументы:
-
-| Аргумент | По умолчанию | Действие |
-|---|---|---|
-| `only_messages` | `True` | пропускать сообщения без текста и подписи |
-| `no_commands` | `False` | пропускать сообщения, начинающиеся с префикса команд |
-| `no_stickers`, `no_docs`, `no_audios`, `no_videos`, `no_photos` | `False` | пропускать этот тип медиа |
-| `no_forwards` | `False` | пропускать пересланные сообщения |
-
-- Вотчер также принимает [фильтры сообщений](#фильтры-сообщений):
-
-```python
-@loader.watcher("out", "only_groups", regex=r"^!\w+")
-async def bang_watcher(self, app, message): ...
-```
-
-- Если передан хотя бы один строковый тег, `only_messages` выключается, пока
-  вы не укажете его явно: `@loader.watcher("only_pm", "only_messages")`.
-- Вотчер видит и ваши сообщения, включая саму команду вашего модуля. Если они
-  не нужны, сразу выходите из функции.
-- Вотчеры должны работать быстро: они вызываются на каждое сообщение.
-  Медленную работу выносите в `utils.spawn(coro)`.
-- Исключение в одном вотчере попадает в лог и не мешает остальным.
-
-## Фильтры сообщений
-
-`@loader.tag(...)` и `@loader.watcher(...)` принимают одинаковые фильтры.
-Должны совпасть все. Теги — это строки:
-
-| Тег | Что пропускает |
-|---|---|
-| `out` / `in` | ваши сообщения / сообщения других |
-| `only_pm` / `no_pm` | личные чаты (включая ботов) |
-| `only_groups` / `no_groups` | группы и супергруппы |
-| `only_channels` / `no_channels` | каналы |
-| `only_media` / `no_media` | любые медиа |
-| `only_photos` / `no_photos` | фото |
-| `only_videos` / `no_videos` | видео |
-| `only_audios` / `no_audios` | аудиофайлы и голосовые |
-| `only_docs` / `no_docs` | документы |
-| `only_stickers` / `no_stickers` | стикеры |
-| `only_forwards` / `no_forwards` | пересланные сообщения |
-| `only_reply` / `no_reply` | ответы на сообщения |
-| `only_inline` / `no_inline` | сообщения, отправленные через бота |
-| `mention` / `no_mention` | сообщения с упоминанием вас |
-| `only_commands` / `no_commands` | сообщения, начинающиеся с префикса команд |
-| `editable` | ваши сообщения, которые не являются пересланными |
-
-Фильтры-аргументы:
-
-| Фильтр | Срабатывает, когда |
-|---|---|
-| `startswith="!"` | текст (или подпись) начинается со значения |
-| `endswith="?"` | текст заканчивается значением |
-| `contains="shizu"` | текст содержит значение |
-| `regex=r"\d+"` | `re.search` находит шаблон в тексте |
-| `from_id=123` | ID отправителя равен значению |
-| `chat_id=-100123` | ID чата равен значению |
-| `filter=func` | `func(message)` возвращает истинное значение |
-
-Тег можно передать и аргументом: `@loader.tag(only_pm=True)` — то же самое,
-что `@loader.tag("only_pm")`.
-
-## Конфиг
-
-Значения конфига пользователь меняет через `.config`, они сохраняются
-автоматически.
-
-```python
-def __init__(self):
-    self.config = loader.ModuleConfig(
-        loader.ConfigValue(
-            "city",
-            "London",
-            "Город по умолчанию",
-            validator=loader.validators.String(min_len=2),
-        ),
-        loader.ConfigValue(
-            "units",
-            "metric",
-            lambda: self.strings("units_doc"),
-            validator=loader.validators.Choice(["metric", "imperial"]),
-        ),
-        loader.ConfigValue(
-            "api_key",
-            None,
-            "API-ключ с openweathermap.org",
-            validator=loader.validators.Hidden(loader.validators.String()),
-        ),
-    )
-```
-
-Прочитать значение: `self.config["city"]`. Присваивание
-`self.config["city"] = "Paris"` проверяет значение валидатором и сохраняет его.
-
-- Описание может быть строкой или функцией, возвращающей строку, — так его
-  можно перевести.
-- Пока значение ни разу не меняли через `.config`, его можно задать
-  переменной окружения `ИмяМодуля.ключ` (например, `Weather.city`).
-- Сохранённое значение, которое перестало проходить валидатор, заменяется
-  значением по умолчанию.
-- Работает и старая короткая форма
-  `loader.ModuleConfig("key", default, "doc", "key2", default2, "doc2")`,
-  но без валидаторов.
-
-Валидаторы (`loader.validators.*`):
-
-| Валидатор | Что принимает |
-|---|---|
-| `Integer(minimum=, maximum=)` | целые числа |
-| `Float(minimum=, maximum=)` | числа |
-| `Boolean()` | `true/false`, `1/0`, `yes/no`, `on/off` |
-| `String(length=, min_len=, max_len=)` | текст |
-| `RegExp(pattern, description=, flags=)` | текст, подходящий под регулярное выражение |
-| `Choice([...])` | одно из перечисленных значений |
-| `MultiChoice([...])` | список из перечисленных значений |
-| `Series(validator=, min_len=, max_len=, fixed_len=)` | список; принимает JSON или текст через запятую |
-| `Link()` | ссылку http(s) |
-| `TelegramID()` | числовой Telegram ID |
-| `EntityLike()` | ID, `@username` или ссылку `t.me` |
-| `Emoji(length=, min_len=, max_len=)` | только эмодзи |
-| `Union(v1, v2, ...)` | первый подошедший валидатор |
-| `NoneType()` | `None` |
-| `Hidden(validator)` | то же, что внутренний валидатор; для секретов |
-
-Чтобы отклонить значение, валидатор выбрасывает `ValueError`. Свой валидатор —
-это любой объект с методом `validate(value)`, который возвращает очищенное
-значение.
-
-Если вы переименовали модуль, вызовите `self.adopt_config("OldName")` в
-`on_load`, чтобы перенести сохранённые значения.
-
-## Хранение данных
-
-У каждого модуля свой раздел в базе с именем `name`:
-
-```python
-self.set("last_city", "Berlin")
-city = self.get("last_city", "London")
-```
-
-Для списков и словарей используйте pointer — он сохраняется при каждом
-изменении:
-
-```python
-self.history = self.pointer("history", [])
-self.history.append("Berlin")
-
-self.cache = self.pointer("cache", {})
-self.cache["Berlin"] = 12
-```
-
-Pointer замечает только изменения, сделанные через него самого. Если вы
-изменили вложенный объект (`self.cache["Berlin"]["temp"] = 12`), присвойте
-его заново: `self.cache["Berlin"] = value`.
-
-Сама база доступна как `self.db`: `self.db.get(section, key, default)`,
-`self.db.set(section, key, value)`, `self.db.pop(section, key)`. Значения
-должны сериализоваться в JSON. Не пишите в разделы других модулей и в разделы
-`shizu.*`.
-
-## Строки и переводы
-
-Держите тексты для пользователя в `strings` и добавьте словарь на каждый язык:
-
-```python
-strings = {
-    "done": "✅ Saved {}",
-}
-
-strings_ru = {
-    "done": "✅ Сохранено {}",
-}
-```
-
-`self.strings("done")` (или `self.strings["done"]`) возвращает текст на языке,
-выбранном через `.lang`, а если перевода нет — из `strings`. Имя атрибута —
-`strings_<код>`: `strings_ru`, `strings_uz`, `strings_de` и т. д. Для
-отсутствующего ключа возвращается `"Unknown string"`.
-
-## Хуки жизненного цикла
-
-```python
-async def on_load(self, app):
-    """После загрузки модуля и восстановления конфига"""
-
-async def client_ready(self, client, db):
-    """Сразу после on_load; получает клиент и базу"""
-
-async def on_unload(self):
-    """При выгрузке или замене модуля"""
-
-async def on_dlmod(self, client, db):
-    """Один раз, после установки модуля по ссылке"""
-```
-
-Все хуки необязательны и могут принимать меньше аргументов. При выгрузке
-модуля его циклы останавливаются, а обработчики удаляются.
-
-Чтобы прервать загрузку с сообщением, выбросите `loader.LoadError("причина")`
-из `on_load` или `client_ready`. Чтобы тихо выгрузиться — `loader.SelfUnload()`.
-Любое другое исключение в хуке попадает в лог, а модуль остаётся загруженным.
-
-## Циклы
-
-```python
-@loader.loop(interval=600, autostart=True)
-async def refresh(self):
-    await self.update_cache()
-
-@loader.loop(time=["09:00", "21:00"], autostart=True)
-async def digest(self):
-    await self.app.send_message("me", "📰 Дайджест")
-```
-
-- Укажите что-то одно: `interval` (секунды) или `time` (`"HH:MM"` или список,
-  время сервера).
-- Оба параметра могут быть ключом конфига: `interval="refresh_seconds"`
-  берёт значение из `self.config`, и пользователь может его менять.
-- `autostart=True` запускает цикл при загрузке модуля.
-- `wait_before=True` — пауза перед каждым запуском, а не после.
-- Управление из кода: `self.refresh.start()`, `await self.refresh.stop()`,
-  `self.refresh.status`.
-- Чтобы остановить цикл изнутри, выбросьте `loader.StopLoop`.
-
-## Инлайн-бот
-
-У каждой установки Shizu есть свой бот. Через `self.inline` модули отправляют
-от вашего аккаунта сообщения с кнопками.
-
-### Формы
-
-```python
-await self.inline.form(
-    text="🌤 <b>Погода</b>",
-    message=message,
-    reply_markup=[
-        [
-            {"text": "🔄 Обновить", "callback": self.refresh_cb, "args": (city,)},
-            {"text": "🌐 Сайт", "url": "https://openweathermap.org"},
-        ],
-        [{"text": "✖️ Закрыть", "callback": self.close_cb}],
-    ],
+await message.answer(
+    "Status: ready",
+    rich_message={"html": "<h2>Status</h2><p>Ready</p>"},
 )
 ```
 
-`message` — это `Message` (форма заменит его или ответит на него) или ID чата.
-`form()` возвращает ID формы или `False`.
+Shizu выбирает отправителя по **Telegram Premium владельца аккаунта**:
+rich-сообщение отправляется напрямую для Premium, через инлайн-бота — без него.
+Формы с callback/input-кнопками используют бота независимо от Premium.
 
-`reply_markup` — список рядов, каждый ряд — список кнопок. Можно передать и
-одну кнопку или один ряд. Ключи кнопки:
+<details>
+<summary><b>Кнопка прямо в rich-тексте</b></summary>
 
-| Ключ | Значение |
-|---|---|
-| `text` | надпись на кнопке |
-| `callback` | метод, который вызывается при нажатии |
-| `args`, `kwargs` | дополнительные аргументы для `callback` (или `handler`) |
-| `url` | кнопка-ссылка |
-| `data` | «сырые» callback-данные; обрабатывайте их в callback-обработчике |
-| `input` + `handler` | просит пользователя ввести текст, затем вызывает `handler(call, text, *args)` |
-
-Callback получает нажатие кнопки:
+Этот метод использует `check_cb` и `close_cb` из примера меню выше:
 
 ```python
-async def refresh_cb(self, call, city: str):
-    await call.answer("Обновляю…")
-    await call.edit(
-        f"🌤 {city}: 21°C",
-        reply_markup=[{"text": "✖️ Закрыть", "callback": self.close_cb}],
-    )
-
-async def close_cb(self, call):
-    await call.delete()
+    @loader.command()
+    async def richmenu(self, app: Client, message: types.Message):
+        """Place a callback button inside the text."""
+        await self.inline.form(
+            text='Module is ready. <tg-button ref="check">Check status</tg-button>',
+            message=message,
+            rich=True,
+            reply_markup=[
+                {"ref": "check", "callback": self.check_cb, "args": ("ready",), "style": "link"},
+                {"text": "Close", "callback": self.close_cb},
+            ],
+        )
 ```
 
-- `call.edit(text, reply_markup=None)` меняет форму; без `reply_markup`
-  кнопки исчезают.
-- `call.delete()` удаляет форму.
-- `call.answer(text, show_alert=False)` показывает всплывающее уведомление.
-- `call.from_user` — кто нажал; `call.form` — сохранённая форма.
+`ref="check"` связывает тег с кнопкой в `reply_markup`. Подпись берётся из
+текста внутри тега. Кнопки без `ref` остаются под сообщением.
+Полный отдельный модуль: [RichButtons.py](examples/RichButtons.py).
 
-Другие параметры `form()`:
+</details>
 
-| Параметр | Значение |
-|---|---|
-| `force_me=True` | нажимать кнопки можете только вы и владельцы |
-| `always_allow=[ids]` | кому ещё можно нажимать кнопки |
-| `disable_security=True` | нажимать кнопки может любой |
-| `ttl=секунды` | через сколько форма перестанет работать |
-| `photo=`, `video=`, `gif=`, `audio=` | URL медиа, которое отправится вместе с текстом |
-| `msg_id=` | ID сообщения, на которое ответить |
-| `silent=True` | без заглушки «Loading inline form...» |
-| `rich=True` | rich-сообщение с кнопками внутри текста, см. ниже |
-| `rich_message={...}` | «сырой» объект `InputRichMessage` из Bot API |
+<details>
+<summary><b>Страницы и галерея</b></summary>
 
-### Кнопки внутри текста (rich-формы)
-
-С `rich=True` кнопка с ключом `ref` встаёт прямо в текст, а не в клавиатуру:
+Внутри команды:
 
 ```python
-await self.inline.form(
-    text='Модуль обновлён. <tg-button ref="log">показать лог</tg-button>',
-    message=message,
-    rich=True,
-    reply_markup=[
-        {"ref": "log", "callback": self.show_log, "style": "link"},
-        {"text": "Закрыть", "callback": self.close_cb},
-    ],
-)
-```
-
-- Надпись — это текст между тегами. У кнопки должен быть `url`, `callback`
-  или `data`.
-- `style` — `danger`, `success`, `primary` или `link`. `link` работает только
-  у callback-кнопок и выглядит как обычная ссылка.
-- Кнопки без `ref` остаются в клавиатуре под сообщением.
-- Если Telegram не примет rich-сообщение, форма уйдёт обычным текстом, а
-  надписи кнопок останутся простым текстом.
-- Rich-сообщения в Telegram могут отправлять только боты, поэтому они всегда
-  идут через инлайн-бота; через `app.send_message` их не отправить.
-- Rich-формы используют Bot API 10.3. Приложения Telegram, которые ещё не
-  поддерживают rich-сообщения, могут показывать их иначе.
-
-Встроенная `.info` тоже поддерживает rich-режим: откройте `.config ShizuInfo`
-и включите `rich` (по умолчанию `False`). Карточка содержит баннер из
-`photo_url`, заголовок, таблицу и отдельный блок кнопки из `custom_buttons`.
-По умолчанию кнопка имеет стиль `danger`; в её словаре можно задать
-`style="primary"` или `style="success"`. Размер кнопки выбирает клиент Telegram.
-`custom_message` заменяет заголовок и таблицу вашим текстом. Баннер один раз
-загружается в чат логов (или владельцу, если чат не настроен), временное
-сообщение удаляется, а `file_id` сохраняется для следующих вызовов.
-Если Telegram отклонит rich-payload, отправится текст с обычной ссылкой кнопки.
-
-### Списки и галереи
-
-```python
-await self.inline.list(message, ["страница 1", "страница 2", "страница 3"])
+await self.inline.list(message, ["First page", "Second page"])
 
 await self.inline.gallery(
     message,
-    ["https://.../1.jpg", "https://.../2.jpg"],
-    caption="Котики",
+    ["https://example.com/first.png", "https://example.com/second.png"],
+    caption="Gallery",
 )
 ```
 
-Вместо списка `gallery` принимает и функцию (обычную или async). Она должна
-возвращать URL или список URL и вызывается за новыми фото, пока пользователь
-листает галерею.
+В галерее Close стоит снизу и удаляет сообщение. Вместо списка можно передать
+функцию, которая возвращает URL или список URL для следующих изображений.
 
-### Инлайн-команды
+</details>
 
-Инлайн-команда срабатывает, когда кто-то набирает `@ваш_бот name args`:
+<a id="watchers"></a>
+
+## 7. Вотчеры и доступ к командам
 
 ```python
-from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
-
-@loader.inline_handler()
-async def weather_inline_handler(self, app, inline_query, args):
-    """Погода в инлайн-режиме"""
-    await inline_query.answer(
-        [
-            InlineQueryResultArticle(
-                id=utils.random_id(),
-                title=f"Погода: {args or 'London'}",
-                input_message_content=InputTextMessageContent("🌤 21°C"),
-            )
-        ],
-        cache_time=0,
-    )
+    @loader.watcher("in", "only_groups", "only_messages", no_commands=True)
+    async def activity_watcher(self, app: Client, message: types.Message):
+        if message.from_user and not message.from_user.is_bot:
+            self.set("last_sender", message.from_user.id)
 ```
 
-- Имя команды — имя метода без `_inline_handler` или имя, переданное в
-  `@loader.inline_handler("name")`.
-- Метод, имя которого оканчивается на `_inline_handler`, работает и без
-  декоратора.
-- Сигнатура: `(app, inline_query, args)` или `(app, inline_query)`; аргументы
-  также лежат в `inline_query.args`.
-- Пользоваться инлайн-командами могут только вы и владельцы. Чтобы открыть
-  команду всем, добавьте `@loader.everyone`.
-- `inline_query` — объект aiogram 2.
+Этот вотчер запоминает отправителя входящего текстового сообщения в группе.
+Он пропускает команды и сообщения ботов. Строковые теги соединяются условием
+**«и»**. При использовании тегов явно добавляйте `only_messages`, если
+обработчику нужен текст или подпись.
 
-### События бота
-
-- `@loader.callback_handler()` на методе (или имя, оканчивающееся на
-  `_callback_handler`) получает **каждое** нажатие кнопок бота как `(call)`.
-  Проверяйте `call.data` и сразу выходите, если кнопка чужая. Используйте это
-  для кнопок с `data`.
-- Метод `<name>_message_handler(self, app, message)` получает сообщения,
-  которые пишут боту в личку, по умолчанию только ваши. Чтобы принимать
-  сообщения от других, добавьте `@loader.on_bot(lambda self, app, message: True)`.
-- `self.inline.ss(user_id, state)` и `self.inline.gs(user_id)` хранят простое
-  состояние пользователя для диалогов с ботом.
-
-## Диалоги
-
-Для пошагового общения с другим ботом используйте `fsm.Conversation`:
+По умолчанию команды доступны вам, owners и пользователям, которым вы выдали
+доступ. Для публичной команды явно задайте разрешение:
 
 ```python
-from shizu import fsm
-
-async with fsm.Conversation(app, "@BotFather", purge=True) as conv:
-    await conv.ask("/mybots")
-    reply = await conv.get_response(timeout=30)
+    @loader.command()
+    @loader.everyone
+    @loader.ratelimit
+    async def ping(self, app: Client, message: types.Message):
+        """Check whether the module responds."""
+        await message.answer("Pong.")
 ```
 
-`purge=True` удаляет сообщения диалога после завершения. `ask_media(path, "photo")`
-отправляет файл.
+`@loader.everyone` открывает команду всем, а `@loader.ratelimit` ограничивает
+чужие вызовы до трёх за десять секунд на команду. Для отдельных случаев есть
+`@loader.group_admin`, `@loader.group_owner`, `@loader.group_member` и `@loader.pm`.
+Разрешение доступа и фильтр сообщений — разные проверки: `only_groups` ограничивает
+тип чата, но само по себе не открывает команду другим людям.
 
-## Зависимости и условия загрузки
+<details>
+<summary><b>Короткая справка по фильтрам</b></summary>
 
-Специальные комментарии в начале файла:
+| Фильтр | Какие сообщения проходят |
+| --- | --- |
+| `in` / `out` | Входящие / исходящие |
+| `only_pm` / `only_groups` | Личные чаты / группы |
+| `only_messages` | Сообщения с текстом или подписью |
+| `only_reply` / `no_reply` | С реплаем / без реплая |
+| `only_media` / `no_media` | С медиа / без медиа |
+| `only_photos`, `only_videos`, `only_docs` | Соответствующий тип медиа |
+| `no_commands` | Без префикса команды |
+| `contains="Shizu"`, `startswith="!"` | Проверка текста |
+| `regex=r"^!hello"` | Поиск регулярным выражением |
+| `from_id=123456`, `chat_id=-1001234567890` | Проверка отправителя или чата |
 
-| Комментарий | Действие |
-|---|---|
-| `# required: requests bs4` | pip-пакеты: ставятся, если импорт не удался, после чего модуль загружается снова |
-| `# only: 123456,789012` | модуль загрузится только на аккаунтах с этими ID |
-| `# tl-only` | модуль загрузится только при включённом режиме Telethon |
+Для команд используйте `@loader.tag("only_groups", "only_reply")`.
+Для вотчеров те же фильтры передаются в `@loader.watcher(...)`.
 
-Пакеты ставятся в виртуальное окружение, а если Shizu запущен без него — в
-`.module_dependencies`. Переменная окружения `SHIZU_DEPS_DIR` задаёт другую
-папку, например Docker volume, чтобы пакеты переживали пересборку контейнера.
-Об установке пакетов пишется в чат логов; если pip упадёт, туда же придёт
-его ошибка.
+</details>
 
-Тяжёлые или необязательные пакеты импортируйте внутри функций, если модуль
-должен загружаться и без них.
+В Logs, Backups и BeSafe сообщения пользователей удаляются до обработки
+команд и вотчеров. Проверяйте примеры в **Shizu-Expiriments** или обычном чате.
 
-## Общие библиотеки
+<a id="tasks"></a>
 
-Код, который нужен нескольким модулям, можно вынести в библиотеку:
+## 8. Фоновые задачи
+
+### Повторяющийся цикл
 
 ```python
-from shizu import loader
-
-
-class WeatherLib(loader.Library):
-    name = "WeatherLib"
-    developer = "you"
-    version = 1
-
-    async def init(self):
-        self.session = ...
-
-    async def fetch(self, city: str) -> dict: ...
+    @loader.loop(interval=600, autostart=True, wait_before=True)
+    async def heartbeat(self):
+        self.set("heartbeat_count", self.get("heartbeat_count", 0) + 1)
 ```
 
-В модуле:
+Цикл увеличивает сохранённый счётчик каждые десять минут. `wait_before=True`
+откладывает первый запуск. Остановить его можно через
+`await self.heartbeat.stop()`, запустить — через `self.heartbeat.start()`.
+Вместо секунд допускается ключ конфига: `interval="refresh_seconds"`.
+
+Для запуска по часам используйте `time="09:00"` или список времени.
+Это **время сервера**; задавайте только один параметр: `time` или `interval`.
+
+### Однократная задача с сохранением
 
 ```python
-async def on_load(self, app):
-    self.lib = await self.import_lib("https://example.com/weather_lib.py")
+    @loader.command()
+    async def remind(self, app: Client, message: types.Message):
+        """Send a reminder in one minute: remind <text>."""
+        text = message.get_args_raw()
+        if not text:
+            return await message.answer("Pass reminder text.")
+        task_id = self.schedule(
+            60, "deliver_reminder", {"chat_id": message.chat.id, "text": text}
+        )
+        await message.answer(f"Reminder scheduled: <code>{task_id}</code>")
+
+    async def deliver_reminder(self, payload):
+        await self.app.send_message(
+            payload["chat_id"], utils.escape_html(payload["text"])
+        )
 ```
 
-Библиотека скачивается один раз на URL и общая для всех модулей. У неё есть
-`self.client`, `self.db`, `self.inline`, `self.get/set/pointer` (свой раздел
-в базе), и она поддерживает `# required:`. Библиотеки проходят то же
-одобрение, что и модули.
+`self.schedule` сохраняет задачу в базе и вызовет указанный метод с `payload`.
+Она переживает перезапуск; для выполнения модуль должен быть загружен.
+`when` принимает задержку в секундах, `timedelta` или `datetime`.
+`self.unschedule(task_id)` отменяет задачу, `self.scheduled()` показывает очередь модуля.
 
-## Утилиты
+Для блокирующей операции используйте `await utils.run_sync(func, *args)`.
+Не вызывайте `time.sleep` или синхронный HTTP-запрос прямо в обработчике.
 
-`from shizu import utils`:
+<a id="loading"></a>
 
-| Функция | Назначение |
-|---|---|
-| `escape_html(text)` | экранировать `<`, `>`, `&` |
-| `remove_html(text)` | убрать теги |
-| `answer(message, text, ...)` | то же, что `message.answer` |
-| `answer_file(message, file, caption=)` | отправить файл |
-| `send_table(message, rows, header=, title=)` | таблица rich-сообщением, при неудаче — `<pre>` |
-| `get_user(message)` / `get_target(message)` | пользователь / его ID из ответа или аргументов |
-| `get_chat_id(message)` | ID чата |
-| `get_display_name(entity)` | имя пользователя или название чата |
-| `get_message_link(message)`, `get_entity_url(entity)` | ссылки |
-| `run_sync(func, *args)` | выполнить блокирующий код в потоке |
-| `spawn(coro)` | безопасно запустить фоновую задачу |
-| `chunks(list, n)` | разбить список на части по `n` |
-| `rand(n)` / `random_id()` | случайные строки |
-| `formatted_uptime()` | время работы юзербота |
+## 9. Зависимости, репозитории и Premium
 
-Методы модуля на `self`:
+### Зависимости
 
-| Метод | Назначение |
-|---|---|
-| `await self.invoke("help", "Notes", message=message)` | выполнить другую команду |
-| `await self.animate(message, frames, interval)` | прокрутить сообщение по кадрам |
-| `await self.request_join(peer, reason)` | спросить вас в чате с ботом, вступить ли в чат |
-| `self.all_modules.get_module("Name")` | другой модуль |
-
-## Модули Telethon и Hikka
-
-При включённом режиме Telethon (`.enabletlmode`) Shizu загружает и модули на
-Telethon, в том числе большинство модулей Hikka/Heroku. Они распознаются по
-импортам и сигнатурам (`async def cmd(self, message)`, `@loader.tds`,
-`from .. import`) и преобразуются при загрузке. В таких модулях:
-
-- обработчики принимают `(self, message)` с сообщением Telethon;
-- `self.client` — клиент Telethon;
-- [фильтры сообщений](#фильтры-сообщений) работают так же;
-- `@loader.raw_handler(UpdateType)` получает «сырые» обновления Telethon.
-
-Без режима Telethon такие модули не загружаются. Новые модули лучше писать
-в стиле Pyrogram, описанном выше.
-
-## Правила безопасности
-
-Сторонние модули выполняются внутри процесса Shizu, но для них действуют
-защиты:
-
-- **Одобрение.** Модуль из неизвестного источника не запустится, пока вы не
-  одобрите его в боте: придёт карточка с его импортами, хостами и опасными
-  вызовами. Ссылки из официального репозитория ShizuMods считаются
-  доверенными. Изменённый код нужно одобрить заново.
-- **Заблокированные методы.** Вызовы, через которые можно угнать аккаунт,
-  отклоняются: экспорт и импорт авторизаций, токены входа, список и сброс
-  сессий, пароль и 2FA, смена номера, удаление аккаунта, вход и выход.
-- **Файлы сессий.** Модули не могут открыть файлы `*.session` и хранилище
-  сессий.
-- **Коды входа.** Обработчики сторонних модулей никогда не получают сообщения
-  от служебного аккаунта Telegram (777000).
-
-Вызов заблокированного метода выбрасывает `BeSafe.Forbidden`, а вам приходит
-уведомление с именем модуля. Не пытайтесь обойти эти проверки: такой модуль
-уберут из доверенных.
-
-Общие советы:
-
-- Никогда не пишите в лог и никуда не отправляйте токены, `config.ini` и
-  содержимое базы.
-- Для секретов в конфиге используйте `validators.Hidden`.
-- Блокирующие сетевые и дисковые операции запускайте через `run_sync`, чтобы
-  юзербот не зависал.
-
-## Полный пример
+В начале файла можно указать пакеты и нужные версии:
 
 ```python
-# required: humanize
+# requires: alphabet-detector googletrans==4.0.0-rc1
+```
 
-import time
+`# required:` тоже поддерживается. Заголовок используется, когда импорт при
+загрузке завершился ошибкой. Версии сохраняются, `bs4` преобразуется в
+`beautifulsoup4`, модули стандартной библиотеки вроде `urllib` пропускаются.
+Без заголовка Shizu пробует установить пакет для отсутствующего импорта.
+Ошибка установки приходит в логи; для несовместимого API пакета может понадобиться
+исправление кода или явная версия зависимости.
 
-import humanize
+### Несколько репозиториев
+
+В `.config ShizuLoader` укажите список GitHub-ссылок в `additional_repos`.
+`.dlmod` покажет каталог, `.dlmod <имя>` найдёт модуль. Если нет `all.txt`,
+Shizu собирает `.py` через GitHub API, включая вложенные папки.
+Для вложенного файла используется `.dlmod folder/Module`.
+
+<details>
+<summary><b>Приватные репозитории и обновления</b></summary>
+
+`private_repos` — список репозиториев, у каждого свой токен с доступом `Contents: read`:
+
+```json
+[
+  {"url": "https://github.com/owner/first", "token": "TOKEN_1"},
+  {"url": "https://github.com/owner/second", "token": "TOKEN_2"}
+]
+```
+
+Поле скрыто в конфиге. Обнаруженное обновление установленного модуля приходит
+в личный чат бота с diff и запросом подтверждения. Проверка не устанавливает
+обновление автоматически. Настройки: `notify_updates` и `update_check_interval`.
+
+</details>
+
+### Telegram Premium
+
+Здесь `is_premium` означает **Telegram Premium владельца аккаунта**, а не
+платную подписку на модуль. Для отдельного пункта конфига:
+
+```python
+loader.ConfigValue(
+    "premium_feature",
+    False,
+    "Enable a feature that requires Telegram Premium.",
+    validator=loader.validators.IsPremium(loader.validators.Boolean()),
+    label="Premium feature",
+)
+```
+
+Вставьте этот `ConfigValue` в `ModuleConfig`. Без Premium пункт скрыт в
+конфиге и веб-панели. Для команды:
+
+```python
+    @loader.command(is_premium=True)
+    async def premiumcheck(self, app: Client, message: types.Message):
+        """A command available when the account owner has Telegram Premium."""
+        await message.answer("Telegram Premium is available.")
+```
+
+Для всего модуля используйте `@loader.module("Name", is_premium=True)`.
+Также поддерживается тег `@loader.tag("is_premium")` на классе или команде.
+
+<details>
+<summary><b>Совместимость и общие библиотеки</b></summary>
+
+Модули Telethon используют `(self, message)` и требуют `.enabletlmode`.
+Для новых модулей используйте стиль Pyrogram из этого руководства; совместимость
+с Hikka не означает поддержку всех её API.
+
+Общий код можно вынести в класс `loader.Library` с методом `async def init(self)`
+и загрузить через `await self.import_lib(url)`. Библиотека тоже проходит проверку BeSafe.
+
+</details>
+
+<a id="example"></a>
+
+## 10. Полный пример: заметки
+
+[Скачать Notes.py](examples/Notes.py)
+
+Модуль сохраняет короткие заметки, показывает меню удаления и переводит
+сообщения и конфиг на русский. Внешние зависимости не нужны.
+
+```python
 from pyrogram import Client, types
 
 from shizu import loader, utils
 
 
-@loader.module(name="Notes", author="you", version=1.0)
+@loader.module(name="Notes", author="Shizu example", version=1.0)
 class NotesMod(loader.Module):
-    """Personal notes with an inline menu"""
+    """Save short notes and delete them from an inline menu."""
 
     strings = {
-        "saved": "📝 Note <b>{}</b> saved",
-        "empty": "📭 No notes yet",
-        "no_args": "❌ Usage: <code>{}note name text</code>",
-        "deleted": "🗑 Deleted",
+        "usage": "Usage: <code>{}note text</code>",
+        "too_long": "Keep a note within 120 characters.",
+        "limit": "The note limit is reached. Delete a note first.",
+        "saved": "Note <b>#{}</b> saved.",
+        "empty": "No notes yet.",
+        "title": "<b>Your notes</b>",
+        "deleted": "Deleted",
+        "missing": "This note has already been deleted.",
+        "delete": "Delete #{}",
+        "close": "Close",
+        "cant_close": "Could not delete the message.",
+        "cfg_limit": "Maximum number of stored notes.",
+        "cfg_limit_label": "Note limit",
     }
 
     strings_ru = {
-        "saved": "📝 Заметка <b>{}</b> сохранена",
-        "empty": "📭 Заметок пока нет",
-        "no_args": "❌ Использование: <code>{}note имя текст</code>",
-        "deleted": "🗑 Удалено",
+        "usage": "Использование: <code>{}note текст</code>",
+        "too_long": "В заметке должно быть не больше 120 символов.",
+        "limit": "Достигнут лимит заметок. Сначала удалите одну.",
+        "saved": "Заметка <b>#{}</b> сохранена.",
+        "empty": "Заметок пока нет.",
+        "title": "<b>Ваши заметки</b>",
+        "deleted": "Удалено",
+        "missing": "Эта заметка уже удалена.",
+        "delete": "Удалить #{}",
+        "close": "Закрыть",
+        "cant_close": "Не удалось удалить сообщение.",
+        "cfg_limit": "Максимальное количество сохранённых заметок.",
+        "cfg_limit_label": "Лимит заметок",
     }
 
     def __init__(self):
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "max_notes",
-                50,
-                "Maximum number of notes",
-                validator=loader.validators.Integer(minimum=1, maximum=500),
-            ),
-            loader.ConfigValue(
-                "cleanup_hours",
-                24,
-                "Delete notes older than this many hours",
-                validator=loader.validators.Integer(minimum=1),
-            ),
+                10,
+                lambda: self.strings("cfg_limit"),
+                validator=loader.validators.Integer(minimum=1, maximum=20),
+                label=lambda: self.strings("cfg_limit_label"),
+            )
         )
 
     async def on_load(self, app: Client):
-        self.notes = self.pointer("notes", {})
+        self.saved_notes = self.pointer("notes", {})
 
-    @loader.command(aliases=["n"])
+    @loader.command()
     async def note(self, app: Client, message: types.Message):
-        """Save a note. Usage: note <name> <text>"""
-        args = message.get_args_raw()
-        if not args or len(args.split(maxsplit=1)) < 2:
-            return await message.answer(
-                self.strings("no_args").format(self.get_prefix())
-            )
+        """Save a note: note <text>."""
+        text = message.get_args_raw()
+        if not text:
+            return await message.answer(self.strings("usage").format(self.get_prefix()))
+        if len(text) > 120:
+            return await message.answer(self.strings("too_long"))
+        if len(self.saved_notes) >= self.config["max_notes"]:
+            return await message.answer(self.strings("limit"))
 
-        name, text = args.split(maxsplit=1)
-        if len(self.notes) >= self.config["max_notes"]:
-            self.notes.pop(next(iter(self.notes)))
-        self.notes[name] = {"text": text, "at": time.time()}
-        await message.answer(self.strings("saved").format(utils.escape_html(name)))
+        note_id = str(self.get("next_id", 1))
+        self.saved_notes[note_id] = text
+        self.set("next_id", int(note_id) + 1)
+        await message.answer(self.strings("saved").format(note_id))
 
     @loader.command()
     async def notes(self, app: Client, message: types.Message):
-        """Show all notes"""
-        if not self.notes:
-            return await message.answer(self.strings("empty"))
-
-        lines = [
-            f"▫️ <b>{utils.escape_html(name)}</b> · "
-            f"{humanize.naturaltime(time.time() - note['at'])}"
-            for name, note in self.notes.items()
-        ]
+        """Show saved notes and their delete buttons."""
         await self.inline.form(
-            text="\n".join(lines),
+            text=self._notes_text(),
             message=message,
-            reply_markup=[
-                [
-                    {
-                        "text": f"🗑 {name}",
-                        "callback": self.delete_note,
-                        "args": (name,),
-                    }
-                    for name in list(self.notes)[:3]
-                ]
-            ],
+            reply_markup=self._note_buttons(),
+            force_me=True,
+            ttl=600,
         )
 
-    async def delete_note(self, call, name: str):
-        self.notes.pop(name, None)
-        await call.edit(self.strings("deleted"))
+    def _notes_text(self):
+        if not self.saved_notes:
+            return self.strings("empty")
+        lines = [
+            f"<b>#{note_id}</b> {utils.escape_html(text)}"
+            for note_id, text in self.saved_notes.items()
+        ]
+        return self.strings("title") + "\n\n" + "\n".join(lines)
 
-    @loader.watcher(only_messages=True, no_commands=True)
-    async def watcher(self, app: Client, message: types.Message):
-        if message.outgoing and message.text == "!notes":
-            await message.answer(", ".join(self.notes) or self.strings("empty"))
+    def _note_buttons(self):
+        rows = [
+            [
+                {
+                    "text": self.strings("delete").format(note_id),
+                    "callback": self.delete_note,
+                    "args": (note_id,),
+                }
+            ]
+            for note_id in self.saved_notes
+        ]
+        rows.append([{"text": self.strings("close"), "callback": self.close_menu}])
+        return rows
 
-    @loader.loop(interval=3600, autostart=True)
-    async def cleanup(self):
-        border = time.time() - self.config["cleanup_hours"] * 3600
-        for name in [n for n, note in self.notes.items() if note["at"] < border]:
-            del self.notes[name]
+    async def delete_note(self, call, note_id: str):
+        if self.saved_notes.pop(note_id, None) is None:
+            return await call.answer(self.strings("missing"), show_alert=True)
+        await call.answer(self.strings("deleted"))
+        await call.edit(self._notes_text(), reply_markup=self._note_buttons())
+
+    async def close_menu(self, call):
+        if not await call.delete():
+            return await call.answer(self.strings("cant_close"), show_alert=True)
+        await call.answer()
 ```
 
-## Частые проблемы
+| Часть | Что происходит |
+| --- | --- |
+| `strings` / `strings_ru` | Все подписи и сообщения хранятся отдельно от логики |
+| `__init__` | Создаёт лимит заметок с валидатором и переведённой кнопкой |
+| `on_load` | Подключает `saved_notes` к словарю `notes` в базе |
+| `note` | Проверяет текст и лимит, сохраняет заметку с постоянным номером |
+| `_notes_text` | Собирает HTML и экранирует пользовательский текст |
+| `_note_buttons` | Делает кнопку удаления для каждой заметки и Close снизу |
+| `delete_note` | Удаляет данные и обновляет текст и клавиатуру |
+| `close_menu` | Удаляет сообщение, сохраняя сами заметки |
 
-| Проблема | Причина |
-|---|---|
-| Модуль не загрузился, ошибки нет | `@loader.module(...)` стоит не прямо над `class`, или модуль ждёт одобрения в боте |
-| `NFA` при загрузке | в `# only:` нет вашего аккаунта |
-| `OTL` при загрузке | модулю нужен режим Telethon (`.enabletlmode`) |
-| Команда не отвечает другим людям | по умолчанию доступ есть только у вас, владельцев и через `.permissions`; добавьте декоратор доступа |
-| Вотчер с тегами получает и медиа без текста | строковые теги выключают `only_messages`; добавьте тег `"only_messages"` |
-| Изменение в pointer не сохранилось | изменён вложенный объект; присвойте ключ заново |
-| `Unknown string` | ключа нет в `strings` |
-| Кнопки пишут «This button has expired» | форма пропала после перезапуска или по `ttl`; отправьте новую |
-| Модуль не грузится после установки пакетов | имя пакета в `# required:` отличается от имени импорта |
+Попробуйте после загрузки:
 
-Логи: `.logs` присылает файл лога, ошибки команд также приходят в чат логов.
+```text
+.note Buy tea
+.note Read the module guide
+.notes
+.config Notes
+```
+
+Заметки ограничены 120 символами, их лимит — от 1 до 20. Форма активна десять
+минут; сами заметки сохраняются после закрытия меню и перезапуска.
+
+<a id="troubleshooting"></a>
+
+## Если что-то не работает
+
+| Симптом | Что проверить |
+| --- | --- |
+| Модуль не загрузился | Декоратор класса, импорт зависимостей и карточку BeSafe |
+| Команда работает только у вас | Разрешения; для публичной команды нужен явный декоратор |
+| Код не реагирует в служебной группе | Перенесите тест в Shizu-Expiriments |
+| `Unknown string` | Наличие ключа в базовом `strings` |
+| Изменение данных не сохранилось | Присвойте вложенный объект обратно в pointer |
+| Кнопка истекла | Отправьте новую форму после перезапуска или истечения `ttl` |
+
+Ошибка команды и traceback приходят в логи. `.logs` позволяет получить файл лога.
+BeSafe проверяет загрузку стороннего кода; не отправляйте секреты или файлы сессии
+в сообщениях и используйте `Hidden` для токенов в конфиге.
