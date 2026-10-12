@@ -63,7 +63,7 @@ class Help(loader.Module):
 
         if getattr(module, "m__telethon", False):
             emoji = "🪢"
-        elif module.name in self.cmodules:
+        elif self.all_modules.is_core(module):
             emoji = self.config["core_modules"]
         else:
             emoji = self.config["custom_modules"]
@@ -82,7 +82,7 @@ class Help(loader.Module):
         ):
             if line := self._line(module):
                 sections[
-                    "internal" if module.name in self.cmodules else "external"
+                    "internal" if self.all_modules.is_core(module) else "external"
                 ].append(line)
         return sections
 
@@ -242,7 +242,7 @@ class Help(loader.Module):
 
         for module in sorted(
             self.all_modules.modules,
-            key=lambda mod: (mod.name not in self.cmodules, len(mod.name)),
+            key=lambda mod: (not self.all_modules.is_core(mod), len(mod.name)),
         ):
             commands = [c for c in module.command_handlers if c not in self.hidden]
             if not commands and not module.inline_handlers:

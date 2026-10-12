@@ -13,10 +13,23 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Command access rules shared by the Pyrogram and Telethon dispatchers"""
+"""Command permissions, secret masking, private storage, and safe startup."""
 
+import asyncio
+import contextlib
+import html
+import io
+import logging
+import os
+import re
+import stat
+import tempfile
+import threading
 import time
+import traceback
 from collections import defaultdict, deque
+from collections.abc import Mapping
+from pathlib import Path
 
 OWNER = 1 << 0
 SUDO = 1 << 1
@@ -236,3 +249,262 @@ async def _group_rights_allow(mask: int, client, chat_id, user_id) -> bool:
         )
     except Exception:
         return False
+
+
+class SecretRedactor:
+    MASK = "[REDACTED]"
+    _secrets = set()
+    _lock = threading.RLock()
+    _key = re.compile(
+        r"(?:token|password|passwd|secret|api_hash|auth_key|session_string|"
+        r"encryption_key|phone_code(?:_hash)?)",
+        re.I,
+    )
+    _bot = re.compile(r"\b\d{5,}:[A-Za-z0-9_-]{30,}")
+    _session = re.compile(r"(?<![\w-])[A-Za-z0-9_-]{200,}={0,2}(?![\w-])")
+    _labelled = re.compile(
+        r"(?P<label>(?:[\"']|&quot;|&#(?:x27|39);)?(?:[\w.-]*(?:token|password|passwd|secret|api_hash|"
+        r"auth_key|session_string|encryption_key|phone_code(?:_hash)?))"
+        r"(?:[\"']|&quot;|&#(?:x27|39);)?\s*[:=]\s*)"
+        r"(?:\[REDACTED\]|&quot;[^\n]*?&quot;|&#(?:x27|39);[^\n]*?&#(?:x27|39);|"
+        r"\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'|"
+        r"(?:&(?:\w+|#\d+|#x[\da-f]+);|[^\s,;<>}\]\"'])+)",
+        re.I,
+    )
+
+    @classmethod
+    def remember(cls, value) -> None:
+        if isinstance(value, bytes):
+            cls.remember(value.hex())
+            cls.remember(repr(value))
+            try:
+                value = value.decode("utf-8")
+            except UnicodeError:
+                return
+        if isinstance(value, str) and len(value) >= 8:
+            with cls._lock:
+                cls._secrets.add(value)
+
+    @classmethod
+    def remember_mapping(cls, value) -> None:
+        pending, seen = [value], set()
+        while pending:
+            item = pending.pop()
+            if not isinstance(item, (Mapping, list, tuple)) or id(item) in seen:
+                continue
+            seen.add(id(item))
+            if isinstance(item, Mapping):
+                for key, child in item.items():
+                    if cls._key.search(str(key)):
+                        cls.remember(child)
+                    pending.append(child)
+            else:
+                pending.extend(item)
+
+    @classmethod
+    def text(cls, value) -> str:
+        text = str(value)
+        with cls._lock:
+            secrets = sorted(cls._secrets, key=len, reverse=True)
+        for secret in secrets:
+            for variant in (secret, html.escape(secret)):
+                text = text.replace(variant, cls.MASK)
+        text = cls._bot.sub(cls.MASK, text)
+        text = cls._session.sub(cls.MASK, text)
+        return cls._labelled.sub(lambda m: m["label"] + cls.MASK, text)
+
+    @classmethod
+    def loguru_record(cls, record) -> None:
+        text = record["message"]
+        if exception := record["exception"]:
+            text += "\n" + "".join(traceback.format_exception(*exception))
+            record["exception"] = None
+        record["message"] = cls.text(text)
+        record["extra"] = {
+            key: cls.MASK if cls._key.search(str(key)) else cls.text(value)
+            for key, value in record["extra"].items()
+        }
+
+
+class PrivateFiles:
+    @staticmethod
+    def restrict_process() -> None:
+        os.umask(0o077)
+
+    @classmethod
+    def directory(cls, path: str | Path) -> None:
+        cls.restrict_process()
+        path = Path(path)
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            if not stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError("Private storage must be a directory.")
+            os.fchmod(fd, 0o700)
+        finally:
+            os.close(fd)
+
+    @staticmethod
+    def _open(path: Path, flags: int) -> int:
+        fd = os.open(path, flags | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise OSError("Private storage must be a regular file.")
+            os.fchmod(fd, 0o600)
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+
+    @classmethod
+    def secure_existing(cls, path: str | Path) -> None:
+        try:
+            fd = cls._open(Path(path), os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+        except FileNotFoundError:
+            return
+        os.close(fd)
+
+    @classmethod
+    def secure_sqlite(cls, path: str | Path) -> None:
+        cls.restrict_process()
+        if str(path) == ":memory:":
+            return
+        for suffix in ("", "-journal", "-wal", "-shm"):
+            cls.secure_existing(f"{path}{suffix}")
+
+    @classmethod
+    def read(cls, path: str | Path) -> bytes:
+        fd = cls._open(Path(path), os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(fd, "rb") as file:
+            return file.read()
+
+    @classmethod
+    def _temporary(cls, path: Path, data: bytes) -> Path:
+        cls.restrict_process()
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        tmp = Path(name)
+        try:
+            with os.fdopen(fd, "wb") as file:
+                os.fchmod(file.fileno(), 0o600)
+                file.write(data)
+                file.flush()
+                os.fsync(file.fileno())
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+        return tmp
+
+    @classmethod
+    def write(cls, path: str | Path, data: bytes) -> None:
+        path = Path(path)
+        cls.secure_existing(path)
+        tmp = cls._temporary(path, data)
+        try:
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    @classmethod
+    def create_once(cls, path: str | Path, data: bytes) -> bytes:
+        """Publish a complete key atomically; concurrent creators reuse the winner."""
+        path = Path(path)
+        try:
+            return cls.read(path)
+        except FileNotFoundError:
+            pass
+        tmp = cls._temporary(path, data)
+        try:
+            with contextlib.suppress(FileExistsError):
+                os.link(tmp, path)
+            return cls.read(path)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    @classmethod
+    def write_config(cls, path, config) -> None:
+        text = io.StringIO()
+        config.write(text)
+        cls.write(path, text.getvalue().encode("utf-8"))
+
+
+class SafeMode:
+    """Counts starts that did not get stable and remembers which module was loading"""
+
+    SECTION = "shizu.safemode"
+    FAILED_STARTS = 3
+    STABLE_AFTER = 60
+
+    def __init__(self, db):
+        self.db = db
+        self.starts = db.get(self.SECTION, "starts", 0) + 1
+        self.forced = bool(db.get(self.SECTION, "forced", False))
+        self.active = self.forced or self.starts > self.FAILED_STARTS
+        if loading := db.get(self.SECTION, "loading"):
+            db.set(self.SECTION, "suspect", loading)
+            db.pop(self.SECTION, "loading")
+        self.suspect = db.get(self.SECTION, "suspect")
+        db.set(self.SECTION, "starts", self.starts)
+        if self.active and not self.forced:
+            logging.warning(
+                "Safe mode: %s failed starts in a row, third-party modules are skipped",
+                self.starts - 1,
+            )
+
+    @classmethod
+    def stopped_cleanly(cls, db) -> None:
+        """A planned restart or stop is not a failed start"""
+        if db is not None:
+            db.pop(cls.SECTION, "starts")
+
+    @contextlib.contextmanager
+    def loading(self, origin: str):
+        """Remember `origin` until it is loaded, so a crash points at it"""
+        self.db.set(self.SECTION, "loading", origin)
+        try:
+            yield
+        finally:
+            self.db.pop(self.SECTION, "loading")
+
+    async def watch(self) -> None:
+        """Forget the failed starts once Shizu has been running for a while"""
+        await asyncio.sleep(self.STABLE_AFTER)
+        self.db.set(self.SECTION, "starts", 0)
+        if not self.active:
+            self.db.pop(self.SECTION, "suspect")
+
+    def leave(self) -> None:
+        """Load every module on the next start"""
+        for key in ("starts", "forced", "suspect"):
+            self.db.pop(self.SECTION, key)
+
+    def remove_suspect(self, manager) -> bool:
+        """Delete the module that broke the start; True when something was removed"""
+        origin = self.suspect
+        if not origin:
+            return False
+        if manager.remote_modules.is_remote(origin):
+            manager.remote_modules.forget(origin)
+            manager._db.set(
+                "shizu.loader",
+                "modules",
+                [
+                    m
+                    for m in manager._db.get("shizu.loader", "modules", [])
+                    if m != origin
+                ],
+            )
+        else:
+            path = os.path.realpath(origin)
+            folder = os.path.realpath(manager._local_modules_path)
+            if (
+                os.path.dirname(path) != folder
+                or not os.path.isfile(path)
+            ):
+                return False
+            os.remove(path)
+        self.leave()
+        return True

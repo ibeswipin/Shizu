@@ -46,7 +46,6 @@ class BeSafe:
     plugin namespaces are registered before their top-level code executes.
     """
 
-    _core = frozenset()
     _library_namespaces = frozenset()
     _namespaces = {}
 
@@ -105,7 +104,6 @@ class BeSafe:
 
     @classmethod
     def culprit(cls, frame):
-        core = cls._core
         inherited = cls.origin.get()
         if inherited:
             return inherited
@@ -118,9 +116,7 @@ class BeSafe:
                 continue
             name = frame.f_globals.get("__name__", "")
             if name.startswith("shizu.modules."):
-                module = name.rsplit(".", 1)[1]
-                if module.startswith("__lib_") or module not in core:
-                    return module
+                return name.rsplit(".", 1)[1]
             frame = frame.f_back
         return None
 
@@ -162,10 +158,7 @@ class BeSafe:
         external = (
             bool(registered[1])
             if registered is not None
-            else (
-                name.startswith("shizu.modules.")
-                and (name.rsplit(".", 1)[1] not in cls._core or ".__lib_" in name)
-            )
+            else name.startswith("shizu.modules.")
         )
         return not (external and cls.sensitive_message(message))
 
@@ -494,8 +487,6 @@ class BeSafe:
         if getattr(self, "_installed", False):
             return
         self._installed = True
-        manager = getattr(sys.modules.get("shizu.loader"), "_manager", None)
-        type(self)._core = frozenset(manager.cmodules) if manager else frozenset()
         loop = asyncio.get_running_loop()
         previous = loop.get_task_factory()
 

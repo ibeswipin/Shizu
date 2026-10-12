@@ -35,7 +35,7 @@ fi
 SHIZU_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 cd "$SHIZU_ROOT"
 SHIZU_PYTHON_VERSION="$(tr -d '[:space:]' < .python-version)"
-[[ "$SHIZU_PYTHON_VERSION" =~ ^3\.11\.[0-9]+$ ]] || die '.python-version must contain a Python 3.11.x version.'
+[[ "$SHIZU_PYTHON_VERSION" =~ ^3\.(10|11)(\.[0-9]+)?$ ]] || die '.python-version must contain Python 3.10 or 3.11, optionally with a patch version.'
 
 printf '%s静 Shizu installer%s %s(%s)%s\n' "$BOLD" "$RESET" "$DIM" "$SHIZU_ROOT" "$RESET"
 
@@ -60,13 +60,14 @@ fi
 export UV_PYTHON_INSTALL_DIR="$SHIZU_ROOT/.installer/python"
 export UV_CACHE_DIR="$SHIZU_ROOT/.installer/cache"
 
-step "Installing Python ${SHIZU_PYTHON_VERSION}"
-"$SHIZU_UV" python install --no-bin "$SHIZU_PYTHON_VERSION"
 if [[ -e .venv ]]; then
-    if ! .venv/bin/python -c 'import platform, sys; sys.exit(platform.python_version() != sys.argv[1])' "$SHIZU_PYTHON_VERSION"; then
+    if ! .venv/bin/python -c 'import sys; requested = tuple(map(int, sys.argv[1].split("."))); sys.exit(sys.version_info[:len(requested)] != requested)' "$SHIZU_PYTHON_VERSION"; then
         die ".venv uses another Python version or is broken. Rename it (mv .venv .venv.old) and run the installer again."
     fi
+    step "Using existing Python environment matching ${SHIZU_PYTHON_VERSION}"
 else
+    step "Installing Python ${SHIZU_PYTHON_VERSION}"
+    "$SHIZU_UV" python install --no-bin "$SHIZU_PYTHON_VERSION"
     "$SHIZU_UV" venv --managed-python --python "$SHIZU_PYTHON_VERSION" --seed .venv
 fi
 

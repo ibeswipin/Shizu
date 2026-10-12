@@ -20,7 +20,7 @@ from pyrogram.methods.utilities.idle import idle
 from shizu import auth, database, loader
 from shizu.besafe import BeSafe
 from shizu.ratelimit import ApiLimiter
-from shizu.safemode import SafeMode
+from shizu.security import SafeMode
 
 
 async def main():

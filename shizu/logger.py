@@ -36,8 +36,7 @@ from loguru._colorizer import Colorizer
 
 from shizu import utils
 from shizu.database import db
-from shizu.private_files import PrivateFiles
-from shizu.redaction import SecretRedactor
+from shizu.security import PrivateFiles, SecretRedactor
 
 FORMAT_FOR_FILES = "[{level}] {name}: {message}"
 
@@ -125,6 +124,9 @@ class CustomException:
             full_stack=full_stack,
             sysinfo=(exc_type, exc_value, tb),
         )
+
+
+HikkaException = CustomException
 
 
 class SecretFilter(logging.Filter):

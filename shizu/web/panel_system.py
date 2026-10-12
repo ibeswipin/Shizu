@@ -12,7 +12,7 @@ from pathlib import Path
 import psutil
 
 from shizu import utils
-from shizu.redaction import SecretRedactor
+from shizu.security import SecretRedactor
 
 
 class PanelSystem:

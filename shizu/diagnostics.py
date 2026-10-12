@@ -25,7 +25,7 @@ import traceback
 from dataclasses import dataclass
 
 from shizu.health import reporter
-from shizu.redaction import SecretRedactor
+from shizu.security import SecretRedactor
 
 
 @dataclass
@@ -121,7 +121,7 @@ class ErrorReports:
         if support := getattr(module, "support", None):
             return support
         manager = getattr(module, "all_modules", None)
-        if manager and module.name in manager.cmodules:
+        if manager and manager.is_core(module):
             return self.CORE_SUPPORT
         source = (
             getattr(manager, "raw_modules", {}).get(type(module).__module__) or ""

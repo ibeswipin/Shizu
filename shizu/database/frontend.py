@@ -20,8 +20,7 @@ from typing import KT, VT
 
 from lightdb import LightDB
 
-from shizu.private_files import PrivateFiles
-from shizu.redaction import SecretRedactor
+from shizu.security import PrivateFiles, SecretRedactor
 
 
 class Database(LightDB):

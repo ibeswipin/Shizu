@@ -33,6 +33,11 @@ class Module:
     author: str
     version: int | float
 
+    @property
+    def cmodules(self) -> tuple[str, ...]:
+        """Compatibility view of the manager's automatically registered core."""
+        return self.all_modules.cmodules
+
     async def on_load(self, app: Client) -> Any:
         """Called when loading the module"""
 

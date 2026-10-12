@@ -304,12 +304,7 @@ class BeSafe(loader.Module):
         if is_url(origin):
             self.all_modules.remote_modules.install(origin, source)
         elif not self._is_local_file(origin):
-            path = os.path.join(
-                self.all_modules._local_modules_path,
-                "_".join(name.lower().split()) + ".py",
-            )
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(source)
+            self.all_modules.save_local_module(name, source)
 
     @staticmethod
     def digest(source: str) -> str:

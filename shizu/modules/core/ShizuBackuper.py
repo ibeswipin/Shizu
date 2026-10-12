@@ -14,7 +14,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import io
-import os
 import time
 from datetime import datetime
 
@@ -22,8 +21,9 @@ from pyrogram import Client, enums, types
 
 from shizu import loader, utils
 from shizu.backups import BackupError, EncryptedBackup
+from shizu.loader.storage import CUSTOM_MODULES_PATH
 
-LOADED_MODULES_DIR = os.path.join(os.getcwd(), "shizu/modules")
+LOADED_MODULES_DIR = str(CUSTOM_MODULES_PATH)
 
 
 @loader.module(name="ShizuBackuper", author="hikamoru")

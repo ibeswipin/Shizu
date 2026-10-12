@@ -182,7 +182,7 @@ class ShizuConfig(loader.Module):
     SECTION_EMOJI = {"internal": "🛠", "external": "🧩"}
 
     def _section_of(self, module) -> str:
-        return "internal" if module.name in self.all_modules.cmodules else "external"
+        return "internal" if self.all_modules.is_core(module) else "external"
 
     def _configurable(self) -> dict:
         sections = {section: [] for section in self.SECTIONS}

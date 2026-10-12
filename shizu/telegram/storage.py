@@ -27,8 +27,7 @@ from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from shizu.private_files import PrivateFiles
-from shizu.redaction import SecretRedactor
+from shizu.security import PrivateFiles, SecretRedactor
 from shizu.telegram.exceptions import SessionStorageError
 
 

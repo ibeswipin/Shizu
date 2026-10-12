@@ -175,6 +175,10 @@ class ModuleLifecycle:
                     ],
                 )
 
+        if manager.is_core(module):
+            manager._core_modules[:] = [
+                core for core in manager._core_modules if core is not module
+            ]
         HandlerRegistry(manager).remove(module)
 
         if callable(getattr(module, "on_unload", None)):

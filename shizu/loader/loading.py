@@ -26,7 +26,7 @@ import sys
 from shizu import loader, utils
 from shizu import logger as logger_
 from shizu.inter import inter
-from shizu.redaction import SecretRedactor
+from shizu.security import SecretRedactor
 from shizu.remote import RemoteModuleError
 from shizu.translator import Translator
 

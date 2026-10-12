@@ -7,8 +7,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from shizu.private_files import PrivateFiles
-from shizu.redaction import SecretRedactor
+from shizu.security import PrivateFiles, SecretRedactor
 
 
 class BackupError(ValueError):

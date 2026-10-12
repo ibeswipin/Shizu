@@ -16,6 +16,7 @@
 
 import functools
 import logging
+import sys
 from importlib.machinery import ModuleSpec
 from types import FunctionType
 from typing import Any
@@ -25,7 +26,7 @@ from pyrogram import Client, types
 from shizu import bot, database, dispatcher, extrapatchs, health, loader, utils
 from shizu import logger as logger_
 from shizu.remote import RemoteModuleRegistry
-from shizu.safemode import SafeMode
+from shizu.security import SafeMode
 from shizu.telegram.exceptions import TelegramConnectionError
 from shizu.translator import Translator
 
@@ -39,6 +40,7 @@ from .models import Library, Module
 from .registration import ModuleRegistrar
 from .scheduler import TaskScheduler
 from .sources import ModuleSources
+from .storage import CUSTOM_MODULES_PATH, save_module
 
 
 class ModulesManager:
@@ -53,7 +55,7 @@ class ModulesManager:
         self.inline_handlers: dict[str, FunctionType] = {}
         self.callback_handlers: dict[str, FunctionType] = {}
 
-        self._local_modules_path: str = "./shizu/modules"
+        self._local_modules_path: str = str(CUSTOM_MODULES_PATH)
 
         self._app = app
         self._client = app
@@ -78,25 +80,7 @@ class ModulesManager:
         self._join_requests: dict[str, tuple] = {}
 
         self.root_module: Module = None
-        self.cmodules = [
-            "ShizuBackuper",
-            "ShizuHelp",
-            "ShizuLoader",
-            "ShizuTerminal",
-            "ShizuTester",
-            "ShizuUpdater",
-            "ShizuEval",
-            "ShizuInfo",
-            "ShizuConfig",
-            "ShizuLanguages",
-            "ShizuSettings",
-            "ShizuOnload",
-            "ShizuPermissions",
-            "ShizuSystemd",
-            "ShizuBeSafe",
-            "ShizuPanel",
-            "ShizuFeedback",
-        ]
+        self._core_modules: list[Module] = []
         self.hidden = []
         app.db = db
 
@@ -177,6 +161,17 @@ class ModulesManager:
 
     def get_load_error(self, source: str, origin: str = "<string>") -> str:
         return self.module_load_errors.get(ModuleLoader.error_key(source, origin), "")
+
+    def save_local_module(self, name: str, source: str) -> str:
+        path = str(save_module(self._local_modules_path, name, source))
+        instance = self.find_module_strict(name)
+        namespace = sys.modules.get(type(instance).__module__) if instance else None
+        if namespace is not None:
+            namespace.__file__ = path
+            if namespace.__spec__ is not None:
+                namespace.__spec__.origin = path
+                namespace.__spec__.has_location = True
+        return path
 
     def _remote_headers(self, url: str) -> dict | None:
         return ModuleSources(self).headers(url)
@@ -358,8 +353,13 @@ class ModulesManager:
         handler = self.command_handlers.get(self.aliases.get(name, name))
         return getattr(handler, "__self__", None)
 
+    @property
+    def cmodules(self) -> tuple[str, ...]:
+        """Read-only compatibility view; core status is checked by identity."""
+        return tuple(module.name for module in self._core_modules)
+
     def is_core(self, module: Module) -> bool:
-        return module.name in self.cmodules
+        return any(module is core for core in self._core_modules)
 
     def unload_module(self, module_name=None, is_replace: bool = False) -> str:
         """Unloads the loaded (if loaded) module"""

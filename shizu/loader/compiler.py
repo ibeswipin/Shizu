@@ -14,7 +14,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import os
 import sys
 from importlib.abc import SourceLoader
 from importlib.machinery import ModuleSpec
@@ -22,6 +21,9 @@ from importlib.util import module_from_spec, spec_from_file_location
 from typing import Any
 
 from shizu.besafe import BeSafe
+from shizu.integrity import IntegrityError, runtime
+
+from .provenance import is_core_source, touches_core
 
 
 class StringLoader(SourceLoader):
@@ -61,16 +63,23 @@ class ModuleCompiler:
 
     @classmethod
     def execute_module(cls, module_name: str, file_path: str = "", spec=None):
-        spec = spec or spec_from_file_location(module_name, file_path)
-        short_name = module_name.rsplit(".", 1)[-1]
-        core_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "modules", short_name + ".py"
-        )
-        trusted = (
-            short_name in BeSafe._core
-            and bool(file_path)
-            and os.path.realpath(file_path) == os.path.realpath(core_path)
-        )
+        trusted = is_core_source(module_name, file_path, spec)
+        reserved = {
+            "shizu.modules." + relative.rsplit("/", 1)[-1][:-3]
+            for relative in runtime.get_release().files
+            if relative.startswith("shizu/modules/core/")
+            and relative.count("/") == 3
+            and not relative.rsplit("/", 1)[-1].startswith("_")
+        }
+        if module_name in reserved and not trusted:
+            raise IntegrityError("The core module namespace is reserved for signed code")
+        if touches_core(file_path) or touches_core(getattr(spec, "origin", "")):
+            if not trusted:
+                raise IntegrityError("Core files require a signed source and canonical namespace")
+            relative = f"shizu/modules/core/{module_name.rsplit('.', 1)[-1]}.py"
+            spec = runtime.get_release().spec(module_name, relative)
+        else:
+            spec = spec or spec_from_file_location(module_name, file_path)
         module = cls.create(spec, trusted=trusted)
         spec.loader.exec_module(module)
         return module

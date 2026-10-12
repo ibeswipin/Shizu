@@ -9,7 +9,11 @@ venv/
 .compat_cache/
 /data/
 /shizu/modules/*
-!/shizu/modules/Shizu*.py
+!/shizu/modules/__init__.py
+!/shizu/modules/core/
+/shizu/modules/core/*
+!/shizu/modules/core/*.py
+*release-private*.pem
 compat_report/
 
 config.ini
@@ -32,9 +36,14 @@ telethon_sessions.key
 .idea
 .DS_Store
 
-/tests
+/tests/*
+!/tests/test_core_modules.py
+!/tests/test_integrity.py
+!/tests/test_installer.py
 # /docs
 /scripts/*
 !/scripts/install.py
 !/scripts/panel_demo.py
-cloudflared-*   
+/scripts/release_core.py
+!/scripts/secure_start.py
+cloudflared-*

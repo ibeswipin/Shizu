@@ -20,7 +20,7 @@ import time
 from collections import defaultdict, deque
 
 from shizu import database, utils
-from shizu.redaction import SecretRedactor
+from shizu.security import SecretRedactor
 
 logger = logging.getLogger(__name__)
 

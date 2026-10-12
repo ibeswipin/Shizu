@@ -52,8 +52,7 @@ from pyrogram import errors, raw
 
 from shizu import utils
 from shizu.bot.token_manager import TokenManager
-from shizu.private_files import PrivateFiles
-from shizu.redaction import SecretRedactor
+from shizu.security import PrivateFiles, SecretRedactor
 from shizu.telegram.device import TelegramDeviceProfile
 from shizu.web.telethon_setup import TelethonSetupController
 

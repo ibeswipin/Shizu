@@ -36,6 +36,7 @@
 import asyncio
 import contextlib
 import logging
+import os
 import time
 from subprocess import check_output
 
@@ -44,6 +45,7 @@ from aiogram.types import CallbackQuery, InputFile
 from pyrogram import Client, enums, types
 
 from shizu import loader, utils
+from shizu.integrity import Release, runtime
 from shizu.version import branch
 
 
@@ -88,10 +90,18 @@ class UpdateMod(loader.Module):
     @staticmethod
     def _pull() -> bool:
         """Stash local changes and pull; False when already up to date"""
+        pinned = runtime.get_release()
+        if not os.access(pinned.root / "shizu/modules/core", os.W_OK):
+            raise PermissionError(
+                "Core is read-only in the hardened service. Stop the service and "
+                "deploy a signed release outside the bot process."
+            )
         check_output("git stash", shell=True)
-        return (
+        changed = (
             "Already up to date." not in check_output("git pull", shell=True).decode()
         )
+        Release(pinned.root, pinned.public_key).verify_tree()
+        return changed
 
     def _restart_record(
         self, chat, message_id: int, kind: str, bot: bool = False

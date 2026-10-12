@@ -10,7 +10,7 @@ from datetime import datetime
 from shizu import loader, security, utils, version
 from shizu.backups import EncryptedBackup
 from shizu.loader.config import has_validator, unwrap_validator
-from shizu.redaction import SecretRedactor
+from shizu.security import SecretRedactor
 
 
 class PanelError(ValueError):

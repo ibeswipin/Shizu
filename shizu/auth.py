@@ -32,8 +32,7 @@ from qrcode.main import QRCode
 
 from shizu import database, utils
 from shizu.health import Reporter, reporter
-from shizu.private_files import PrivateFiles
-from shizu.redaction import SecretRedactor
+from shizu.security import PrivateFiles, SecretRedactor
 from shizu.telegram.device import TelegramDeviceProfile
 from shizu.telegram.exceptions import (
     AccountMismatch,

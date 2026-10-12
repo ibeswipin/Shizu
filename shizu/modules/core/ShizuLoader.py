@@ -978,15 +978,11 @@ class Loader(loader.Module):
             return await message.answer(self.strings("no_repy_to_file"))
 
         await message.answer(self.strings("loading"))
-        file = await file.download()
-
-        for mod in self.cmodules:
-            if file == mod:
-                return await message.answer(self.strings("core_do"))
+        file = await file.download(in_memory=True)
 
         try:
-            with open(file, encoding="utf-8") as file:
-                module_source = file.read()
+            with file:
+                module_source = file.read().decode("utf-8")
 
         except UnicodeDecodeError:
             return await message.answer("❌ Incorrect file encoding")
@@ -1024,9 +1020,7 @@ class Loader(loader.Module):
         if module_name == "BAN":
             return await message.answer(self.strings("loaded_banned"))
 
-        module = "_".join(module_name.lower().split())
-        with open(f"shizu/modules/{module}.py", "w", encoding="utf-8") as file:
-            file.write(module_source)
+        self.all_modules.save_local_module(module_name, module_source)
 
         if not (module := self.all_modules.get_module(module_name, True)):
             return await message.answer(
@@ -1056,17 +1050,17 @@ class Loader(loader.Module):
     async def unloadall(self, app: Client, message: types.Message):
         """Unload all modules"""
 
-        self._local_modules_path: str = "./shizu/modules"
+        local_modules_path = self.all_modules._local_modules_path
 
         self.all_modules.remote_modules.clear_modules()
 
         for local_module in filter(
             lambda file_name: (
-                file_name.endswith(".py") and not file_name.startswith("Shizu")
+                file_name.endswith(".py") and not file_name.startswith("_")
             ),
-            os.listdir(self._local_modules_path),
+            os.listdir(local_modules_path),
         ):
-            os.remove(f"{self._local_modules_path}/{local_module}")
+            os.remove(os.path.join(local_modules_path, local_module))
 
         await message.answer(self.strings("all_unloaded"))
         ms = await message.answer(self.strings("restart"))

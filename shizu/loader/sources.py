@@ -16,14 +16,18 @@
 
 import logging
 import os
+from pathlib import PurePosixPath
 
 import requests
 
 from shizu import health, utils
 from shizu.inter import inter
+from shizu.integrity import IntegrityError, runtime
 from shizu.remote import RemoteModuleError
 
 from .compiler import ModuleCompiler
+from .provenance import CORE_MODULES_PATH, is_core_source
+from .storage import migrate_legacy_modules
 
 
 class ModuleSources:
@@ -34,20 +38,36 @@ class ModuleSources:
 
     async def load_local(self):
         manager = self.manager
-        modules_list = sorted(
-            filter(
-                lambda file_name: (
-                    file_name.endswith(".py") and not file_name.startswith("_")
-                ),
-                os.listdir(manager._local_modules_path),
-            )
-        )
+        release = runtime.get_release()
+        release.verify_tree()
+        # Load the bundled directory before any reviewed third-party code.
+        for relative in sorted(release.files):
+            entry = PurePosixPath(relative)
+            if (
+                not relative.startswith("shizu/modules/core/")
+                or len(entry.parts) != 4
+                or entry.name.startswith("_")
+            ):
+                continue
+            path = CORE_MODULES_PATH / entry.name
+            source_code = release.read(relative).decode("utf-8")
+            manager._register_local(f"shizu.modules.{path.stem}", str(path), source_code)
 
+        reserved_names = {
+            PurePosixPath(relative).name
+            for relative in release.files
+            if relative.startswith("shizu/modules/core/")
+        }
+        migrate_legacy_modules(
+            CORE_MODULES_PATH.parent, manager._local_modules_path, reserved_names
+        )
         deferred = []
-        for local_module in modules_list:
+        for local_module in sorted(os.listdir(manager._local_modules_path)):
+            if not local_module.endswith(".py") or local_module.startswith("_"):
+                continue
             module_name = f"shizu.modules.{local_module[:-3]}"
-            file_path = os.path.join(
-                os.path.abspath("."), manager._local_modules_path, local_module
+            file_path = os.path.abspath(
+                os.path.join(manager._local_modules_path, local_module)
             )
             try:
                 with open(file_path, encoding="utf-8") as f:
@@ -55,12 +75,7 @@ class ModuleSources:
             except Exception:
                 logging.exception("Failed to read local module %s", local_module)
                 continue
-
-            if local_module[:-3] not in manager.cmodules:
-                deferred.append((module_name, file_path, source_code))
-                continue
-
-            manager._register_local(module_name, file_path, source_code)
+            deferred.append((module_name, file_path, source_code))
 
         await manager.send_on_loads()
 
@@ -92,7 +107,9 @@ class ModuleSources:
     def register_local(self, module_name: str, file_path: str, source_code: str):
         manager = self.manager
         try:
-            if manager._is_telethon_module(source_code):
+            if not is_core_source(module_name, file_path) and manager._is_telethon_module(
+                source_code
+            ):
                 if not utils.is_tl_enabled(manager._app):
                     return
                 spec = ModuleCompiler.source_spec(
@@ -104,6 +121,8 @@ class ModuleSources:
                 manager.register_instance(module_name, spec=spec, is_telethon=True)
             else:
                 manager.register_instance(module_name, file_path)
+        except IntegrityError:
+            raise
         except utils.PremiumRequired:
             logging.info("Skipped Premium module %s", file_path)
         except Exception:

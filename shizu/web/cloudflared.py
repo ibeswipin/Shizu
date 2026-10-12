@@ -14,7 +14,7 @@ from pathlib import Path
 import requests
 
 from shizu import utils
-from shizu.private_files import PrivateFiles
+from shizu.security import PrivateFiles
 
 
 class CloudflaredInstaller:

@@ -59,8 +59,16 @@ def own_unit():
 
 
 def service_text(username):
+    if username == "root":
+        raise ValueError("The hardened userbot service must run as an ordinary user")
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*\$?", username):
         raise ValueError(f"Unsupported user name for systemd: {username!r}")
+    readonly = " ".join(
+        unit_quote(ROOT / relative)
+        for relative in (
+            "shizu", "scripts", ".venv", "pyproject.toml", "start.sh", "install.sh"
+        )
+    )
     return f"""[Unit]
 {DESCRIPTION}
 Wants=network-online.target
@@ -72,13 +80,28 @@ StartLimitBurst=5
 Type=simple
 User={username}
 WorkingDirectory={unit_value(ROOT)}
-ExecStart={unit_quote(PYTHON)} -u -m shizu --no-web
+ExecStart={unit_quote(PYTHON)} -I -u {unit_quote(ROOT / "scripts/secure_start.py")} --no-web
 Environment=PYTHONUNBUFFERED=1
 Environment={unit_quote("PATH=" + str(PYTHON.parent) + ":" + os.defpath)}
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=30
 UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+ReadOnlyPaths={readonly}
+ReadOnlyPaths={unit_quote("-" + str(ROOT / ".installer"))} {unit_quote("-" + str(ROOT / ".git"))}
+ReadWritePaths={unit_quote(ROOT / "shizu/modules")}
+ReadOnlyPaths={unit_quote(ROOT / "shizu/modules/core")}
 
 [Install]
 WantedBy=multi-user.target
@@ -151,6 +174,8 @@ def main():
     )
     privileged = [] if os.geteuid() == 0 else ["sudo"]
     if use_service:
+        if pwd.getpwuid(os.getuid()).pw_name == "root":
+            raise RuntimeError("Install Shizu as an ordinary user; a root service is refused")
         if privileged and not shutil.which("sudo"):
             raise RuntimeError("sudo was not found. Choose manual start or set up sudo")
         if UNIT_PATH.exists() and not own_unit():
@@ -166,7 +191,7 @@ def main():
         "\nTelegram login: log in with a QR code or your phone number, code and 2FA password.",
         flush=True,
     )
-    run(str(PYTHON), "-u", "-m", "shizu", "--no-web", "--setup-only")
+    run(str(PYTHON), "-I", "-u", str(ROOT / "scripts/secure_start.py"), "--no-web", "--setup-only")
     if use_service:
         username = pwd.getpwuid(os.getuid()).pw_name
         with tempfile.TemporaryDirectory(prefix="shizu-service-") as folder:
@@ -192,7 +217,10 @@ def main():
             "\nStarting Shizu. Press Ctrl+C to stop. Next time start it with: bash start.sh",
             flush=True,
         )
-        os.execv(str(PYTHON), [str(PYTHON), "-u", "-m", "shizu", "--no-web"])
+        os.execv(
+            str(PYTHON),
+            [str(PYTHON), "-I", "-u", str(ROOT / "scripts/secure_start.py"), "--no-web"],
+        )
 
 
 if __name__ == "__main__":

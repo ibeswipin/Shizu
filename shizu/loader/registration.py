@@ -25,6 +25,7 @@ from .compat import TelethonCompatibility
 from .compiler import ModuleCompiler
 from .handlers import HandlerRegistry
 from .models import Module
+from .provenance import is_core_source
 
 
 class ModuleRegistrar:
@@ -41,32 +42,58 @@ class ModuleRegistrar:
         is_telethon: bool = False,
     ) -> Module:
         previous = sys.modules.get(module_name)
-        module = ModuleCompiler.execute_module(module_name, file_path, spec)
+        if any(
+            type(core).__module__ == module_name
+            for core in getattr(self.manager, "_core_modules", ())
+        ):
+            raise ValueError(f"{module_name} clashes with a core module")
+        trusted = is_core_source(module_name, file_path, spec)
+        try:
+            module = ModuleCompiler.execute_module(module_name, file_path, spec)
+            return self._register(module, is_telethon, trusted)
+        except Exception:
+            if previous is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous
+            raise
 
+    def _register(self, module, is_telethon, trusted):
         if not utils.owner_premium(self.manager) and any(
             inspect.isclass(value)
             and issubclass(value, Module)
             and utils.requires_premium(value)
             for value in vars(module).values()
         ):
-            if previous is None:
-                sys.modules.pop(module_name, None)
-            else:
-                sys.modules[module_name] = previous
             raise utils.PremiumRequired("This module requires Telegram Premium")
         instance = None
         handlers = HandlerRegistry(self.manager)
         for value in vars(module).values():
-            if not inspect.isclass(value) or not issubclass(value, Module):
+            if (
+                not inspect.isclass(value)
+                or not issubclass(value, Module)
+                or value is Module
+                or value.__module__ != module.__name__
+            ):
                 continue
             self.replace_clashing(module, value)
             self.bind_class(value)
             instance = value()
             self.bind_instance(instance, is_telethon)
             handlers.collect(instance)
-            TelethonCompatibility(self.manager).configure_instance(instance)
-            self.manager.modules.append(instance)
-            handlers.register(instance)
+            if trusted:
+                self.manager._core_modules.append(instance)
+            try:
+                TelethonCompatibility(self.manager).configure_instance(instance)
+                self.manager.modules.append(instance)
+                handlers.register(instance)
+            except Exception:
+                if trusted:
+                    self.manager._core_modules[:] = [
+                        core for core in self.manager._core_modules if core is not instance
+                    ]
+                handlers.remove(instance)
+                raise
         handlers.add_hidden(instance)
         return instance
 
@@ -102,7 +129,6 @@ class ModuleRegistrar:
             value, Translator(manager._app, manager._db), manager._db
         )
         value.userbot = "Shizu"
-        value.cmodules = manager.cmodules
         value.get_mod = manager.get_module
         value.prefix = manager._db.get("shizu.loader", "prefixes", ["."])
         value.lookup = manager._lookup

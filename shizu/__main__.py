@@ -15,10 +15,14 @@
 
 import asyncio
 import logging
+import os
 import platform
 import sys
 
-from .private_files import PrivateFiles
+from .security import PrivateFiles
+
+if os.geteuid() == 0:
+    raise RuntimeError("Shizu must run as an ordinary user, not root")
 
 PrivateFiles.restrict_process()
 

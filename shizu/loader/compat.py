@@ -90,7 +90,7 @@ class TelethonCompatibility:
             hasattr(instance, "m__telethon") and instance.m__telethon is False
         )
 
-        if instance.name in manager.cmodules:
+        if manager.is_core(instance):
             instance.m__telethon = False
         elif explicitly_pyrogram:
             instance.m__telethon = False

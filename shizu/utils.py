@@ -62,7 +62,7 @@ from pyrogram.types import Chat, Message, User
 from pyrogram.types.messages_and_media.message import Str
 
 from shizu import database
-from shizu.safemode import SafeMode
+from shizu.security import SafeMode
 from shizu.telegram.state import TelethonConnectionState
 
 FormattingEntity = (
@@ -269,7 +269,8 @@ def restart():
         SafeMode.stopped_cleanly(database.db)
     sys.stdout.flush()
     sys.stderr.flush()
-    os.execl(sys.executable, sys.executable, "-m", "shizu")
+    launcher = os.path.join(os.path.dirname(get_base_dir()), "scripts", "secure_start.py")
+    os.execl(sys.executable, sys.executable, "-I", launcher)
 
 
 def get_args_raw(message: Message | str) -> str:
