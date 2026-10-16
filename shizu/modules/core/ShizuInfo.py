@@ -73,7 +73,7 @@ class InformationMod(loader.Module):
         if self.config["photo_url"] == previous:
             self.config["photo_url"] = self.config.getdef("photo_url")
 
-    async def text_(self, me: types.User, username):
+    async def text_(self, me: types.User, username, logo: str = "🐙"):
         """Get text"""
         mention = f'<a href="tg://user?id={me.id}">{utils.escape_html(utils.get_display_name(me))}</a>'
         prefix = ", ".join(self.prefix)
@@ -87,7 +87,7 @@ class InformationMod(loader.Module):
                 "branch": version.branch,
                 "platform": utils.get_platform(),
             }
-            return "🐙 Shizu\n" + self.config["custom_message"].format_map(
+            return f"{logo} Shizu\n" + self.config["custom_message"].format_map(
                 collections.defaultdict(str, values)
             )
 
@@ -103,10 +103,10 @@ class InformationMod(loader.Module):
                 [self.strings("label_bot"), f"@{username}"],
             ]
         )
-        return f"🐙 <b>Shizu</b> — {mention}\n{stats}"
+        return f"{logo} <b>Shizu</b> — {mention}\n{stats}"
 
     async def _rich_message(
-        self, username: str, fallback_text: str
+        self, username: str, fallback_text: str, logo: str = "🐙"
     ) -> types.InputRichMessage:
         if self.config["custom_message"]:
             content = fallback_text
@@ -138,7 +138,7 @@ class InformationMod(loader.Module):
                     f"<tr><td>{utils.escape_html(self.strings('label_bot'))}</td><td>"
                     f'<a href="https://t.me/{username}">@{username}</a></td></tr>'
                 )
-            content = f"<h2>Shizu — {mention}</h2><table bordered>{cells}</table>"
+            content = f"<h2>{logo} Shizu — {mention}</h2><table bordered>{cells}</table>"
 
         markup = f"<blockquote>{content}</blockquote>"
         media = None
@@ -180,7 +180,9 @@ class InformationMod(loader.Module):
     async def info(self, app: Client, message: types.Message):
         """Info about Shizu"""
         username = self.db.get("shizu.bot", "username", "")
-        text = await self.text_(self.me, username)
+        from_account = self.config["rich"] or not self.config["custom_buttons"]
+        logo = utils.shizu_logo(self.me) if from_account else "🐙"
+        text = await self.text_(self.me, username, logo)
         if self.config["rich"]:
             rich_text = text
             button = self.config["custom_buttons"]
@@ -190,7 +192,7 @@ class InformationMod(loader.Module):
                     f"{utils.escape_html(self._button_label(button))}</a>"
                 )
             try:
-                payload = await self._rich_message(username, rich_text)
+                payload = await self._rich_message(username, rich_text, logo)
                 return await send_rich(message, payload, text, app=app)
             except Exception:
                 logger.warning(

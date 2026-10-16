@@ -124,13 +124,31 @@ class Help(loader.Module):
         markup += self.bot.build_pagination(
             self.inline__help_page, len(pages), current_page=page + 1, args=(section,)
         )
+        close = self.strings("close")
         markup.append(
-            [{"text": self.strings("close"), "callback": self.inline__help_close}]
+            [{"text": close, "callback": self.inline__help_close, "style": "danger"}]
         )
-        return text, markup
+        buttons = ""
+        for i, row in enumerate(markup):
+            buttons += "<tg-button-row>"
+            for j, button in enumerate(row):
+                button["ref"] = f"b{i}_{j}"
+                buttons += (
+                    f'<tg-button ref="{button["ref"]}">'
+                    f"{utils.escape_html(button['text'])}</tg-button>"
+                )
+            buttons += "</tg-button-row>"
+        head, *body = text.split("\n")
+        rich = {
+            "html": f"<h3>{head}</h3>"
+            + "".join(f"<p>{line}</p>" for line in body if line)
+            + buttons
+        }
+        return text, markup, rich
 
     async def inline__help_page(self, call, section: str, page: int = 0):
-        await call.edit(*self._overview(self._sections(), section, page))
+        text, markup, rich = self._overview(self._sections(), section, page)
+        await call.edit(text, markup, rich_message=rich)
 
     async def inline__help_close(self, call):
         await call.delete()
@@ -205,8 +223,8 @@ class Help(loader.Module):
         if not args:
             sections = self._sections()
             section = "external" if sections["external"] else "internal"
-            text, markup = self._overview(sections, section)
-            return await message.answer(text, reply_markup=markup)
+            text, markup, rich = self._overview(sections, section)
+            return await message.answer(text, reply_markup=markup, rich_message=rich)
 
         if not (module := self.all_modules.get_module(args.lower(), True, True)):
             return await send_response(
@@ -229,6 +247,8 @@ class Help(loader.Module):
         ]
 
         header = f"<b>{utils.escape_html(module.name)}</b>"
+        if logo := utils.shizu_logo(self.me, ""):
+            header = f"{logo} {header}"
         if module.__doc__:
             header += f" — {utils.escape_html(describe(module.__doc__))}"
         return await send_response(header + "\n\n" + "\n".join(lines))

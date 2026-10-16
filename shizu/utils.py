@@ -880,6 +880,17 @@ def get_display_name(entity: User | Chat) -> str:
     return name or getattr(entity, "username", None) or str(getattr(entity, "id", ""))
 
 
+SHIZU_LOGO = (
+    '<tg-emoji emoji-id="5375192721025706367">👩‍🎤</tg-emoji>'
+    '<tg-emoji emoji-id="5372836549211761622">🧑‍🎤</tg-emoji>'
+    '<tg-emoji emoji-id="5373152706049387888">👨‍🎤</tg-emoji>'
+)
+
+
+def shizu_logo(user: User, fallback: str = "🐙") -> str:
+    return SHIZU_LOGO if getattr(user, "is_premium", False) else fallback
+
+
 def escape_html(text):
     """Pass all untrusted/potentially corrupt input here"""
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

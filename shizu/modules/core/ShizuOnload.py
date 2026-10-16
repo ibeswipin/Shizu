@@ -52,8 +52,8 @@ class ShizuOnload(loader.Module):
 
     strings = {}
 
-    AVATARS_VERSION = 4
-    BOT_AVATAR_VERSION = 3
+    AVATARS_VERSION = 7
+    BOT_AVATAR_VERSION = 4
 
     SERVICE_CHATS = (
         (

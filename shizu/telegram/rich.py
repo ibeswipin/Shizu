@@ -1,11 +1,15 @@
 import contextlib
 import copy
 import html
+import io
 import logging
 import re
 from datetime import datetime
 from enum import Enum
+from pathlib import PurePosixPath
+from urllib.parse import urlsplit
 
+import aiohttp
 from pyrogram import enums, types
 
 logger = logging.getLogger(__name__)
@@ -298,11 +302,42 @@ async def can_send_direct(app):
         return False
 
 
+_URL_MEDIA_CACHE = {}
+
+
+def _is_url(source):
+    return isinstance(source, str) and source.startswith(("http://", "https://"))
+
+
+async def _account_payload(payload):
+    if isinstance(payload, str) or not any(
+        _is_url(media["media"]) for media in _media_items(as_dict(payload))
+    ):
+        return payload
+    payload = copy.deepcopy(as_dict(payload))
+    for media in _media_items(payload):
+        source = media["media"]
+        if not _is_url(source):
+            continue
+        data = _URL_MEDIA_CACHE.get(source)
+        if data is None:
+            async with aiohttp.ClientSession() as session, session.get(source) as response:
+                response.raise_for_status()
+                data = await response.read()
+            if len(_URL_MEDIA_CACHE) >= 16:
+                _URL_MEDIA_CACHE.pop(next(iter(_URL_MEDIA_CACHE)))
+            _URL_MEDIA_CACHE[source] = data
+        file = io.BytesIO(data)
+        file.name = PurePosixPath(urlsplit(source).path).name or media["type"]
+        media["media"] = file
+    return payload
+
+
 async def send_direct(app, message, payload, *, reply_to_message_id=None, prev=True):
     chat_id = message if isinstance(message, int) else message.chat.id
     rich = not isinstance(payload, str)
     kwargs = (
-        {"rich_message": as_input(payload)}
+        {"rich_message": as_input(await _account_payload(payload))}
         if rich
         else {"text": payload, "parse_mode": "html"}
     )
@@ -419,8 +454,8 @@ async def send_rich(
                 prev=prev,
             )
         except Exception:
-            logger.debug(
-                "Could not send rich response from account; using inline bot",
+            logger.warning(
+                "Could not send rich response from Premium account; using inline bot",
                 exc_info=True,
             )
     if inline is None:

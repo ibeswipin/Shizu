@@ -70,7 +70,7 @@ from shizu import database, utils
 from shizu import logger as lo
 from shizu.bot.types import Item
 from shizu.security import EVERYONE, mask_of
-from shizu.telegram.rich import needs_bot, send_rich
+from shizu.telegram.rich import as_dict, needs_bot, send_rich
 from shizu.translator import Translator
 
 logger = logging.getLogger(__name__)
@@ -115,6 +115,7 @@ async def edit(
     form_uid: Any = None,
     inline_message_id: str | None = None,
     disable_web_page_preview: bool = True,
+    rich_message: Any = None,
 ) -> None:
     """
     Do not edit or pass `self`, `query`, `form`, `form_uid`
@@ -143,13 +144,33 @@ async def edit(
             form["always_allow"] = always_allow
 
     try:
-        await self.bot.edit_message_text(
-            text,
-            inline_message_id=inline_message_id or query.inline_message_id,
-            parse_mode="HTML",
-            disable_web_page_preview=disable_web_page_preview,
-            reply_markup=self._generate_markup(reply_markup),
-        )
+        if rich_message is not None:
+            markup = self._generate_markup(reply_markup)
+            payload = self._rich_payload(
+                {"rich_message": rich_message, "buttons": reply_markup}
+            )
+            if "html" in payload:
+                payload["html"] = Events.sanitise_text(payload["html"])
+            await self.bot.request(
+                "editMessageText",
+                {
+                    "inline_message_id": inline_message_id or query.inline_message_id,
+                    "rich_message": json.dumps(payload),
+                    **(
+                        {"reply_markup": markup.as_json()}
+                        if markup and markup.inline_keyboard
+                        else {}
+                    ),
+                },
+            )
+        else:
+            await self.bot.edit_message_text(
+                text,
+                inline_message_id=inline_message_id or query.inline_message_id,
+                parse_mode="HTML",
+                disable_web_page_preview=disable_web_page_preview,
+                reply_markup=self._generate_markup(reply_markup),
+            )
     except aiogram.utils.exceptions.MessageNotModified:
         with contextlib.suppress(aiogram.utils.exceptions.InvalidQueryID):
             await query.answer()
@@ -167,6 +188,7 @@ async def edit(
             form_uid,
             inline_message_id,
             disable_web_page_preview,
+            rich_message,
         )
     except aiogram.utils.exceptions.MessageIdInvalid:
         with contextlib.suppress(aiogram.utils.exceptions.InvalidQueryID):
@@ -630,8 +652,7 @@ class Events(Item):
                         "id": utils.random_id(),
                         "title": "Shizu",
                         "input_message_content": {
-                            "rich_message": self._forms[query].get("rich_message")
-                            or {"html": self._rich_html(self._forms[query])}
+                            "rich_message": self._rich_payload(self._forms[query])
                         },
                     }
                     if markup and markup.inline_keyboard:
@@ -1104,7 +1125,15 @@ class Events(Item):
         r'<tg-button\s+ref="([^"]+)"\s*>(.*?)</tg-button>', re.DOTALL
     )
 
-    def _rich_html(self, form: dict) -> str:
+    def _rich_payload(self, form: dict) -> dict:
+        if form.get("rich_message") is None:
+            return {"html": self._rich_html(form)}
+        payload = as_dict(form["rich_message"])
+        if "html" in payload:
+            payload["html"] = self._rich_html(form, payload["html"])
+        return payload
+
+    def _rich_html(self, form: dict, text: str | None = None) -> str:
         refs = {
             button["ref"]: button
             for button in array_sum(form.get("buttons", []))
@@ -1132,7 +1161,7 @@ class Events(Item):
 
             return f"<tg-button {attrs}>{label}</tg-button>"
 
-        return self.RICH_BUTTON_RE.sub(render, form["text"])
+        return self.RICH_BUTTON_RE.sub(render, form["text"] if text is None else text)
 
     async def _callback_query_handler(
         self, query: CallbackQuery, reply_markup: list[list[dict]] = None
