@@ -1150,6 +1150,9 @@ class Events(Item):
             elif "_callback_data" in button or "data" in button:
                 data = button.get("_callback_data") or button["data"]
                 attrs = f'type="callback_data" data="{html.escape(data)}"'
+            elif "_switch_query" in button:
+                query = html.escape(button["_switch_query"] + " ")
+                attrs = f'type="switch_inline_query_current_chat" query="{query}"'
             else:
                 logger.warning(f"Rich button {ref!r} must have url or callback")
                 return label

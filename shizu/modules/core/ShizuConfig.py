@@ -30,6 +30,7 @@ from pyrogram.types import Message
 
 from shizu import loader, utils
 from shizu.loader.config import has_validator, unwrap_validator
+from shizu.telegram.rich import form_html
 
 logger = logging.getLogger(__name__)
 
@@ -166,16 +167,29 @@ class ShizuConfig(loader.Module):
         return True
 
     async def _show(self, target, text: str, markup: list, inline_message_id=None):
+        rich = form_html(text, markup)
         if isinstance(target, Message):
-            return await target.answer(text, reply_markup=markup)
+            return await target.answer(text, reply_markup=markup, rich_message=rich)
         await target.edit(
-            text, reply_markup=markup, inline_message_id=inline_message_id
+            text,
+            reply_markup=markup,
+            inline_message_id=inline_message_id,
+            rich_message=rich,
         )
 
     def _close_row(self, back_callback, *args) -> list:
         return [
-            {"text": self.strings("back"), "callback": back_callback, "args": args},
-            {"text": self.strings("close"), "callback": self.inline__close},
+            {
+                "text": self.strings("back"),
+                "callback": back_callback,
+                "args": args,
+                "style": "primary",
+            },
+            {
+                "text": self.strings("close"),
+                "callback": self.inline__close,
+                "style": "danger",
+            },
         ]
 
     SECTIONS = ("internal", "external")
@@ -199,12 +213,21 @@ class ShizuConfig(loader.Module):
                     "text": f"{self.SECTION_EMOJI[name]} {self.strings(name + '_title')} · {len(mods)}",
                     "callback": self.inline__global_config,
                     "args": (name, 0),
+                    "style": "primary",
                 }
                 for name, mods in sections.items()
                 if mods
             ]
         ]
-        markup += [[{"text": self.strings("close"), "callback": self.inline__close}]]
+        markup += [
+            [
+                {
+                    "text": self.strings("close"),
+                    "callback": self.inline__close,
+                    "style": "danger",
+                }
+            ]
+        ]
         return self.strings("configure"), markup
 
     def _global_view(self, section: str = None, page: int = 0):
@@ -277,6 +300,7 @@ class ShizuConfig(loader.Module):
                         else self.strings("true"),
                         "callback": self.inline__set_value,
                         "args": (mod, option, not current),
+                        "style": "danger" if current else "success",
                     }
                 ]
             )
@@ -287,6 +311,7 @@ class ShizuConfig(loader.Module):
                         "text": ("✅ " if value == current else "") + str(value),
                         "callback": self.inline__set_value,
                         "args": (mod, option, value),
+                        **({"style": "success"} if value == current else {}),
                     }
                     for value in self._base_validator(module, option).possible_values
                 ],
@@ -311,12 +336,14 @@ class ShizuConfig(loader.Module):
                         "input": self.strings("enter_value"),
                         "handler": self.inline__add_item,
                         "args": (mod, option, inline_message_id),
+                        "style": "success",
                     },
                     {
                         "text": self.strings("remove_value_from_list_button"),
                         "input": self.strings("enter_value"),
                         "handler": self.inline__remove_item,
                         "args": (mod, option, inline_message_id),
+                        "style": "danger",
                     },
                 ]
             )
@@ -327,6 +354,7 @@ class ShizuConfig(loader.Module):
                             "text": self.strings("choose_button"),
                             "callback": self.inline__choose,
                             "args": (mod, option),
+                            "style": "primary",
                         }
                     ]
                 )
@@ -338,6 +366,7 @@ class ShizuConfig(loader.Module):
                     "input": self.strings("enter_value"),
                     "handler": self.inline__set_config,
                     "args": (mod, option, inline_message_id),
+                    "style": "primary",
                 }
             ]
             + (
@@ -346,6 +375,7 @@ class ShizuConfig(loader.Module):
                         "text": self.strings("restore_def_button"),
                         "callback": self.inline__set_to_default,
                         "args": (mod, option),
+                        "style": "danger",
                     }
                 ]
                 if self._is_modified(module, option)
@@ -375,20 +405,16 @@ class ShizuConfig(loader.Module):
     ):
         inline_message_id = inline_message_id or call.inline_message_id
         if not await self._available(module, option):
-            return await call.edit(
-                "🚫", reply_markup=[], inline_message_id=inline_message_id
-            )
+            return await self._show(call, "🚫", [], inline_message_id)
         text, markup = self._option_view(module, option, inline_message_id, note)
-        await call.edit(text, reply_markup=markup, inline_message_id=inline_message_id)
+        await self._show(call, text, markup, inline_message_id)
 
     async def _apply(
         self, call, mod: str, option: str, get_value, inline_message_id=None
     ):
         module = self._module(mod)
         if not await self._available(module, option):
-            return await call.edit(
-                "🚫", reply_markup=[], inline_message_id=inline_message_id
-            )
+            return await self._show(call, "🚫", [], inline_message_id)
 
         try:
             value = get_value(module)
@@ -483,6 +509,7 @@ class ShizuConfig(loader.Module):
                     "text": f"{'✅' if str(item) in current else '❌'} {item}",
                     "callback": self.inline__choose_set,
                     "args": (mod, option, index),
+                    "style": "success" if str(item) in current else "danger",
                 }
                 for index, item in enumerate(module.config.getdef(option))
             ],
@@ -491,7 +518,7 @@ class ShizuConfig(loader.Module):
         markup += [self._close_row(self.inline__configure_option, mod, option)]
 
         text, _ = self._option_view(module, option, call.inline_message_id)
-        await call.edit(text, reply_markup=markup)
+        await self._show(call, text, markup)
 
     async def inline__choose_set(
         self, call: CallbackQuery, mod: str, option: str, index: int

@@ -19,6 +19,7 @@ import re
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 
 from shizu import loader, utils
+from shizu.telegram.rich import button_rows
 
 
 @loader.module(name="ShizuHelp", author="shizu")
@@ -142,21 +143,11 @@ class Help(loader.Module):
         markup.append(
             [{"text": close, "callback": self.inline__help_close, "style": "danger"}]
         )
-        buttons = ""
-        for i, row in enumerate(markup):
-            buttons += "<tg-button-row>"
-            for j, button in enumerate(row):
-                button["ref"] = f"b{i}_{j}"
-                buttons += (
-                    f'<tg-button ref="{button["ref"]}">'
-                    f"{utils.escape_html(button['text'])}</tg-button>"
-                )
-            buttons += "</tg-button-row>"
         head, *body = text.split("\n")
         rich = {
             "html": f"<h3>{head}</h3>"
             + "".join(f"<p>{line}</p>" for line in body if line)
-            + buttons
+            + button_rows(markup)
         }
         return text, markup, rich
 

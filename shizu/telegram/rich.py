@@ -256,6 +256,29 @@ def needs_bot(payload):
     return False
 
 
+def button_rows(markup):
+    rows = ""
+    for i, row in enumerate(markup):
+        rows += "<tg-button-row>"
+        for j, button in enumerate(row):
+            button["ref"] = f"b{i}_{j}"
+            rows += (
+                f'<tg-button ref="{button["ref"]}">'
+                f"{html.escape(button['text'], quote=False)}</tg-button>"
+            )
+        rows += "</tg-button-row>"
+    return rows
+
+
+def form_html(text, markup):
+    paragraphs = "".join(
+        f"<p>{part.strip().replace(chr(10), '<br>')}</p>"
+        for part in text.split("\n\n")
+        if part.strip()
+    )
+    return {"html": paragraphs + button_rows(markup)}
+
+
 def _with_url_buttons(payload, markup):
     rows = [[button for button in row if "url" in button] for row in markup or []]
     rows = [row for row in rows if row]
