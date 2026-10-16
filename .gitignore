@@ -48,3 +48,4 @@ telethon_sessions.key
 !/scripts/secure_start.py
 cloudflared-*
 /docs
+assets/branding-*

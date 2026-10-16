@@ -46,6 +46,20 @@ class Help(loader.Module):
     PAGE_LIMIT = 3500
     SECTIONS = ("internal", "external")
     SECTION_EMOJI = {"internal": "🛠", "external": "🧩"}
+    PREMIUM_EMOJI = {
+        "core_modules": '<tg-emoji emoji-id="5019413195186504264">⚙️</tg-emoji>',
+        "custom_modules": '<tg-emoji emoji-id="5161221487608201804">🔵</tg-emoji>',
+        "telethon": '<tg-emoji emoji-id="5377437404078546699">💜</tg-emoji>',
+    }
+
+    def _emoji(self, key):
+        premium = getattr(self.me, "is_premium", False)
+        if key == "telethon":
+            return self.PREMIUM_EMOJI[key] if premium else "🪢"
+        value = self.config[key]
+        if premium and value == self.config.getdef(key):
+            return self.PREMIUM_EMOJI[key]
+        return value
 
     def _line(self, module):
         prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
@@ -62,11 +76,11 @@ class Help(loader.Module):
             return None
 
         if getattr(module, "m__telethon", False):
-            emoji = "🪢"
+            emoji = self._emoji("telethon")
         elif self.all_modules.is_core(module):
-            emoji = self.config["core_modules"]
+            emoji = self._emoji("core_modules")
         else:
-            emoji = self.config["custom_modules"]
+            emoji = self._emoji("custom_modules")
 
         line = f"{emoji} <b>{utils.escape_html(module.name)}</b> — " + "  ".join(
             commands

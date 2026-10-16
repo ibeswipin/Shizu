@@ -454,7 +454,7 @@ async def send_rich(
                 prev=prev,
             )
         except Exception:
-            logger.warning(
+            logger.debug(
                 "Could not send rich response from Premium account; using inline bot",
                 exc_info=True,
             )
