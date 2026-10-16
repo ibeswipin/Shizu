@@ -18,7 +18,7 @@ from pathlib import Path
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-PUBLIC_KEY_HEX = "3803e376267ae17b2445fa21c7a521717069d3cce57840f6dd3c116adc5e6c6d"
+PUBLIC_KEY_HEX = "cb74fe6922a712c4e29604e8ca71396ff4300d5d7e3fd7ed9906694e9cb4c51e"
 
 ROOT = Path(__file__).resolve().parent.parent
 
