@@ -11,7 +11,7 @@
     "shizu/besafe.py": "b7e2f799654ded981608b4c77c5090a480d94ce4f7d0b2f0396af318f5ad5276",
     "shizu/bot/__init__.py": "938463ebcf43d666a75090be3674d1f66c364757982c17c9a1fb680b22d27ec0",
     "shizu/bot/core.py": "b5bcd6948a612ab96940452b2fbc3477996c8e1130ffa85d9f05b7143686163c",
-    "shizu/bot/events.py": "e0f6c935b0a97a4a394b6835f45a098e4a05c19b86a00215e2f6d1d1727f9ce4",
+    "shizu/bot/events.py": "a78030b201d0428fd710832c819a0f73d48a7d4dc83a75682189e8b0fd46d154",
     "shizu/bot/token_manager.py": "9c95bddb8c0fed57be82058c18cb8c753b88a3230f6cc4737ea75066904e62d2",
     "shizu/bot/types.py": "d32c602fde3dbc3da901ff4411d7b577d58e71a5a037399bc6019422bfb9649c",
     "shizu/database/__init__.py": "a2bc2eefe68ac666df506a0a4cad0fcdb0df6961dd822916a693e78848d073ea",

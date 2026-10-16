@@ -149,8 +149,6 @@ async def edit(
             payload = self._rich_payload(
                 {"rich_message": rich_message, "buttons": reply_markup}
             )
-            if "html" in payload:
-                payload["html"] = Events.sanitise_text(payload["html"])
             await self.bot.request(
                 "editMessageText",
                 {
