@@ -1545,14 +1545,19 @@ class Events(Item):
                 soo = await message.edit("🐙")
         else:
             soo = None
+        anchor = None
         try:
+            if (rich or rich_message) and not msg_id and str(chat_id).startswith("-100"):
+                anchor = soo or await self._app.send_message(chat_id, "🐙")
             results = await self._inline_results(form_uid)
             q = await self._app.send_inline_bot_result(
                 chat_id,
                 results.query_id,
                 results.results[0].id,
-                reply_to_message_id=msg_id or None,
+                reply_to_message_id=msg_id or (anchor.id if anchor else None),
             )
+            if anchor is not None and anchor is not soo:
+                await self._app.delete_messages(anchor.chat.id, anchor.id)
             if soo:
                 await self._app.delete_messages(soo.chat.id, soo.id)
             elif (
@@ -1576,6 +1581,9 @@ class Events(Item):
                     )
 
             del self._forms[form_uid]
+            if anchor is not None and anchor is not soo:
+                with contextlib.suppress(Exception):
+                    await self._app.delete_messages(anchor.chat.id, anchor.id)
             if soo:
                 await soo.edit(msg)
             elif hasattr(message, "chat_id") and hasattr(message, "respond"):
