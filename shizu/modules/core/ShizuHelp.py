@@ -16,6 +16,7 @@
 
 # meta banner: https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/banners/ShizuHelp.png
 
+import html
 import re
 from difflib import SequenceMatcher
 
@@ -39,7 +40,7 @@ TAGS = r"</?(?:b|i|u|s|code|pre|a|blockquote|emoji|tg-emoji|tg-spoiler)\b[^>]*>"
 
 
 def describe(doc) -> str:
-    return " ".join(re.sub(TAGS, "", doc or "No description").split())
+    return " ".join(html.unescape(re.sub(TAGS, "", doc or "No description")).split())
 
 
 def name_score(query: str, name: str) -> float:
@@ -333,8 +334,12 @@ class Help(loader.Module):
             for command in module.inline_handlers
         ]
 
-        header = f"<b>{utils.escape_html(module.name)}</b>"
-        if logo := utils.shizu_logo(self.me, ""):
+        name = module.name
+        logo = utils.shizu_logo(self.me, "")
+        if logo and self.all_modules.is_core(module) and name.startswith("Shizu"):
+            name = name.removeprefix("Shizu")
+        header = f"<b>{utils.escape_html(name)}</b>"
+        if logo:
             header = f"{logo} {header}"
         if module.__doc__:
             header += f" — {utils.escape_html(describe(module.__doc__))}"
@@ -368,15 +373,18 @@ class Help(loader.Module):
             if not commands and not module.inline_handlers:
                 continue
 
+            escape = utils.escape_html
             text = (
-                f"🐙 <b>{module.name}</b>\nℹ️ {module.__doc__ or 'No description'}\n\n"
+                f"🐙 <b>{escape(module.name)}</b>\n"
+                f"ℹ️ {escape(describe(module.__doc__))}\n\n"
             )
             text += "\n".join(
-                f"▫️ <code>{prefix}{c}</code> - {module.command_handlers[c].__doc__ or 'No description'}"
+                f"▫️ <code>{escape(prefix + c)}</code> - "
+                f"{escape(describe(module.command_handlers[c].__doc__))}"
                 for c in commands
             )
             text += "".join(
-                f"\n🤖 <code>@{bot_username} {c}</code> - {f.__doc__ or 'No description'}"
+                f"\n🤖 <code>@{bot_username} {escape(c)}</code> - {escape(describe(f.__doc__))}"
                 for c, f in module.inline_handlers.items()
             )
 

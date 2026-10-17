@@ -50,7 +50,7 @@
     "shizu/modules/core/ShizuConfig.py": "6d249b75949dce489db75908c49568758ccf413d1746aaf7d3fca0e810b8fac6",
     "shizu/modules/core/ShizuEval.py": "979ca5cf7bf8cf83e187d398ad1f5d32a6355b09f40f05c1cec27ce2c9f8ace8",
     "shizu/modules/core/ShizuFeedback.py": "cdcbc9b06cde92b986a9100cd321a69bb9fd28a898e6484dfc0e9c095b073526",
-    "shizu/modules/core/ShizuHelp.py": "85b720513ed17b20d2747541d33fbf0d24f06b1d4017b2d3c5ebfdfea6ca4eb1",
+    "shizu/modules/core/ShizuHelp.py": "8cabfbe1faaed9c81c0204e84842a9f4e702a6c8ce2369b27de453bcc04faa4a",
     "shizu/modules/core/ShizuInfo.py": "7ff3ee0e40691ac9558fc0205a28dee643ea1b6d30af0e9ea71ee20729f3447f",
     "shizu/modules/core/ShizuLanguages.py": "98a0b1cf2a5c3ef62608f5e0894fbb7027476225fb79d2cc18a779ab493d363b",
     "shizu/modules/core/ShizuLoader.py": "8317b0e129af847c3d18638613a4545d16cc27e1fdca383a94cc932c58fc7d2d",
