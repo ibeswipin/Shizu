@@ -40,6 +40,20 @@ class InformationMod(loader.Module):
     """Info"""
 
     strings = {}
+    ICONS = {
+        "label_version": ("5310224206732996002", "⭐"),
+        "label_branch": ("5292226786229236118", "🔄"),
+        "label_platform": ("5235588635885054955", "🎲"),
+        "label_prefix": ("5258023599419171861", "🔧"),
+        "label_bot": ("5258196742435787040", "👾"),
+    }
+
+    def _label(self, key: str) -> str:
+        label = utils.escape_html(self.strings(key))
+        if not getattr(self.me, "is_premium", False) or key not in self.ICONS:
+            return label
+        emoji_id, fallback = self.ICONS[key]
+        return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji> {label}'
 
     def __init__(self):
         self.config = loader.ModuleConfig(
@@ -118,26 +132,20 @@ class InformationMod(loader.Module):
                 f"{utils.escape_html(utils.get_display_name(self.me))}</a>"
             )
             rows = [
-                (
-                    self.strings("label_version"),
-                    ".".join(map(str, version.__version__)),
-                ),
-                (self.strings("label_branch"), version.branch),
-                (
-                    self.strings("label_platform"),
-                    utils.get_platform().split(" ", 1)[-1],
-                ),
-                (self.strings("label_prefix"), ", ".join(self.prefix)),
+                ("label_version", ".".join(map(str, version.__version__))),
+                ("label_branch", version.branch),
+                ("label_platform", utils.get_platform().split(" ", 1)[-1]),
+                ("label_prefix", ", ".join(self.prefix)),
             ]
             cells = "".join(
-                f"<tr><td>{utils.escape_html(label)}</td>"
+                f"<tr><td>{self._label(key)}</td>"
                 f"<td>{utils.escape_html(value)}</td></tr>"
-                for label, value in rows
+                for key, value in rows
             )
             if username:
                 username = utils.escape_html(username)
                 cells += (
-                    f"<tr><td>{utils.escape_html(self.strings('label_bot'))}</td><td>"
+                    f"<tr><td>{self._label('label_bot')}</td><td>"
                     f'<a href="https://t.me/{username}">@{username}</a></td></tr>'
                 )
             content = f"<h2>{logo} Shizu — {mention}</h2><table bordered>{cells}</table>"
