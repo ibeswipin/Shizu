@@ -21,6 +21,8 @@ Licensed under the GNU GPLv3
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+# meta banner: https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/banners/ShizuInfo.png
+
 import collections
 import html
 import logging

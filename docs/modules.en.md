@@ -501,6 +501,15 @@ library modules such as `urllib` are skipped. Without a header, Shizu attempts
 to install the package for a missing import. Installation errors reach the logs;
 an incompatible package API may need code changes or an explicit dependency version.
 
+### Module banner
+
+```python
+# meta banner: https://example.com/banner.png
+```
+
+When a module has `# meta banner:` with an image link, `.help <module>`
+shows the module page as a rich message with that banner on top.
+
 ### Multiple repositories
 
 Add GitHub links as a list in `additional_repos` under `.config ShizuLoader`.

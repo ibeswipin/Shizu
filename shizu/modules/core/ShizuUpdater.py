@@ -33,6 +33,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+# meta banner: https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/banners/ShizuUpdater.png
+
 import asyncio
 import contextlib
 import logging

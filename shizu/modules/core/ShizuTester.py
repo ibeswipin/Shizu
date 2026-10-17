@@ -34,6 +34,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+# meta banner: https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/banners/ShizuTester.png
+
 import contextlib
 import datetime
 import html

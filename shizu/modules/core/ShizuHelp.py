@@ -14,12 +14,61 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+# meta banner: https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/banners/ShizuHelp.png
+
 import re
+from difflib import SequenceMatcher
 
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 
 from shizu import loader, utils
-from shizu.telegram.rich import button_rows
+from shizu.telegram.rich import button_rows, form_html
+
+EN = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`"
+RU = "йцукенгшщзхъфывапролджэячсмитьбюё"
+TO_RU = str.maketrans(EN, RU)
+TO_EN = str.maketrans(RU, EN)
+TRANSLIT = str.maketrans(
+    {
+        **dict(zip("абвгдезийклмнопрстуфхцыэ", "abvgdezijklmnoprstufhcye")),
+        "ё": "e", "ж": "zh", "ч": "ch", "ш": "sh", "щ": "sh",
+        "ю": "yu", "я": "ya", "ъ": "", "ь": "",
+    }
+)
+TAGS = r"</?(?:b|i|u|s|code|pre|a|blockquote|emoji|tg-emoji|tg-spoiler)\b[^>]*>"
+
+
+def describe(doc) -> str:
+    return " ".join(re.sub(TAGS, "", doc or "No description").split())
+
+
+def name_score(query: str, name: str) -> float:
+    name = name.lower()
+    if name == query:
+        return 100
+    if name.startswith(query):
+        return 90
+    if query in name:
+        return 75
+    ratio = SequenceMatcher(None, query, name).ratio()
+    return ratio * 70 if ratio >= 0.6 else 0
+
+
+def doc_score(query: str, doc: str) -> float:
+    words = re.findall(r"\w+", doc.lower())
+    terms = re.findall(r"\w+", query)
+    if not words or not terms:
+        return 0
+    found = sum(
+        any(
+            word.startswith(term)
+            or len(term) > 3
+            and SequenceMatcher(None, term, word).ratio() >= 0.8
+            for word in words
+        )
+        for term in terms
+    )
+    return 50 * found / len(terms)
 
 
 @loader.module(name="ShizuHelp", author="shizu")
@@ -151,6 +200,44 @@ class Help(loader.Module):
         }
         return text, markup, rich
 
+    def _search(self, query: str) -> list:
+        query = query.lower().strip()
+        variants = {
+            query,
+            query.translate(TO_RU),
+            query.translate(TO_EN),
+            query.translate(TRANSLIT),
+        }
+        aliases = {}
+        for alias, command in self.all_modules.aliases.items():
+            aliases.setdefault(command, []).append(alias)
+        results = {}
+        for module in self.all_modules.modules:
+            commands = [c for c in module.command_handlers if c not in self.hidden]
+            if not commands and not module.inline_handlers:
+                continue
+            module_doc = describe(module.__doc__)
+            for variant in variants:
+                score = max(
+                    name_score(variant, module.name), doc_score(variant, module_doc)
+                )
+                key = (module.name, None)
+                if score > results.get(key, (0,))[0]:
+                    results[key] = (score, module, None)
+                for command in commands:
+                    names = [command, *aliases.get(command, [])]
+                    score = max(
+                        max(name_score(variant, name) for name in names),
+                        doc_score(variant, describe(module.command_handlers[command].__doc__)),
+                    )
+                    key = (module.name, command)
+                    if score > results.get(key, (0,))[0]:
+                        results[key] = (score, module, command)
+        return sorted(
+            (result for result in results.values() if result[0] >= 40),
+            key=lambda result: (-result[0], result[1].name, result[2] or ""),
+        )
+
     async def inline__help_page(self, call, section: str, page: int = 0):
         text, markup, rich = self._overview(self._sections(), section, page)
         await call.edit(text, markup, rich_message=rich)
@@ -188,36 +275,26 @@ class Help(loader.Module):
                 )
 
             results = []
-            for module in self.all_modules.modules:
-                if query in module.name.lower():
-                    cmd_count = len(
-                        [c for c in module.command_handlers if c not in self.hidden]
+            for _, module, command in self._search(query):
+                name = utils.escape_html(module.name)
+                if command is None:
+                    results.append(
+                        f"• <b>{name}</b> — {utils.escape_html(describe(module.__doc__))}"
                     )
-                    if cmd_count > 0:
-                        results.append(
-                            f"• <b>{module.name}</b> <i>({cmd_count} commands)</i>"
-                        )
-
-                for command in module.command_handlers:
-                    if command not in self.hidden and query in command.lower():
-                        doc = " ".join(
-                            (
-                                module.command_handlers[command].__doc__
-                                or "No description"
-                            ).split()
-                        )
-                        results.append(
-                            f"• <code>{prefix}{command}</code> - <b>{module.name}</b>\n"
-                            f"  └ {doc}"
-                        )
+                else:
+                    doc = describe(module.command_handlers[command].__doc__)
+                    results.append(
+                        f"• <code>{utils.escape_html(prefix + command)}</code> — <b>{name}</b>\n"
+                        f"  └ {utils.escape_html(doc)}"
+                    )
 
             if not results:
                 return await send_response(
-                    f"🔍 <b>No results found for:</b> <code>{query}</code>"
+                    f"🔍 <b>No results found for:</b> <code>{utils.escape_html(query)}</code>"
                 )
 
             result_text = (
-                f"🔍 <b>Search Results:</b> <code>{query}</code>\n\n"
+                f"🔍 <b>Search Results:</b> <code>{utils.escape_html(query)}</code>\n\n"
                 + "\n".join(results[:15])
             )
             if len(results) > 15:
@@ -231,14 +308,19 @@ class Help(loader.Module):
             text, markup, rich = self._overview(sections, section)
             return await message.answer(text, reply_markup=markup, rich_message=rich)
 
-        if not (module := self.all_modules.get_module(args.lower(), True, True)):
-            return await send_response(
-                "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>",
-            )
-
-        def describe(doc):
-            tags = r"</?(?:b|i|u|s|code|pre|a|blockquote|emoji|tg-emoji|tg-spoiler)\b[^>]*>"
-            return " ".join(re.sub(tags, "", doc or "No description").split())
+        module = self.all_modules.get_module(args.lower(), True, True)
+        if module is None:
+            found = self._search(args)
+            if found and found[0][0] >= 70:
+                module = found[0][1]
+            else:
+                text = "<b><emoji id=5465665476971471368>❌</emoji> There is no such module</b>"
+                names = list(dict.fromkeys(result[1].name for result in found))[:3]
+                if names:
+                    text += "\n\n🔍 <b>Did you mean:</b> " + ", ".join(
+                        f"<code>{utils.escape_html(name)}</code>" for name in names
+                    )
+                return await send_response(text)
 
         lines = [
             f"▫️ <code>{utils.escape_html(prefix + command)}</code> — "
@@ -256,28 +338,34 @@ class Help(loader.Module):
             header = f"{logo} {header}"
         if module.__doc__:
             header += f" — {utils.escape_html(describe(module.__doc__))}"
-        return await send_response(header + "\n\n" + "\n".join(lines))
+        text = header + "\n\n" + "\n".join(lines)
+        banner = self.all_modules.meta(module).get("banner", "")
+        if not re.fullmatch(r"https?://\S+", banner):
+            return await send_response(text)
+        rich = form_html(text, [])
+        rich["html"] = '<img src="tg://photo?id=banner"/>' + rich["html"]
+        rich["media"] = [
+            {"id": "banner", "media": {"type": "photo", "media": banner}}
+        ]
+        return await utils.answer(message, text, rich_message=rich)
 
     async def help_inline_handler(self, app, inline_query, args):
         """Modules and their commands - help [query]"""
         prefix = self.db.get("shizu.loader", "prefixes", ["."])[0]
         bot_username = (await self.bot.bot.get_me()).username
-        query = args.lower()
         results = []
+        modules = (
+            dict.fromkeys(result[1] for result in self._search(args))
+            if args.strip()
+            else sorted(
+                self.all_modules.modules,
+                key=lambda mod: (not self.all_modules.is_core(mod), len(mod.name)),
+            )
+        )
 
-        for module in sorted(
-            self.all_modules.modules,
-            key=lambda mod: (not self.all_modules.is_core(mod), len(mod.name)),
-        ):
+        for module in modules:
             commands = [c for c in module.command_handlers if c not in self.hidden]
             if not commands and not module.inline_handlers:
-                continue
-
-            if (
-                query
-                and query not in module.name.lower()
-                and not any(query in c for c in [*commands, *module.inline_handlers])
-            ):
                 continue
 
             text = (

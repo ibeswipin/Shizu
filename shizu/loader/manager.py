@@ -14,8 +14,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import contextlib
 import functools
+import inspect
 import logging
+import re
 import sys
 from importlib.machinery import ModuleSpec
 from types import FunctionType
@@ -364,6 +367,16 @@ class ModulesManager:
     def unload_module(self, module_name=None, is_replace: bool = False) -> str:
         """Unloads the loaded (if loaded) module"""
         return ModuleLifecycle(self).unload(module_name, is_replace)
+
+    def meta(self, module: Module) -> dict[str, str]:
+        source = self.raw_modules.get(type(module).__module__)
+        if source is None:
+            with contextlib.suppress(Exception):
+                source = inspect.getsource(sys.modules[type(module).__module__])
+        return {
+            key.lower(): value.strip()
+            for key, value in re.findall(r"^# ?meta (\w+): ?(.+)$", source or "", re.M)
+        }
 
     def get_module(
         self, name: str, by_commands_too: bool = False, _=None
