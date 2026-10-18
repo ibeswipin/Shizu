@@ -256,6 +256,37 @@ def needs_bot(payload):
     return False
 
 
+_TG_EMOJI_RE = re.compile(r'<tg-emoji\s+emoji-id="(\d+)">(.*?)</tg-emoji>', re.S)
+
+
+def escape_button_label(text):
+    """Escape a button label, keeping whitelisted <tg-emoji> custom-emoji tags."""
+    text = text or ""
+    parts, last = [], 0
+    for match in _TG_EMOJI_RE.finditer(text):
+        parts.append(html.escape(text[last : match.start()], quote=False))
+        parts.append(
+            f'<tg-emoji emoji-id="{match.group(1)}">'
+            f"{html.escape(match.group(2), quote=False)}</tg-emoji>"
+        )
+        last = match.end()
+    parts.append(html.escape(text[last:], quote=False))
+    return "".join(parts)
+
+
+def button_label_html(button):
+    """Safe button label: escaped text with an optional custom-emoji icon in front."""
+    label = escape_button_label(button.get("text", ""))
+    emoji = button.get("emoji")
+    if emoji and str(emoji.get("id", "")).isdigit():
+        tag = (
+            f'<tg-emoji emoji-id="{emoji["id"]}">'
+            f"{html.escape(emoji.get('fallback') or '⭐', quote=False)}</tg-emoji>"
+        )
+        return f"{tag} {label}" if label else tag
+    return label
+
+
 def button_rows(markup):
     rows = ""
     for i, row in enumerate(markup):
@@ -264,7 +295,7 @@ def button_rows(markup):
             button["ref"] = f"b{i}_{j}"
             rows += (
                 f'<tg-button ref="{button["ref"]}">'
-                f"{html.escape(button['text'], quote=False)}</tg-button>"
+                f"{button_label_html(button)}</tg-button>"
             )
         rows += "</tg-button-row>"
     return rows
@@ -291,7 +322,7 @@ def _with_url_buttons(payload, markup):
                 "<tg-button-row>"
                 + "".join(
                     f'<tg-button type="url" url="{html.escape(button["url"], quote=True)}">'
-                    f"{html.escape(button['text'])}</tg-button>"
+                    f"{button_label_html(button)}</tg-button>"
                     for button in row
                 )
                 + "</tg-button-row>"

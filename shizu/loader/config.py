@@ -272,6 +272,20 @@ class Validators:
                 if style not in self.STYLES:
                     raise ValueError(f"Unknown button style: {style}")
                 button["style"] = style
+            emoji = value.get("emoji")
+            if emoji:
+                if isinstance(emoji, str):
+                    emoji_id, _, fallback = emoji.strip().partition(" ")
+                    emoji = {"id": emoji_id, "fallback": fallback.strip() or "⭐"}
+                if not isinstance(emoji, dict):
+                    raise ValueError("Emoji must be an id or {id, fallback}")
+                emoji_id = str(emoji.get("id", "")).strip()
+                if not emoji_id.isdigit():
+                    raise ValueError("Custom emoji id must be a number")
+                button["emoji"] = {
+                    "id": emoji_id,
+                    "fallback": str(emoji.get("fallback") or "⭐").strip() or "⭐",
+                }
             return button
 
     class Float:

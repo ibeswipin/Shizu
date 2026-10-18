@@ -30,7 +30,7 @@ import logging
 from pyrogram import Client, types
 
 from shizu import loader, utils, version
-from shizu.telegram.rich import send_direct, send_rich
+from shizu.telegram.rich import button_label_html, send_direct, send_rich
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ class InformationMod(loader.Module):
                 "<tg-button-row>"
                 f'<tg-button type="url" style="{style}" '
                 f'url="{html.escape(button["url"])}">'
-                f"{utils.escape_html(self._button_label(button))}</tg-button>"
+                f"{button_label_html({'text': self._button_label(button), 'emoji': button.get('emoji')})}</tg-button>"
                 "</tg-button-row>"
             )
         return types.InputRichMessage(html=markup, media=media)

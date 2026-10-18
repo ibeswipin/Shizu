@@ -595,6 +595,18 @@ class ShizuConfig(loader.Module):
             ],
             [
                 {
+                    "text": self.strings("btn_emoji_label").format(
+                        entry["emoji"]["fallback"]
+                        if entry.get("emoji")
+                        else self.strings("btn_emoji_none")
+                    ),
+                    "input": self.strings("btn_enter_emoji"),
+                    "handler": self.inline__btn_emoji,
+                    "args": (mod, option, index, inline_message_id),
+                }
+            ],
+            [
+                {
                     "text": ("✅ " if style == current_style else "") + style,
                     "callback": self.inline__btn_style,
                     "args": (mod, option, index, style),
@@ -685,6 +697,25 @@ class ShizuConfig(loader.Module):
             return self._check(module, option, buttons)
 
         await self._apply_btn(call, mod, option, index, edit, call.inline_message_id)
+
+    async def inline__btn_emoji(
+        self, call, query: str, mod: str, option: str, index: int,
+        inline_message_id: str,
+    ) -> None:
+        def edit(module):
+            buttons = list(module.config[option] or [])
+            if not 0 <= index < len(buttons):
+                raise ValueError(self.strings("value_not_found"))
+            updated = dict(buttons[index])
+            cleaned = query.strip()
+            if cleaned in ("", "-", "0"):
+                updated.pop("emoji", None)
+            else:
+                updated["emoji"] = cleaned
+            buttons[index] = updated
+            return self._check(module, option, buttons)
+
+        await self._apply_btn(call, mod, option, index, edit, inline_message_id)
 
     async def inline__btn_delete(
         self, call: CallbackQuery, mod: str, option: str, index: int
