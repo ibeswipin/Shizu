@@ -247,6 +247,33 @@ class Validators:
 
             return value
 
+    class Button:
+        """One inline button as `Label - https://link`, or a {text, url[, style]} dict."""
+
+        STYLES = {"primary", "success", "danger"}
+
+        def validate(self, value):
+            if isinstance(value, str):
+                text, separator, url = value.partition(" - ")
+                if not separator:
+                    text, separator, url = value.partition("|")
+                text, url = text.strip(), url.strip()
+                if not separator or not text or not url:
+                    raise ValueError(f"Use 'Label - https://link': {value!r}")
+                value = {"text": text, "url": url}
+            if not isinstance(value, dict):
+                raise ValueError("A button is 'Label - link' or a {text, url} object")
+            text = str(value.get("text", "")).strip()
+            if not text:
+                raise ValueError("Button text cannot be empty")
+            button = {"text": text, "url": Validators.Link().validate(value.get("url", ""))}
+            style = value.get("style")
+            if style:
+                if style not in self.STYLES:
+                    raise ValueError(f"Unknown button style: {style}")
+                button["style"] = style
+            return button
+
     class Float:
         def __init__(self, minimum=None, maximum=None):
             self.minimum = minimum

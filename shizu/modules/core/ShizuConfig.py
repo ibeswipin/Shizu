@@ -95,6 +95,10 @@ class ShizuConfig(loader.Module):
             return "bool"
         if isinstance(validator, v.Choice):
             return "choice"
+        if isinstance(validator, v.Series) and any(
+            isinstance(x, v.Button) for x in getattr(validator, "validators", ())
+        ):
+            return "buttons"
         if isinstance(validator, v.Series) or (
             validator is None and isinstance(default, list)
         ):
@@ -330,6 +334,28 @@ class ShizuConfig(loader.Module):
                     for delta in (-10, -1, 1, 10)
                 ]
             )
+        elif kind == "buttons":
+            buttons = current if isinstance(current, list) else [current] if current else []
+            for index, entry in enumerate(buttons):
+                markup.append(
+                    [
+                        {
+                            "text": f"✏️ {entry.get('text', '')}",
+                            "callback": self.inline__btn_edit,
+                            "args": (mod, option, index),
+                        }
+                    ]
+                )
+            markup.append(
+                [
+                    {
+                        "text": self.strings("btn_add"),
+                        "callback": self.inline__btn_add,
+                        "args": (mod, option),
+                        "style": "success",
+                    }
+                ]
+            )
         elif kind == "list":
             markup.append(
                 [
@@ -542,6 +568,138 @@ class ShizuConfig(loader.Module):
             return await call.answer(str(e), show_alert=True)
 
         await self.inline__choose(call, mod, option)
+
+    def _btn_view(self, module, option, index, inline_message_id, note: str = ""):
+        mod = module.name
+        buttons = list(module.config[option] or [])
+        if not 0 <= index < len(buttons):
+            return self._option_view(module, option, inline_message_id, note)
+        entry = buttons[index]
+        current_style = entry.get("style", "danger")
+        markup = [
+            [
+                {
+                    "text": self.strings("btn_text_label").format(entry.get("text", "")),
+                    "input": self.strings("btn_enter_text"),
+                    "handler": self.inline__btn_field,
+                    "args": (mod, option, index, "text", inline_message_id),
+                }
+            ],
+            [
+                {
+                    "text": self.strings("btn_url_label").format(entry.get("url", "")),
+                    "input": self.strings("btn_enter_url"),
+                    "handler": self.inline__btn_field,
+                    "args": (mod, option, index, "url", inline_message_id),
+                }
+            ],
+            [
+                {
+                    "text": ("✅ " if style == current_style else "") + style,
+                    "callback": self.inline__btn_style,
+                    "args": (mod, option, index, style),
+                    **({"style": "success"} if style == current_style else {}),
+                }
+                for style in ("primary", "success", "danger")
+            ],
+            [
+                {
+                    "text": self.strings("btn_delete"),
+                    "callback": self.inline__btn_delete,
+                    "args": (mod, option, index),
+                    "style": "danger",
+                }
+            ],
+            self._close_row(self.inline__configure_option, mod, option),
+        ]
+        text = self.strings("btn_editor").format(index + 1, utils.escape_html(mod))
+        if note:
+            text += f"\n\n{note}"
+        return text, markup
+
+    async def _apply_btn(self, call, mod, option, index, get_value, inline_message_id):
+        module = self._module(mod)
+        if not await self._available(module, option):
+            return await self._show(call, "🚫", [], inline_message_id)
+        try:
+            value = get_value(module)
+        except (ValueError, TypeError) as e:
+            note = self.strings("validation_error").format(utils.escape_html(str(e)))
+            text, markup = self._btn_view(module, option, index, inline_message_id, note)
+            return await self._show(call, text, markup, inline_message_id)
+        self._save(module, option, value)
+        text, markup = self._btn_view(
+            module, option, index, inline_message_id, self.strings("saved")
+        )
+        await self._show(call, text, markup, inline_message_id)
+
+    async def inline__btn_edit(
+        self, call: CallbackQuery, mod: str, option: str, index: int
+    ) -> None:
+        module = self._module(mod)
+        if not await self._available(module, option):
+            return
+        text, markup = self._btn_view(module, option, index, call.inline_message_id)
+        await self._show(call, text, markup)
+
+    async def inline__btn_add(
+        self, call: CallbackQuery, mod: str, option: str
+    ) -> None:
+        module = self._module(mod)
+        if not await self._available(module, option):
+            return
+        current = list(module.config[option] or [])
+        default = {"text": "Button", "url": "https://t.me/shizu_talks"}
+        try:
+            value = self._check(module, option, current + [default])
+        except (ValueError, TypeError) as e:
+            return await call.answer(str(e), show_alert=True)
+        self._save(module, option, value)
+        await self.inline__btn_edit(call, mod, option, len(value) - 1)
+
+    async def inline__btn_field(
+        self, call, query: str, mod: str, option: str, index: int, field: str,
+        inline_message_id: str,
+    ) -> None:
+        def edit(module):
+            buttons = list(module.config[option] or [])
+            if not 0 <= index < len(buttons):
+                raise ValueError(self.strings("value_not_found"))
+            updated = dict(buttons[index])
+            updated[field] = query.strip()
+            buttons[index] = updated
+            return self._check(module, option, buttons)
+
+        await self._apply_btn(call, mod, option, index, edit, inline_message_id)
+
+    async def inline__btn_style(
+        self, call: CallbackQuery, mod: str, option: str, index: int, style: str
+    ) -> None:
+        def edit(module):
+            buttons = list(module.config[option] or [])
+            if not 0 <= index < len(buttons):
+                raise ValueError(self.strings("value_not_found"))
+            updated = dict(buttons[index])
+            updated["style"] = style
+            buttons[index] = updated
+            return self._check(module, option, buttons)
+
+        await self._apply_btn(call, mod, option, index, edit, call.inline_message_id)
+
+    async def inline__btn_delete(
+        self, call: CallbackQuery, mod: str, option: str, index: int
+    ) -> None:
+        module = self._module(mod)
+        if not await self._available(module, option):
+            return
+        buttons = list(module.config[option] or [])
+        if 0 <= index < len(buttons):
+            del buttons[index]
+            try:
+                self._save(module, option, self._check(module, option, buttons))
+            except (ValueError, TypeError) as e:
+                return await call.answer(str(e), show_alert=True)
+        await self._refresh_option(call, module, option, self.strings("saved"))
 
     async def inline__configure_option(
         self, call: CallbackQuery, mod: str, config_opt: str

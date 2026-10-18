@@ -65,8 +65,9 @@ class InformationMod(loader.Module):
             ),
             loader.ConfigValue(
                 "custom_buttons",
-                {"text": "Support", "url": "https://t.me/shizu_talks"},
+                [{"text": "Support", "url": "https://t.me/shizu_talks"}],
                 lambda: self.strings("custom_button"),
+                validator=loader.validators.Series(validator=loader.validators.Button()),
                 label=lambda: self.strings("cfg_label_custom_buttons"),
             ),
             loader.ConfigValue(
@@ -88,6 +89,9 @@ class InformationMod(loader.Module):
         previous = "https://github.com/ibeswipin/Shizu/raw/refs/heads/beta/assets/shizubanner.jpg"
         if self.config["photo_url"] == previous:
             self.config["photo_url"] = self.config.getdef("photo_url")
+        buttons = self.config["custom_buttons"]
+        if isinstance(buttons, dict):
+            self.config["custom_buttons"] = [buttons] if buttons else []
 
     async def text_(self, me: types.User, username, logo: str = "🐙"):
         """Get text"""
@@ -166,17 +170,15 @@ class InformationMod(loader.Module):
                 )
             ]
 
-        button = self.config["custom_buttons"]
-        if button:
+        for button in self.config["custom_buttons"]:
             style = button.get("style", "danger")
             if style not in {"primary", "success", "danger"}:
                 style = "danger"
-            label = self._button_label(button)
             markup += (
                 "<tg-button-row>"
                 f'<tg-button type="url" style="{style}" '
                 f'url="{html.escape(button["url"])}">'
-                f"{utils.escape_html(label)}</tg-button>"
+                f"{utils.escape_html(self._button_label(button))}</tg-button>"
                 "</tg-button-row>"
             )
         return types.InputRichMessage(html=markup, media=media)
@@ -198,8 +200,7 @@ class InformationMod(loader.Module):
         text = await self.text_(self.me, username, logo)
         if self.config["rich"]:
             rich_text = text
-            button = self.config["custom_buttons"]
-            if button:
+            for button in self.config["custom_buttons"]:
                 text += (
                     f'\n<a href="{html.escape(button["url"])}">'
                     f"{utils.escape_html(self._button_label(button))}</a>"
@@ -217,7 +218,10 @@ class InformationMod(loader.Module):
         if self.config["custom_buttons"]:
             await message.answer(
                 response=text,
-                reply_markup=[[self.config["custom_buttons"]]],
+                reply_markup=[
+                    [{"text": button["text"], "url": button["url"]}]
+                    for button in self.config["custom_buttons"]
+                ],
                 photo=self.config["photo_url"],
             )
         else:
