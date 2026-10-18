@@ -27,7 +27,7 @@ import collections
 import html
 import logging
 
-from pyrogram import Client, types
+from pyrogram import Client, enums, types
 
 from shizu import loader, utils, version
 from shizu.telegram.rich import button_label_html, send_direct, send_rich
@@ -65,7 +65,13 @@ class InformationMod(loader.Module):
             ),
             loader.ConfigValue(
                 "custom_buttons",
-                [{"text": "Support", "url": "https://t.me/shizu_talks"}],
+                [
+                    {
+                        "text": "Support",
+                        "url": "https://t.me/shizu_talks",
+                        "emoji": [{"id": "5953760768968105764", "fallback": "🗽"}],
+                    }
+                ],
                 lambda: self.strings("custom_button"),
                 validator=loader.validators.Series(validator=loader.validators.Button()),
                 label=lambda: self.strings("cfg_label_custom_buttons"),
@@ -190,6 +196,55 @@ class InformationMod(loader.Module):
         }:
             return self.strings("label_support")
         return button["text"]
+
+    @staticmethod
+    def _emoji_entities(msg) -> list:
+        """Premium emoji found in a message, as {id, fallback} items"""
+        text = msg.text or msg.caption or ""
+        data = text.encode("utf-16-le")
+        entities = (msg.entities or []) + (msg.caption_entities or [])
+        found = []
+        for entity in entities:
+            if (
+                entity.type == enums.MessageEntityType.CUSTOM_EMOJI
+                and entity.custom_emoji_id
+            ):
+                fallback = data[
+                    entity.offset * 2 : (entity.offset + entity.length) * 2
+                ].decode("utf-16-le", "ignore")
+                found.append(
+                    {"id": str(entity.custom_emoji_id), "fallback": fallback or "⭐"}
+                )
+        return found
+
+    @loader.command()
+    async def btnemoji(self, app: Client, message: types.Message):
+        """<n> - set premium emoji of info button #n from emoji in this message or the reply"""
+        buttons = list(self.config["custom_buttons"] or [])
+        args = utils.get_args_raw(message).split()
+        if not args or not args[0].isdigit():
+            return await utils.answer(
+                message, self.strings("btnemoji_usage").format(len(buttons))
+            )
+        index = int(args[0]) - 1
+        if not 0 <= index < len(buttons):
+            return await utils.answer(
+                message, self.strings("btnemoji_range").format(len(buttons))
+            )
+        emojis = self._emoji_entities(message.reply_to_message or message)
+        if not emojis:
+            return await utils.answer(message, self.strings("btnemoji_none"))
+        buttons[index] = {**buttons[index], "emoji": emojis}
+        try:
+            self.config["custom_buttons"] = buttons
+        except (ValueError, TypeError) as error:
+            return await utils.answer(message, utils.escape_html(str(error)))
+        await utils.answer(
+            message,
+            self.strings("btnemoji_done").format(
+                "".join(e["fallback"] for e in emojis), index + 1
+            ),
+        )
 
     @loader.command(aliases=["ubinfo", "support"])
     async def info(self, app: Client, message: types.Message):

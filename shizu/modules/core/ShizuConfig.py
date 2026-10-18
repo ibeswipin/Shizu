@@ -337,10 +337,11 @@ class ShizuConfig(loader.Module):
         elif kind == "buttons":
             buttons = current if isinstance(current, list) else [current] if current else []
             for index, entry in enumerate(buttons):
+                icons = "".join(e["fallback"] for e in entry.get("emoji") or [])
                 markup.append(
                     [
                         {
-                            "text": f"✏️ {entry.get('text', '')}",
+                            "text": f"✏️ {icons}{entry.get('text', '')}",
                             "callback": self.inline__btn_edit,
                             "args": (mod, option, index),
                         }
@@ -596,7 +597,7 @@ class ShizuConfig(loader.Module):
             [
                 {
                     "text": self.strings("btn_emoji_label").format(
-                        entry["emoji"]["fallback"]
+                        "".join(e["fallback"] for e in entry["emoji"])
                         if entry.get("emoji")
                         else self.strings("btn_emoji_none")
                     ),

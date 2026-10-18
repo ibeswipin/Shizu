@@ -272,21 +272,41 @@ class Validators:
                 if style not in self.STYLES:
                     raise ValueError(f"Unknown button style: {style}")
                 button["style"] = style
-            emoji = value.get("emoji")
+            emoji = self._emoji_list(value.get("emoji"))
             if emoji:
-                if isinstance(emoji, str):
-                    emoji_id, _, fallback = emoji.strip().partition(" ")
-                    emoji = {"id": emoji_id, "fallback": fallback.strip() or "⭐"}
-                if not isinstance(emoji, dict):
-                    raise ValueError("Emoji must be an id or {id, fallback}")
-                emoji_id = str(emoji.get("id", "")).strip()
+                button["emoji"] = emoji
+            return button
+
+        @staticmethod
+        def _emoji_list(emoji):
+            if not emoji:
+                return []
+            if isinstance(emoji, dict):
+                emoji = [emoji]
+            if isinstance(emoji, str):
+                items, pending = [], None
+                for token in emoji.split():
+                    if token.isdigit():
+                        pending = {"id": token, "fallback": "⭐"}
+                        items.append(pending)
+                    elif pending is not None:
+                        pending["fallback"] = token
+                        pending = None
+                emoji = items
+            result = []
+            for item in emoji:
+                if isinstance(item, str):
+                    item = {"id": item.strip(), "fallback": "⭐"}
+                emoji_id = str(item.get("id", "")).strip()
                 if not emoji_id.isdigit():
                     raise ValueError("Custom emoji id must be a number")
-                button["emoji"] = {
-                    "id": emoji_id,
-                    "fallback": str(emoji.get("fallback") or "⭐").strip() or "⭐",
-                }
-            return button
+                result.append(
+                    {
+                        "id": emoji_id,
+                        "fallback": str(item.get("fallback") or "⭐").strip() or "⭐",
+                    }
+                )
+            return result
 
     class Float:
         def __init__(self, minimum=None, maximum=None):

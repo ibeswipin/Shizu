@@ -275,15 +275,19 @@ def escape_button_label(text):
 
 
 def button_label_html(button):
-    """Safe button label: escaped text with an optional custom-emoji icon in front."""
+    """Safe button label: escaped text with optional custom-emoji icons in front."""
     label = escape_button_label(button.get("text", ""))
-    emoji = button.get("emoji")
-    if emoji and str(emoji.get("id", "")).isdigit():
-        tag = (
-            f'<tg-emoji emoji-id="{emoji["id"]}">'
-            f"{html.escape(emoji.get('fallback') or '⭐', quote=False)}</tg-emoji>"
-        )
-        return f"{tag} {label}" if label else tag
+    emoji = button.get("emoji") or []
+    if isinstance(emoji, dict):
+        emoji = [emoji]
+    tags = "".join(
+        f'<tg-emoji emoji-id="{item["id"]}">'
+        f"{html.escape(item.get('fallback') or '⭐', quote=False)}</tg-emoji>"
+        for item in emoji
+        if str(item.get("id", "")).isdigit()
+    )
+    if tags:
+        return f"{tags} {label}" if label else tags
     return label
 
 
