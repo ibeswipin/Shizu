@@ -28,8 +28,8 @@ from shizu.security import SecretRedactor
 from shizu.remote import RemoteModuleError
 from shizu.translator import Translator
 
-from .compiler import ModuleCompiler
-from .dependencies import DependencyInstaller
+from shizu.loader.compiler import ModuleCompiler
+from shizu.loader.dependencies import DependencyInstaller
 
 
 class ModuleLoader:

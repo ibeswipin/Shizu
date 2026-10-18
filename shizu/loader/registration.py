@@ -21,11 +21,11 @@ from importlib.machinery import ModuleSpec
 from shizu import utils
 from shizu.translator import Strings, Translator
 
-from .compat import TelethonCompatibility
-from .compiler import ModuleCompiler
-from .handlers import HandlerRegistry
-from .models import Module
-from .provenance import is_core_source
+from shizu.loader.compat import TelethonCompatibility
+from shizu.loader.compiler import ModuleCompiler
+from shizu.loader.handlers import HandlerRegistry
+from shizu.loader.models import Module
+from shizu.loader.provenance import is_core_source
 
 
 class ModuleRegistrar:

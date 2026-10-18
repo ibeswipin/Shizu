@@ -38,16 +38,13 @@
 import asyncio
 import contextlib
 import logging
-import os
 import time
-from subprocess import check_output
 
 import git
 from aiogram.types import CallbackQuery, InputFile
 from pyrogram import Client, enums, types
 
 from shizu import loader, utils
-from shizu.integrity import Release, runtime
 from shizu.version import branch
 
 
@@ -91,19 +88,28 @@ class UpdateMod(loader.Module):
 
     @staticmethod
     def _pull() -> bool:
-        """Stash local changes and pull; False when already up to date"""
-        pinned = runtime.get_release()
-        if not os.access(pinned.root / "shizu/modules/core", os.W_OK):
-            raise PermissionError(
-                "Core is read-only in the hardened service. Stop the service and "
-                "deploy a signed release outside the bot process."
-            )
-        check_output("git stash", shell=True)
-        changed = (
-            "Already up to date." not in check_output("git pull", shell=True).decode()
+        """Fetch upstream and fast-forward the checkout; False when up to date"""
+        repo = git.Repo()
+        branch_name = str(branch) if branch else "beta"
+        base = repo.head.commit
+
+        UpdateMod._fetch(repo, branch_name)
+        target = repo.commit(f"origin/{branch_name}")
+        if target.hexsha == base.hexsha or repo.is_ancestor(target, base):
+            return False
+
+        stashed = "No local changes to save" not in repo.git.stash(
+            "--include-untracked"
         )
-        Release(pinned.root, pinned.public_key, strict_permissions=False).verify_and_secure()
-        return changed
+        try:
+            repo.git.merge("--ff-only", target.hexsha)
+        except Exception:
+            repo.git.reset("--hard", base.hexsha)
+            if stashed:
+                with contextlib.suppress(git.GitCommandError):
+                    repo.git.stash("pop")
+            raise
+        return True
 
     def _restart_record(
         self, chat, message_id: int, kind: str, bot: bool = False

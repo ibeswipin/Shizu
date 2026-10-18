@@ -101,7 +101,7 @@ class InformationMod(loader.Module):
                 "version": ".".join(map(str, version.__version__)),
                 "prefix": prefix,
                 "branch": version.branch,
-                "platform": utils.get_platform(),
+                "platform": utils.get_platform(getattr(me, "is_premium", False)),
             }
             return f"{logo} Shizu\n" + self.config["custom_message"].format_map(
                 collections.defaultdict(str, values)
@@ -114,7 +114,10 @@ class InformationMod(loader.Module):
                     ".".join(map(str, version.__version__)),
                 ],
                 [self.strings("label_branch"), version.branch],
-                [self.strings("label_platform"), utils.get_platform()],
+                [
+                    self.strings("label_platform"),
+                    utils.get_platform(getattr(me, "is_premium", False)),
+                ],
                 [self.strings("label_prefix"), prefix],
                 [self.strings("label_bot"), f"@{username}"],
             ]

@@ -19,8 +19,8 @@ from aiogram.types import InlineQuery as GeekInlineQuery
 
 from shizu.utils import rand
 
-from . import types
-from .types import InlineCall, InlineMessage, InlineQuery
+from shizu.inline import types
+from shizu.inline.types import InlineCall, InlineMessage, InlineQuery
 
 
 def __getattr__(name: str):

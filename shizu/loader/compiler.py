@@ -22,9 +22,9 @@ from importlib.util import module_from_spec, spec_from_file_location
 from typing import Any
 
 from shizu.besafe import BeSafe
-from shizu.integrity import IntegrityError, runtime
 
-from .provenance import is_core_source, touches_core
+from shizu.loader.models import LoadError
+from shizu.loader.provenance import CORE_MODULES_PATH, is_core_source, touches_core
 
 
 class StringLoader(SourceLoader):
@@ -102,19 +102,17 @@ class ModuleCompiler:
     def execute_module(cls, module_name: str, file_path: str = "", spec=None):
         trusted = is_core_source(module_name, file_path, spec)
         reserved = {
-            "shizu.modules." + relative.rsplit("/", 1)[-1][:-3]
-            for relative in runtime.get_release().files
-            if relative.startswith("shizu/modules/core/")
-            and relative.count("/") == 3
-            and not relative.rsplit("/", 1)[-1].startswith("_")
+            "shizu.modules." + path.stem
+            for path in CORE_MODULES_PATH.glob("*.py")
+            if not path.name.startswith("_")
         }
         if module_name in reserved and not trusted:
-            raise IntegrityError("The core module namespace is reserved for signed code")
+            raise LoadError("The core module namespace is reserved for bundled code")
         if touches_core(file_path) or touches_core(getattr(spec, "origin", "")):
             if not trusted:
-                raise IntegrityError("Core files require a signed source and canonical namespace")
-            relative = f"shizu/modules/core/{module_name.rsplit('.', 1)[-1]}.py"
-            spec = runtime.get_release().spec(module_name, relative)
+                raise LoadError("Core files require a bundled source and canonical namespace")
+            name = module_name.rsplit(".", 1)[-1]
+            spec = spec_from_file_location(module_name, str(CORE_MODULES_PATH / f"{name}.py"))
         else:
             spec = spec or spec_from_file_location(module_name, file_path)
         module = cls.create(spec, trusted=trusted)

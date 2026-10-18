@@ -25,6 +25,7 @@ from types import FunctionType
 from typing import Any
 
 from pyrogram import Client, types
+from telethon.tl.functions.channels import JoinChannelRequest
 
 from shizu import bot, database, dispatcher, extrapatchs, health, loader, utils
 from shizu import logger as logger_
@@ -33,17 +34,17 @@ from shizu.security import SafeMode
 from shizu.telegram.exceptions import TelegramConnectionError
 from shizu.translator import Translator
 
-from .compat import TelethonCompatibility
-from .config import ModuleConfiguration
-from .dependencies import DependencyInstaller
-from .libraries import LibraryLoader
-from .lifecycle import ModuleLifecycle
-from .loading import ModuleLoader
-from .models import Library, Module
-from .registration import ModuleRegistrar
-from .scheduler import TaskScheduler
-from .sources import ModuleSources
-from .storage import CUSTOM_MODULES_PATH, save_module
+from shizu.loader.compat import TelethonCompatibility
+from shizu.loader.config import ModuleConfiguration
+from shizu.loader.dependencies import DependencyInstaller
+from shizu.loader.libraries import LibraryLoader
+from shizu.loader.lifecycle import ModuleLifecycle
+from shizu.loader.loading import ModuleLoader
+from shizu.loader.models import Library, Module
+from shizu.loader.registration import ModuleRegistrar
+from shizu.loader.scheduler import TaskScheduler
+from shizu.loader.sources import ModuleSources
+from shizu.loader.storage import CUSTOM_MODULES_PATH, save_module
 
 
 class ModulesManager:
@@ -310,8 +311,6 @@ class ModulesManager:
             if join:
                 try:
                     if hasattr(join_client, "get_permissions"):
-                        from telethon.tl.functions.channels import JoinChannelRequest
-
                         await join_client(JoinChannelRequest(join_peer))
                     else:
                         await join_client.join_chat(join_peer)

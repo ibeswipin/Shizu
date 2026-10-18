@@ -17,12 +17,16 @@
 
 import asyncio
 import contextlib
+import datetime
 import functools
+import html
 import io
 import logging
 import os
+import platform
 import random
 import re
+import shlex
 import string
 import sys
 import time
@@ -30,10 +34,12 @@ import typing
 from collections.abc import AsyncIterator
 from types import FunctionType
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import git
 import grapheme
 import requests
+from aiogram.utils.exceptions import BotKicked, ChatNotFound
 from pyrogram import Client, enums, types
 from pyrogram.raw.types.input_message_entity_mention_name import (
     InputMessageEntityMentionName,
@@ -58,11 +64,26 @@ from pyrogram.raw.types.message_entity_text_url import MessageEntityTextUrl
 from pyrogram.raw.types.message_entity_underline import MessageEntityUnderline
 from pyrogram.raw.types.message_entity_unknown import MessageEntityUnknown
 from pyrogram.raw.types.message_entity_url import MessageEntityUrl
+from pyrogram.raw import functions as raw_functions
+from pyrogram.raw import types as raw_types
 from pyrogram.types import Chat, Message, User
 from pyrogram.types.messages_and_media.message import Str
+from telethon import utils as tl_utils
+from telethon.extensions import html as tl_html
+from telethon.tl import functions as tl_functions
+from telethon.tl import types as tl_types
+from telethon.tl.functions.channels import (
+    CreateChannelRequest,
+    EditAdminRequest,
+    EditPhotoRequest,
+    InviteToChannelRequest,
+)
+from telethon.tl.types import ChatAdminRights
+from telethon.tl.types import Message as TelethonMessage
 
 from shizu import database
 from shizu.security import SafeMode
+from shizu.telegram.rich import needs_bot, send_rich
 from shizu.telegram.state import TelethonConnectionState
 
 FormattingEntity = (
@@ -238,8 +259,6 @@ def get_args(message: Message | str) -> str | list[str]:
     if is_telethon_message(message):
         raw = text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else ""
         try:
-            import shlex
-
             return shlex.split(raw)
         except ValueError:
             return raw.split()
@@ -269,8 +288,7 @@ def restart():
         SafeMode.stopped_cleanly(database.db)
     sys.stdout.flush()
     sys.stderr.flush()
-    launcher = os.path.join(os.path.dirname(get_base_dir()), "scripts", "secure_start.py")
-    os.execl(sys.executable, sys.executable, "-I", launcher)
+    os.execl(sys.executable, sys.executable, "-u", "-m", "shizu")
 
 
 def get_args_raw(message: Message | str) -> str:
@@ -291,8 +309,6 @@ def get_args_html(message: Message | str) -> str:
     """
     try:
         if is_telethon_message(message):
-            from telethon.extensions import html as tl_html
-
             args = tl_html.unparse(message.message or "", message.entities or []).split(
                 maxsplit=1
             )[1]
@@ -313,8 +329,6 @@ async def invite_bot(app: Client, chat):
 
 async def ensure_bot_in_chat(app: Client, chat) -> None:
     """Add the inline bot to a chat it was removed from or never joined"""
-    from aiogram.utils.exceptions import BotKicked, ChatNotFound
-
     try:
         await app.bot.get_chat(chat)
     except (ChatNotFound, BotKicked):
@@ -628,14 +642,10 @@ async def answer(
 
     """
     if rich_message is not None:
-        from shizu.telegram.rich import send_rich
-
         return await send_rich(
             message, rich_message, str(response), reply_markup=reply_markup, **kwargs
         )
     if rich:
-        from shizu.telegram.rich import needs_bot, send_rich
-
         if not needs_bot(reply_markup) and not re.search(
             r"<tg-button\b[^>]*\bref\s*=", str(response), re.I
         ):
@@ -660,8 +670,6 @@ async def answer(
     )
 
     if is_telethon:
-        from telethon.tl.types import Message as TelethonMessage
-
         if isinstance(message, TelethonMessage):
             app = message._client
             reply = getattr(message, "reply_to", None)
@@ -881,9 +889,10 @@ def get_display_name(entity: User | Chat) -> str:
 
 
 SHIZU_LOGO = (
-    '<tg-emoji emoji-id="5375192721025706367">👩‍🎤</tg-emoji>'
-    '<tg-emoji emoji-id="5372836549211761622">🧑‍🎤</tg-emoji>'
-    '<tg-emoji emoji-id="5373152706049387888">👨‍🎤</tg-emoji>'
+    '<tg-emoji emoji-id="5951820775190175200">🐙</tg-emoji>'
+    '<tg-emoji emoji-id="5951613336859713871">🐙</tg-emoji>'
+    '<tg-emoji emoji-id="5954150898027470290">🐙</tg-emoji>'
+    '<tg-emoji emoji-id="5954117809599421609">🐙</tg-emoji>'
 )
 
 
@@ -896,10 +905,19 @@ def escape_html(text):
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def get_platform() -> str:
-    """Возращает платформу."""
+OKAKHOST_LOGO = (
+    '<tg-emoji emoji-id="5954197880674736606">🐙</tg-emoji>'
+    '<tg-emoji emoji-id="5953791400674860790">🐙</tg-emoji>'
+    '<tg-emoji emoji-id="5954003950016403947">🐙</tg-emoji>'
+    '<tg-emoji emoji-id="5954144545770839887">🐙</tg-emoji>'
+)
+DOCKER_EMOJI = '<tg-emoji emoji-id="5954031777109515666">🔹</tg-emoji>'
+
+
+def get_platform(premium: bool = False) -> str:
+    """Host platform label; premium accounts get custom emoji."""
     if os.environ.get("server_name") in {"Okak", "OkakHost"}:
-        return "☁️ OkakHost"
+        return f"{OKAKHOST_LOGO if premium else '☁️'} OkakHost"
 
     IS_TERMUX = "com.termux" in os.environ.get("PREFIX", "")
     IS_DOCKER = "DOCKER" in os.environ
@@ -908,25 +926,23 @@ def get_platform() -> str:
     IS_WSL = False
 
     with contextlib.suppress(Exception):
-        from platform import uname
-
-        if "microsoft-standard" in uname().release:
+        if "microsoft-standard" in platform.uname().release:
             IS_WSL = True
 
     if IS_TERMUX:
-        platform = "📱 Termux"
+        label = "📱 Termux"
     elif IS_DOCKER:
-        platform = "🐳 Docker"
+        label = f"{DOCKER_EMOJI if premium else '🐳'} Docker"
     elif IS_WSL:
-        platform = "🧱 WSL"
+        label = "🧱 WSL"
     elif IS_WIN:
-        platform = "💻 Windows"
+        label = "💻 Windows"
     elif IS_JAMHOST:
-        platform = "🍓 JamHost"
+        label = "🍓 JamHost"
     else:
-        platform = "🖥️ VDS"
+        label = "🖥️ VDS"
 
-    return platform
+    return label
 
 
 def random_id(size: int = 10) -> str:
@@ -994,9 +1010,7 @@ def get_chat_id(message: Message | Any) -> int:
             raise ValueError(f"Invalid chat_id format: {chat_id}") from None
 
     try:
-        import telethon
-
-        resolved = telethon.utils.resolve_id(chat_id)
+        resolved = tl_utils.resolve_id(chat_id)
         return resolved[0] if resolved else chat_id
     except (ImportError, AttributeError):
         chat_id_str = str(chat_id)
@@ -1075,8 +1089,6 @@ def _rich_table_payload(rows, header=None, title=None) -> dict:
 
 
 async def _rich_table(message, rows, header, title, fallback_text):
-    from shizu.telegram.rich import send_rich
-
     return await send_rich(
         message, _rich_table_payload(rows, header, title), fallback_text
     )
@@ -1149,22 +1161,17 @@ def get_args_split_by(message: Any, separator: str = ",") -> list[str]:
 
 def remove_html(text: str, escape: bool = False, keep_emojis: bool = False) -> str:
     """Strip HTML tags from `text`; optionally keep custom emoji tags"""
-    import html as html_lib
-    import re as re_lib
-
     keep = r"(?!/?(?:emoji|tg-emoji)\b)" if keep_emojis else ""
-    stripped = re_lib.sub(rf"<{keep}/?[^>]*?>", "", str(text))
+    stripped = re.sub(rf"<{keep}/?[^>]*?>", "", str(text))
     return (
-        escape_html(html_lib.unescape(stripped))
+        escape_html(html.unescape(stripped))
         if escape
-        else html_lib.unescape(stripped)
+        else html.unescape(stripped)
     )
 
 
 def check_url(url: str) -> bool:
     """Whether `url` looks like an absolute http(s) link"""
-    from urllib.parse import urlparse
-
     try:
         parsed = urlparse(str(url))
     except ValueError:
@@ -1182,27 +1189,20 @@ def get_git_hash() -> str | bool:
 
 def formatted_uptime() -> str:
     """Time since Shizu was started, like `1 day, 2:03:04`"""
-    import datetime
-    import time as time_lib
-
-    return str(datetime.timedelta(seconds=round(time_lib.time() - _PROCESS_STARTED)))
+    return str(datetime.timedelta(seconds=round(time.time() - _PROCESS_STARTED)))
 
 
 def uptime() -> int:
     """Seconds since Shizu was started"""
-    import time as time_lib
-
-    return round(time_lib.time() - _PROCESS_STARTED)
+    return round(time.time() - _PROCESS_STARTED)
 
 
-def get_named_platform() -> str:
+def get_named_platform(premium: bool = False) -> str:
     """Human readable name of the host platform"""
-    import platform as platform_lib
-
-    named = get_platform()
+    named = get_platform(premium)
     if named != "🖥️ VDS":
         return named
-    system = platform_lib.system()
+    system = platform.system()
     if system == "Darwin":
         return "🍏 macOS"
     if system == "Linux":
@@ -1322,9 +1322,6 @@ async def dnd(client: Any, peer: Any, archive: bool = True) -> bool:
     """Mute `peer` forever and optionally move it to the archive"""
     try:
         if hasattr(client, "get_input_entity"):
-            from telethon.tl import functions as tl_functions
-            from telethon.tl import types as tl_types
-
             entity = await client.get_input_entity(peer)
             await client(
                 tl_functions.account.UpdateNotifySettingsRequest(
@@ -1341,9 +1338,6 @@ async def dnd(client: Any, peer: Any, archive: bool = True) -> bool:
                     )
                 )
             return True
-
-        from pyrogram.raw import functions as raw_functions
-        from pyrogram.raw import types as raw_types
 
         entity = await client.resolve_peer(peer)
         await client.invoke(
@@ -1369,8 +1363,6 @@ async def _set_chat_photo(client: Any, entity: Any, avatar: str) -> None:
         response.raise_for_status()
         data = io.BytesIO(response.content)
         data.name = "avatar.jpg"
-    from telethon.tl.functions.channels import EditPhotoRequest
-
     uploaded = await client.upload_file(data)
     await client(EditPhotoRequest(entity, uploaded))
 
@@ -1389,8 +1381,6 @@ async def asset_channel(
     _folder: str = None,
 ) -> tuple[Any, bool]:
     """Find or create a service chat named `title`; returns `(entity, created)`"""
-    from shizu import database
-
     assets = database.db.get("shizu.assets", "chats", {})
     if title in assets:
         with contextlib.suppress(Exception):
@@ -1401,13 +1391,6 @@ async def asset_channel(
             assets[title] = dialog.entity.id
             database.db.set("shizu.assets", "chats", assets)
             return dialog.entity, False
-
-    from telethon.tl.functions.channels import (
-        CreateChannelRequest,
-        EditAdminRequest,
-        InviteToChannelRequest,
-    )
-    from telethon.tl.types import ChatAdminRights
 
     result = await client(
         CreateChannelRequest(
@@ -1508,8 +1491,6 @@ def get_entity_id(entity: Any) -> int:
     if isinstance(entity, int):
         return entity
     try:
-        from telethon import utils as tl_utils
-
         return tl_utils.get_peer_id(entity)
     except Exception:
         return getattr(entity, "id", entity)

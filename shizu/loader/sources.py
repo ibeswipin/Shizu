@@ -16,18 +16,16 @@
 
 import logging
 import os
-from pathlib import PurePosixPath
 
 import requests
 
 from shizu import health, utils
 from shizu.inter import inter
-from shizu.integrity import IntegrityError, runtime
 from shizu.remote import RemoteModuleError
 
-from .compiler import ModuleCompiler
-from .provenance import CORE_MODULES_PATH, is_core_source
-from .storage import migrate_legacy_modules
+from shizu.loader.compiler import ModuleCompiler
+from shizu.loader.provenance import CORE_MODULES_PATH, is_core_source
+from shizu.loader.storage import migrate_legacy_modules
 
 
 class ModuleSources:
@@ -38,26 +36,16 @@ class ModuleSources:
 
     async def load_local(self):
         manager = self.manager
-        release = runtime.get_release()
-        release.verify_tree()
-        # Load the bundled directory before any reviewed third-party code.
-        for relative in sorted(release.files):
-            entry = PurePosixPath(relative)
-            if (
-                not relative.startswith("shizu/modules/core/")
-                or len(entry.parts) != 4
-                or entry.name.startswith("_")
-            ):
-                continue
-            path = CORE_MODULES_PATH / entry.name
-            source_code = release.read(relative).decode("utf-8")
+        core_modules = sorted(
+            path
+            for path in CORE_MODULES_PATH.glob("*.py")
+            if not path.name.startswith("_")
+        )
+        for path in core_modules:
+            source_code = path.read_text(encoding="utf-8")
             manager._register_local(f"shizu.modules.{path.stem}", str(path), source_code)
 
-        reserved_names = {
-            PurePosixPath(relative).name
-            for relative in release.files
-            if relative.startswith("shizu/modules/core/")
-        }
+        reserved_names = {path.name for path in core_modules}
         migrate_legacy_modules(
             CORE_MODULES_PATH.parent, manager._local_modules_path, reserved_names
         )
@@ -121,8 +109,6 @@ class ModuleSources:
                 manager.register_instance(module_name, spec=spec, is_telethon=True)
             else:
                 manager.register_instance(module_name, file_path)
-        except IntegrityError:
-            raise
         except utils.PremiumRequired:
             logging.info("Skipped Premium module %s", file_path)
         except Exception:

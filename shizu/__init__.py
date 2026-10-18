@@ -6,10 +6,6 @@ __github__ = "https://github.com/ibeswipin/"
 import importlib
 import sys
 
-from .integrity import runtime as _integrity
-
-_integrity.install()
-
 security = importlib.import_module(".security", __name__)
 
 redaction = safemode = private_files = security

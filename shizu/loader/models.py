@@ -19,10 +19,10 @@ from typing import TYPE_CHECKING, Any
 
 from pyrogram import Client
 
-from .decorators import module
+from shizu.loader.decorators import module
 
 if TYPE_CHECKING:
-    from .manager import ModulesManager
+    from shizu.loader.manager import ModulesManager
 
 
 @module(name="Unknown")

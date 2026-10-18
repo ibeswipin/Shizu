@@ -5,9 +5,6 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["shizu", "shizu.*"]
 
-[tool.setuptools.package-data]
-shizu = ["core-manifest.json", "core-manifest.sig"]
-
 [project]
 name = "shizu"
 version = "1.0.4"
@@ -42,5 +39,3 @@ ignore = ["E501", "E731", "B019", "B905", "ASYNC109", "ASYNC230", "ASYNC240", "U
 [tool.ruff.lint.per-file-ignores]
 "shizu/inline/__init__.py" = ["F401"]
 "shizu/modules/core/ShizuTester.py" = ["ASYNC251"]
-"scripts/secure_start.py" = ["E402"]
-"scripts/release_core.py" = ["E402"]

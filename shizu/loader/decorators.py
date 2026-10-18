@@ -23,7 +23,7 @@ from shizu import database
 from shizu.types import InfiniteLoop
 
 if TYPE_CHECKING:
-    from .models import Module
+    from shizu.loader.models import Module
 
 
 def module(

@@ -16,11 +16,12 @@
 
 import inspect
 import re
+import types
 from types import FunctionType
 
 from shizu import loader
 
-from .models import Module
+from shizu.loader.models import Module
 
 
 def get_command_handlers(instance: Module) -> dict[str, FunctionType]:
@@ -60,8 +61,6 @@ def get_watcher_handlers(instance: Module) -> list[FunctionType]:
                 if inspect.ismethod(attr):
                     watchers.append(attr)
                 elif inspect.isfunction(attr):
-                    import types
-
                     bound_method = types.MethodType(attr, instance)
                     watchers.append(bound_method)
                 elif callable(attr):

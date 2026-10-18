@@ -219,7 +219,6 @@ class TerminalMod(loader.Module):
             await w["runner"].cleanup()
             return None
 
-        utils.spawn(w["tunnel"].process.stdout.read())
         return w
 
     async def _web_stop(self, notice: str):

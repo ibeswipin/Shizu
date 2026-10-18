@@ -19,6 +19,8 @@ import logging
 import time
 from collections import defaultdict, deque
 
+from aiogram import Bot
+
 from shizu import database, utils
 from shizu.security import SecretRedactor
 
@@ -142,8 +144,6 @@ class Reporter:
         if time.time() - database.db.get("shizu.health", key, 0) < cls.MUTE:
             return False
         database.db.set("shizu.health", key, time.time())
-        from aiogram import Bot
-
         bot = Bot(token=token)
         try:
             await bot.send_message(

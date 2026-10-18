@@ -22,9 +22,9 @@ from urllib.parse import urlparse
 from shizu import loader
 from shizu.inter import inter
 
-from .compiler import ModuleCompiler
-from .dependencies import VALID_PIP_PACKAGES
-from .models import Library, LoadError
+from shizu.loader.compiler import ModuleCompiler
+from shizu.loader.dependencies import VALID_PIP_PACKAGES
+from shizu.loader.models import Library, LoadError
 
 
 class LibraryLoader:

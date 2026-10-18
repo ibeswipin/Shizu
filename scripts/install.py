@@ -32,10 +32,6 @@ def run(*command):
     subprocess.run(command, cwd=ROOT, check=True)
 
 
-def prepare_release_permissions():
-    run(str(PYTHON), "-I", str(ROOT / "scripts/secure_start.py"), "--fix-permissions")
-
-
 def unit_quote(value):
     # systemd specifiers are expanded even inside quotes.
     value = str(value)
@@ -84,7 +80,7 @@ StartLimitBurst=5
 Type=simple
 User={username}
 WorkingDirectory={unit_value(ROOT)}
-ExecStart={unit_quote(PYTHON)} -I -u {unit_quote(ROOT / "scripts/secure_start.py")} --no-web
+ExecStart={unit_quote(PYTHON)} -u -m shizu --no-web
 Environment=PYTHONUNBUFFERED=1
 Environment={unit_quote("PATH=" + str(PYTHON.parent) + ":" + os.defpath)}
 Restart=on-failure
@@ -153,7 +149,6 @@ def main():
     args = parser.parse_args()
     os.chdir(ROOT)
     os.umask(0o077)
-    prepare_release_permissions()
     print("\nShizu is installed. Start it manually with: bash start.sh", flush=True)
     if args.no_start:
         return
@@ -196,7 +191,7 @@ def main():
         "\nTelegram login: log in with a QR code or your phone number, code and 2FA password.",
         flush=True,
     )
-    run(str(PYTHON), "-I", "-u", str(ROOT / "scripts/secure_start.py"), "--no-web", "--setup-only")
+    run(str(PYTHON), "-u", "-m", "shizu", "--no-web", "--setup-only")
     if use_service:
         username = pwd.getpwuid(os.getuid()).pw_name
         with tempfile.TemporaryDirectory(prefix="shizu-service-") as folder:
@@ -224,7 +219,7 @@ def main():
         )
         os.execv(
             str(PYTHON),
-            [str(PYTHON), "-I", "-u", str(ROOT / "scripts/secure_start.py"), "--no-web"],
+            [str(PYTHON), "-u", "-m", "shizu", "--no-web"],
         )
 
 

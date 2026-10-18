@@ -26,8 +26,8 @@ from shizu import utils
 from shizu.translator import Strings, Translator
 from shizu.types import InfiniteLoop
 
-from .handlers import HandlerRegistry
-from .models import LoadError, Module, SelfUnload
+from shizu.loader.handlers import HandlerRegistry
+from shizu.loader.models import LoadError, Module, SelfUnload
 
 
 def _hook_args(func, available: tuple) -> tuple:

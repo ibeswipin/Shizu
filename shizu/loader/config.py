@@ -15,11 +15,12 @@
 
 
 import copy
+import json
 import os
 import re
 from urllib.parse import urlparse
 
-from .models import Module
+from shizu.loader.models import Module
 
 
 class ConfigValue:
@@ -111,8 +112,6 @@ class Validators:
             if not isinstance(value, (list, tuple)):
                 if isinstance(value, str):
                     try:
-                        import json
-
                         value = json.loads(value)
 
                         if not isinstance(value, list):

@@ -42,7 +42,7 @@ from shizu.telegram.exceptions import (
 from shizu.telegram.services import TelegramConnectionService
 
 try:
-    from .web import core
+    from shizu.web import core
 except ImportError:
     web_available = False
     logging.exception("Unable to import web")

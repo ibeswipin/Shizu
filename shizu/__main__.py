@@ -19,7 +19,7 @@ import os
 import platform
 import sys
 
-from .security import PrivateFiles
+from shizu.security import PrivateFiles
 
 if os.geteuid() == 0:
     raise RuntimeError("Shizu must run as an ordinary user, not root")
@@ -55,9 +55,9 @@ ascii_ = """
 try:
     import pyrogram
 
-    from . import main
-    from .logger import setup_logger
-    from .version import __version__
+    from shizu import main
+    from shizu.logger import setup_logger
+    from shizu.version import __version__
 
     setup_logger("INFO")
 

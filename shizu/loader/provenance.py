@@ -3,8 +3,6 @@
 import os
 from pathlib import Path
 
-from shizu.integrity import runtime
-
 CORE_MODULES_PATH = Path(__file__).resolve().parents[1] / "modules" / "core"
 
 
@@ -18,7 +16,6 @@ def is_core_file(file_path: str) -> bool:
         and not path.name.startswith("_")
         and path.is_file()
         and path.resolve() == path
-        and f"shizu/modules/core/{path.name}" in runtime.get_release().files
     )
 
 
